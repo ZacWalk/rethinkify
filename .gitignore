@@ -19,3 +19,11 @@
 *.exe
 *.out
 *.app
+/Exe/*
+/intermediate/*
+/Rethinkify.opensdf
+/Rethinkify.sdf
+/Rethinkify.v12.suo
+/Rethinkify/Rethinkify.vcxproj.user
+
+/ipch/rethinkify-1bd87622/*.ipch
