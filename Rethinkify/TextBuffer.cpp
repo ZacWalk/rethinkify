@@ -3,6 +3,8 @@
 #include "TextBuffer.h"
 #include "resource.h"
 
+#include <fstream>
+
 const TCHAR crlf [] = _T("\r\n");
 const int UNDO_BUF_SIZE = 1000;
 
@@ -53,202 +55,283 @@ static bool EmitLine(int c1, int c2)
 	return false;
 }
 
+static std::istream& safeGetline(std::istream& is, std::string& t)
+{
+	t.clear();
+
+	// The characters in the stream are read one-by-one using a std::streambuf.
+	// That is faster than reading them one-by-one using the std::istream.
+	// Code that uses streambuf this way must be guarded by a sentry object.
+	// The sentry object performs various tasks,
+	// such as thread synchronization and updating the stream state.
+
+	std::istream::sentry se(is, true);
+	std::streambuf* sb = is.rdbuf();
+
+	for (;;) {
+		int c = sb->sbumpc();
+		switch (c) {
+		case '\n':
+			return is;
+		case '\r':
+			if (sb->sgetc() == '\n')
+				sb->sbumpc();
+			return is;
+		case EOF:
+			// Also handle the case when the last line has no line ending
+			if (t.empty())
+				is.setstate(std::ios::eofbit);
+			return is;
+		default:
+			t += (char) c;
+		}
+	}
+}
+
 bool TextBuffer::LoadFromFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/)
 {
 	clear();
 
 	bool success = false;
-	auto hFile = ::CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+	std::ifstream ifs(pszFileName);
+	std::string line;
 
-	if (hFile != INVALID_HANDLE_VALUE)
+	if (ifs)
 	{
-		const DWORD dwBufSize = 1024;
-		char buffer[dwBufSize];
-
-		DWORD dwCurSize;
-		if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
+		while (!safeGetline(ifs, line).eof())
 		{
-
-			if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
-			{
-				//	Try to determine current CRLF mode
-				DWORD I = 0;
-
-				for (I = 0; I < dwCurSize; I++)
-				{
-					if (buffer[I] == _T('\x0a'))
-						break;
-				}
-				if (I == dwCurSize)
-				{
-					//	By default (or in the case of empty file), set DOS style
-					nCrlfStyle = CRLF_STYLE_DOS;
-				}
-				else
-				{
-					//	Otherwise, analyse the first occurance of line-feed character
-					if (I > 0 && buffer[I - 1] == _T('\x0d'))
-					{
-						nCrlfStyle = CRLF_STYLE_DOS;
-					}
-					else
-					{
-						if (I < dwCurSize - 1 && buffer[I + 1] == _T('\x0d'))
-							nCrlfStyle = CRLF_STYLE_UNIX;
-						else
-							nCrlfStyle = CRLF_STYLE_MAC;
-					}
-				}
-			}
-
-			assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
-			m_nCRLFMode = nCrlfStyle;
-			const char *crlf = crlfs[nCrlfStyle];
-
-			DWORD dwBufPtr = 0;
-			int nCrlfPtr = 0;
-			int last = 0;
-
-			std::string line;
-
-			while (dwCurSize > 0)
-			{
-				int c = buffer[dwBufPtr];
-
-				if (c != 0x0A && c != 0x0D)
-				{
-					line += (char) c;
-				}
-
-				if (EmitLine(last, c))
-				{
-					AppendLine(line);
-					line.clear();
-				}
-
-				dwBufPtr++;
-
-				if (dwBufPtr == dwCurSize)
-				{
-					if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
-					{
-						dwBufPtr = 0;
-					}
-					else
-					{
-						dwCurSize = 0;
-					}
-				}
-
-				last = c;
-			}
-
 			AppendLine(line);
-
-			_modified = FALSE;
-			m_nUndoBufSize = UNDO_BUF_SIZE;
-			m_nUndoPosition = 0;
-
-			success = TRUE;
-
-			InvalidateView();
 		}
 
-		if (hFile != nullptr)
-			::CloseHandle(hFile);
+		success = true;
 	}
+
+	InvalidateView();
+
+	//bool success = false;
+	//auto hFile = ::CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+
+	//if (hFile != INVALID_HANDLE_VALUE)
+	//{
+	//	const DWORD dwBufSize = 1024;
+	//	char buffer[dwBufSize];
+
+	//	DWORD dwCurSize;
+	//	if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
+	//	{
+
+	//		if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
+	//		{
+	//			//	Try to determine current CRLF mode
+	//			DWORD I = 0;
+
+	//			for (I = 0; I < dwCurSize; I++)
+	//			{
+	//				if (buffer[I] == _T('\x0a'))
+	//					break;
+	//			}
+	//			if (I == dwCurSize)
+	//			{
+	//				//	By default (or in the case of empty file), set DOS style
+	//				nCrlfStyle = CRLF_STYLE_DOS;
+	//			}
+	//			else
+	//			{
+	//				//	Otherwise, analyse the first occurance of line-feed character
+	//				if (I > 0 && buffer[I - 1] == _T('\x0d'))
+	//				{
+	//					nCrlfStyle = CRLF_STYLE_DOS;
+	//				}
+	//				else
+	//				{
+	//					if (I < dwCurSize - 1 && buffer[I + 1] == _T('\x0d'))
+	//						nCrlfStyle = CRLF_STYLE_UNIX;
+	//					else
+	//						nCrlfStyle = CRLF_STYLE_MAC;
+	//				}
+	//			}
+	//		}
+
+	//		assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
+	//		m_nCRLFMode = nCrlfStyle;
+	//		const char *crlf = crlfs[nCrlfStyle];
+
+	//		DWORD dwBufPtr = 0;
+	//		int nCrlfPtr = 0;
+	//		int last = 0;
+
+	//		std::string line;
+
+	//		while (dwCurSize > 0)
+	//		{
+	//			int c = buffer[dwBufPtr];
+
+	//			if (c != 0x0A && c != 0x0D)
+	//			{
+	//				line += (char) c;
+	//			}
+
+	//			if (EmitLine(last, c))
+	//			{
+	//				AppendLine(line);
+	//				line.clear();
+	//			}
+
+	//			dwBufPtr++;
+
+	//			if (dwBufPtr == dwCurSize)
+	//			{
+	//				if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
+	//				{
+	//					dwBufPtr = 0;
+	//				}
+	//				else
+	//				{
+	//					dwCurSize = 0;
+	//				}
+	//			}
+
+	//			last = c;
+	//		}
+
+	//		AppendLine(line);
+
+	//		_modified = FALSE;
+	//		m_nUndoBufSize = UNDO_BUF_SIZE;
+	//		m_nUndoPosition = 0;
+
+	//		success = TRUE;
+
+	//		InvalidateView();
+	//	}
+
+	//	if (hFile != nullptr)
+	//		::CloseHandle(hFile);
+	//}
 
 	return success;
 }
 
 
-
+static std::wstring TempPathName()
+{
+	wchar_t result[MAX_PATH + 1] = { 0 };
+	GetTempPath(MAX_PATH, result);
+	GetTempFileName(result, L"CC_", 0, result);
+	return result;
+}
 
 bool TextBuffer::SaveToFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= TRUE*/) const
 {
-	assert(nCrlfStyle == CRLF_STYLE_AUTOMATIC || nCrlfStyle == CRLF_STYLE_DOS ||
-		nCrlfStyle == CRLF_STYLE_UNIX || nCrlfStyle == CRLF_STYLE_MAC);
+	bool success = false;
 
-	TCHAR szTempFileDir[_MAX_PATH + 1];
-	TCHAR szTempFileName[_MAX_PATH + 1];
-	TCHAR szBackupFileName[_MAX_PATH + 1];
-	bool bSuccess = FALSE;
+	auto tempPath = TempPathName();
+	std::ofstream fout(tempPath);
 
-	TCHAR drive[_MAX_PATH], dir[_MAX_PATH], name[_MAX_PATH], ext[_MAX_PATH];
-	_wsplitpath_s(pszFileName, drive, dir, name, ext);
-
-	lstrcpy(szTempFileDir, drive);
-	lstrcat(szTempFileDir, dir);
-	lstrcpy(szBackupFileName, pszFileName);
-	lstrcat(szBackupFileName, _T(".bak"));
-
-	if (::GetTempFileName(szTempFileDir, _T("CRE"), 0, szTempFileName) != 0)
+	if (fout)
 	{
-		auto hTempFile = ::CreateFile(szTempFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		bool first = true;
 
-		if (hTempFile != INVALID_HANDLE_VALUE)
+		for (const auto &line : _lines)
 		{
-			if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
-				nCrlfStyle = m_nCRLFMode;
+			if (!first) fout << std::endl;
+			fout << ToUtf8(line._text);
+			first = false;
+		}
 
-			assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
+		fout.close();
 
-			auto pszCRLF = crlfs[nCrlfStyle];
-			auto nCRLFLength = strlen(pszCRLF);
-			auto first = true;
+		success = ::MoveFile(tempPath.c_str(), pszFileName) != 0;
 
-			for (const auto &line : _lines)
-			{
-				auto len = line._text.size();
-				DWORD dwWrittenBytes;
-
-				if (!first)
-				{
-					::WriteFile(hTempFile, pszCRLF, nCRLFLength, &dwWrittenBytes, nullptr);
-				}
-				else
-				{
-					first = false;
-				}
-
-				if (!line._text.empty())
-				{
-					auto utf8 = ToUtf8(line._text);
-					::WriteFile(hTempFile, utf8.c_str(), utf8.size(), &dwWrittenBytes, nullptr);
-				}
-			}
-
-			::CloseHandle(hTempFile);
-			hTempFile = INVALID_HANDLE_VALUE;
-
-			if (m_bCreateBackupFile)
-			{
-				WIN32_FIND_DATA wfd;
-				auto hSearch = ::FindFirstFile(pszFileName, &wfd);
-				if (hSearch != INVALID_HANDLE_VALUE)
-				{
-					//	File exist - create backup file
-					::DeleteFile(szBackupFileName);
-					::MoveFile(pszFileName, szBackupFileName);
-					::FindClose(hSearch);
-				}
-			}
-			else
-			{
-				::DeleteFile(pszFileName);
-			}
-
-			//	Move temporary file to target name
-			bSuccess = ::MoveFile(szTempFileName, pszFileName) != 0;
-
-			if (bClearModifiedFlag)
-			{
-				_modified = false;
-			}
+		if (success && bClearModifiedFlag)
+		{
+			_modified = false;
 		}
 	}
 
-	return bSuccess;
+	//assert(nCrlfStyle == CRLF_STYLE_AUTOMATIC || nCrlfStyle == CRLF_STYLE_DOS ||
+	//	nCrlfStyle == CRLF_STYLE_UNIX || nCrlfStyle == CRLF_STYLE_MAC);
+
+	//TCHAR szTempFileDir[_MAX_PATH + 1];
+	//TCHAR szTempFileName[_MAX_PATH + 1];
+	//TCHAR szBackupFileName[_MAX_PATH + 1];
+	//bool bSuccess = FALSE;
+
+	//TCHAR drive[_MAX_PATH], dir[_MAX_PATH], name[_MAX_PATH], ext[_MAX_PATH];
+	//_wsplitpath_s(pszFileName, drive, dir, name, ext);
+
+	//lstrcpy(szTempFileDir, drive);
+	//lstrcat(szTempFileDir, dir);
+	//lstrcpy(szBackupFileName, pszFileName);
+	//lstrcat(szBackupFileName, _T(".bak"));
+
+	//if (::GetTempFileName(szTempFileDir, _T("CRE"), 0, szTempFileName) != 0)
+	//{
+	//	auto hTempFile = ::CreateFile(szTempFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+	//	if (hTempFile != INVALID_HANDLE_VALUE)
+	//	{
+	//		if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
+	//			nCrlfStyle = m_nCRLFMode;
+
+	//		assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
+
+	//		auto pszCRLF = crlfs[nCrlfStyle];
+	//		auto nCRLFLength = strlen(pszCRLF);
+	//		auto first = true;
+
+	//		for (const auto &line : _lines)
+	//		{
+	//			auto len = line._text.size();
+	//			DWORD dwWrittenBytes;
+
+	//			if (!first)
+	//			{
+	//				::WriteFile(hTempFile, pszCRLF, nCRLFLength, &dwWrittenBytes, nullptr);
+	//			}
+	//			else
+	//			{
+	//				first = false;
+	//			}
+
+	//			if (!line._text.empty())
+	//			{
+	//				auto utf8 = ToUtf8(line._text);
+	//				::WriteFile(hTempFile, utf8.c_str(), utf8.size(), &dwWrittenBytes, nullptr);
+	//			}
+	//		}
+
+	//		::CloseHandle(hTempFile);
+	//		hTempFile = INVALID_HANDLE_VALUE;
+
+	//		if (m_bCreateBackupFile)
+	//		{
+	//			WIN32_FIND_DATA wfd;
+	//			auto hSearch = ::FindFirstFile(pszFileName, &wfd);
+	//			if (hSearch != INVALID_HANDLE_VALUE)
+	//			{
+	//				//	File exist - create backup file
+	//				::DeleteFile(szBackupFileName);
+	//				::MoveFile(pszFileName, szBackupFileName);
+	//				::FindClose(hSearch);
+	//			}
+	//		}
+	//		else
+	//		{
+	//			::DeleteFile(pszFileName);
+	//		}
+
+	//		//	Move temporary file to target name
+	//		bSuccess = ::MoveFile(szTempFileName, pszFileName) != 0;
+
+	//		if (bClearModifiedFlag)
+	//		{
+	//			_modified = false;
+	//		}
+	//	}
+	//}
+
+	return success;
 }
 
 
@@ -399,6 +482,11 @@ CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const std::
 {
 	CPoint resultLocation = location;
 
+	for (const auto &c : text)
+	{
+		resultLocation = InsertText(ug, resultLocation, c);
+	}
+
 	_modified = true;
 
 	return resultLocation;
@@ -459,12 +547,15 @@ void TextBuffer::DeleteText(UndoGroup &ug, const CPoint &locationStart, const CP
 	}
 	else
 	{
-		/*_lines[nStartLine]._line.erase(_lines[nStartLine]._line.begin() + nStartChar, _lines[nStartLine]._line.end());
-		_lines[nEndLine]._line.erase(_lines[nEndLine]._line.begin(), _lines[nEndLine]._line.begin() + nEndChar);
+		_lines[locationStart.y]._text.erase(_lines[locationStart.y]._text.begin() + locationStart.x, _lines[locationStart.y]._text.end());
+		_lines[locationStart.y]._text.append(_lines[locationEnd.y]._text.begin() + locationEnd.x, _lines[locationEnd.y]._text.end());
 
-		_lines.erase(_lines.begin() + nStartLine + 1, _lines.begin() + nEndLine - 1);
+		if (locationStart.y + 1 < locationEnd.y + 1)
+		{
+			_lines.erase(_lines.begin() + locationStart.y + 1, _lines.begin() + locationEnd.y + 1);
+		}
 
-		InvalidateView();*/
+		InvalidateView();
 	}
 
 	_modified = true;
@@ -485,7 +576,7 @@ CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
 			resultPos.y = location.y - 1;
 
 			previous._text.insert(previous._text.end(), line._text.begin(), line._text.end());
-			_lines.erase(_lines.begin() + location.y);		
+			_lines.erase(_lines.begin() + location.y);
 
 			InvalidateView();
 		}
@@ -512,29 +603,29 @@ CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
 }
 
 static wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
- {
-     auto s = s1;
-     auto p = s2;
+{
+	auto s = s1;
+	auto p = s2;
 
-     do
-     {
-         if (!*p) return (wchar_t*) s1;
-         if ((*p == *s) || (towlower(*p) == towlower(*s)))
-         {
-             ++p;
-             ++s;
-         }
-         else
-         {
-             p = s2;
-             if (!*s) return nullptr;
-             s = ++s1;
-         }
+	do
+	{
+		if (!*p) return (wchar_t*) s1;
+		if ((*p == *s) || (towlower(*p) == towlower(*s)))
+		{
+			++p;
+			++s;
+		}
+		else
+		{
+			p = s2;
+			if (!*s) return nullptr;
+			s = ++s1;
+		}
 
-     } while (1);
+	} while (1);
 
-	 return nullptr;
- }
+	return nullptr;
+}
 
 
 static int FindStringHelper(LPCTSTR pszFindWhere, LPCTSTR pszFindWhat, bool bWholeWord)
@@ -587,7 +678,7 @@ bool TextBuffer::FindText(const std::wstring &text, const CPoint &ptStartPos, DW
 	return FindTextInBlock(text, ptStartPos, CPoint(0, 0), CPoint(_lines[nLineCount - 1]._text.size(), nLineCount - 1), dwFlags, bWrapSearch, pptFoundPos);
 }
 
-bool TextBuffer::FindTextInBlock(const std::wstring &what, const CPoint &ptStartPosition, const CPoint &ptBlockBegin, const CPoint &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos) 
+bool TextBuffer::FindTextInBlock(const std::wstring &what, const CPoint &ptStartPosition, const CPoint &ptBlockBegin, const CPoint &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos)
 {
 	CPoint ptCurrentPos = ptStartPosition;
 

@@ -5,13 +5,19 @@
 #include "Rethinkify.h"
 #include "TextView.h"
 #include "TextBuffer.h"
-#include "Should.h"
+
+//
+// Ideas 
+//
+// could open spreadsheets using http://libxls.sourceforge.net/ or http://www.codeproject.com/Articles/42504/ExcelFormat-Library
 
 
 //#pragma comment(lib, "Comdlg32")
 //#pragma comment(lib, "Comctl32")
 
 const wchar_t *Title = L"Rethinkify";
+
+extern std::string RunTests();
 
 class CAboutDlg : public CDialogImpl<CAboutDlg>
 {
@@ -116,24 +122,12 @@ public:
 
 	LRESULT OnRunTests(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		std::stringstream output;
-		Tests tests;
-
-		/*tests.Register("Should parse XML with text", [] { ShouldParseFirstStringParam("<args><text>pgtips</text></args>", "pgtips"); });
-		tests.Register("Should parse XML with string", [] { ShouldParseFirstStringParam("<args><string>cGd0aXBz</string></args>", "pgtips"); });
-
-		tests.Register("Should convert string (UTF-8 to UTF-16)", [] { StringConversion_UTF8_to_UTF16(); });
-		tests.Register("Should convert string (UTF-16 to UTF-8)", [] { StringConversion_UTF16_to_UTF8(); });*/
-
-
-		tests.Run(output);
-
 		_text.clear();
 
-		std::stringstream lines(output.str());
+		std::stringstream lines(RunTests());
 		std::string line;
 
-		while (std::getline(lines, line, '\n'))
+		while (std::getline(lines, line))
 		{
 			_text.AppendLine(line);
 		}

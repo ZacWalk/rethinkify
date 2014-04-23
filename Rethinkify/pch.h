@@ -21,6 +21,7 @@
 #include <stdarg.h>
 
 #include <vector>
+#include <map>
 #include <string>
 #include <algorithm>
 #include <locale>
@@ -30,6 +31,7 @@
 #include <iomanip>
 #include <chrono>
 #include <memory>
+#include <functional>
 
 #include <Commdlg.h>
 #include <OleIdl.h>

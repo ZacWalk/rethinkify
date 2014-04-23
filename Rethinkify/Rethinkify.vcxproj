@@ -101,6 +101,7 @@
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Tests.cpp" />
     <ClCompile Include="TextBuffer.cpp" />
     <ClCompile Include="TextView.cpp" />
     <ClCompile Include="syntax.cpp" />

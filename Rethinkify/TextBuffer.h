@@ -121,6 +121,21 @@ public:
 	void AppendLine(const std::string &text);
 	void AppendLine(const std::wstring &text);
 
+	std::string str() const
+	{
+		bool first = true;
+		std::string result;
+
+		for (const auto &line : _lines)
+		{
+			if (!first) result += '\n';
+			result.append(ToUtf8(line._text));
+			first = false;
+		}		
+
+		return result;
+	}
+
 
 	TextBuffer(int nCrlfStyle = CRLF_STYLE_DOS);
 	~TextBuffer();

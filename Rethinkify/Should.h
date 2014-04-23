@@ -8,24 +8,10 @@ public:
 
 	static void Equal(const char * expected, const char * actual, const char * message = "Test")
 	{
-#ifndef MAC_PLUGIN
 		if (String::CompareNoCase(actual, expected) != 0)
 		{
 			throw String::Format("%s: expected '%s', got '%s'", message, expected, actual);
 		}
-#else
-		NSString *exp = [NSString stringWithUTF8String : expected];
-		NSString *act = [NSString stringWithUTF8String : actual];
-
-		if (NSOrderedSame != [exp caseInsensitiveCompare : act])
-		{
-			NSString *msg =
-				[NSString stringWithFormat : @"%s: expected '%s', got '%s'",
-				message, expected, actual];
-
-			throw std::string([msg UTF8String]);
-		}
-#endif
 	}
 
 	static void Equal(const std::string &expected, const std::string &actual, const char * message = "Test")
@@ -59,18 +45,6 @@ class Tests
 {
 private:
 
-#ifdef MAC_PLUGIN
-	static NSTimeInterval now()
-	{
-		return[[NSDate date] timeIntervalSinceReferenceDate];
-	};
-
-	static long long duration_in_microseconds(const NSTimeInterval &started)
-	{
-		NSTimeInterval dur = now() - started;
-		return (long long) (1000000.0*dur);
-	};
-#else
 	static std::chrono::system_clock::time_point now()
 	{
 		return std::chrono::high_resolution_clock::now();
@@ -81,36 +55,14 @@ private:
 		auto dur = now() - started;
 		return std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
 	};
-#endif
 
-	struct TaskBase
-	{
-		std::string _name;
-
-		TaskBase()
-		{
-		}
-
-		virtual void Run() = 0;
-	};
-
-	template<class TFunc>
-	struct TaskImp : public TaskBase
-	{
-		TFunc _f;
-		TaskImp(const char* name, const TFunc &f) : _f(f) { _name = name; }
-		void Run() { _f(); }
-	};
-
-	typedef std::shared_ptr<TaskBase> TestPtr;
-	std::vector<TestPtr> _tests;
+	std::map<std::string, std::function<void()>> _tests;
 
 public:
 
-	template<class TFunc>
-	inline void Register(const char* name, const TFunc &f)
+	inline void Register(const std::string &name, const std::function<void()> &f)
 	{
-		_tests.push_back(std::make_shared<TaskImp<TFunc>>(name, f));
+		_tests[name] = f;
 	}
 
 	void Run(std::stringstream &output)
@@ -120,18 +72,23 @@ public:
 
 		for (auto &test : _tests)
 		{
-			output << "Running '" << test->_name << "' ... ";
+			output << "Running '" << test.first << "' ... ";
 			auto started = now();
 
 			try
 			{
-				test->Run();
+				test.second();
 				output << " success in " << duration_in_microseconds(started) << " microseconds" << std::endl;
 			}
 			catch (const std::string &message)
 			{
 				output << " FAILED in " << duration_in_microseconds(started) << " microseconds" << std::endl;
 				output << std::endl << message << std::endl << std::endl;
+			}
+			catch (const std::exception &e)
+			{
+				output << " FAILED in " << duration_in_microseconds(started) << " microseconds" << std::endl;
+				output << std::endl << e.what() << std::endl << std::endl;
 			}
 
 			count += 1;
