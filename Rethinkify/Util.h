@@ -63,3 +63,28 @@ public:
 		bottom += y;
 	}
 };
+
+class String
+{
+public:
+	static int CompareNoCase(const char * left, const char * right)
+	{
+		return _stricmp(left, right);
+	}
+
+	static std::string Format(const char *format, ...)
+	{
+		va_list argList;
+		va_start(argList, format);
+
+		auto length = _vscprintf(format, argList);
+		auto sz = (char*) _alloca(length + 1);
+		if (sz == nullptr) return "";
+		vsprintf_s(sz, length + 1, format, argList);
+		va_end(argList);
+		sz[length] = 0;
+		return sz;
+	}
+
+	static const char *From(bool val) { return val ? "true" : "false"; };
+};

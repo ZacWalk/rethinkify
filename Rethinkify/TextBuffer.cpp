@@ -33,7 +33,7 @@ void TextBuffer::AppendLine(const std::wstring &text)
 	_lines.push_back(Line(text));
 }
 
-void TextBuffer::FreeAll()
+void TextBuffer::clear()
 {
 	_lines.clear();
 	_undo.clear();
@@ -55,7 +55,7 @@ static bool EmitLine(int c1, int c2)
 
 bool TextBuffer::LoadFromFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/)
 {
-	FreeAll();
+	clear();
 
 	bool success = false;
 	auto hFile = ::CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);

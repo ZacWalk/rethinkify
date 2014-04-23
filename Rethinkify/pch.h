@@ -17,6 +17,8 @@
 #include <memory.h>
 #include <tchar.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include <vector>
 #include <string>
@@ -24,6 +26,10 @@
 #include <locale>
 #include <iostream>
 #include <sstream>
+#include <iostream>
+#include <iomanip>
+#include <chrono>
+#include <memory>
 
 #include <Commdlg.h>
 #include <OleIdl.h>

@@ -91,6 +91,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Should.h" />
     <ClInclude Include="TextBuffer.h" />
     <ClInclude Include="TextView.h" />
     <ClInclude Include="Resource.h" />

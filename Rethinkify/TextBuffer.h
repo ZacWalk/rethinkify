@@ -116,16 +116,18 @@ private:
 	
 	std::vector <IView*> _views;
 
+public:
+
 	void AppendLine(const std::string &text);
 	void AppendLine(const std::wstring &text);
 
-public:
+
 	TextBuffer(int nCrlfStyle = CRLF_STYLE_DOS);
 	~TextBuffer();
 
 	bool LoadFromFile(LPCTSTR pszFileName, int nCrlfStyle = CRLF_STYLE_AUTOMATIC);
 	bool SaveToFile(LPCTSTR pszFileName, int nCrlfStyle = CRLF_STYLE_AUTOMATIC, bool bClearModifiedFlag = TRUE) const;
-	void FreeAll();
+	void clear();
 
 	bool IsModified() const { return _modified; }
 
