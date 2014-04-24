@@ -347,7 +347,7 @@ std::vector<std::wstring> TextBuffer::Text(const CPoint &locationStart, const CP
 	{
 		for (int y = locationStart.y; y <= locationEnd.y; y++)
 		{
-			const auto &text = _lines[locationStart.y]._text;
+			const auto &text = _lines[y]._text;
 
 			if (y == locationStart.y)
 			{

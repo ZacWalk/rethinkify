@@ -161,8 +161,7 @@ private:
 	void GetSelection(CPoint &ptStart, CPoint &ptEnd);
 	void HideCursor();
 	void InvalidateLine(int index);
-	void InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin = FALSE);
-	void InvalidateView();
+	void InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin = FALSE);	
 	void MoveCtrlEnd(bool bSelect);
 	void MoveCtrlHome(bool bSelect);
 	void MoveDown(bool bSelect);
@@ -207,6 +206,7 @@ public:
 	~TextView();
 
 	void SetFont(const LOGFONT &lf);
+	void InvalidateView();
 
 
 	BEGIN_MSG_MAP(TextView)

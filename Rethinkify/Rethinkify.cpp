@@ -6,6 +6,8 @@
 #include "TextView.h"
 #include "TextBuffer.h"
 
+#include <shellapi.h>
+
 //
 // Ideas 
 //
@@ -132,7 +134,11 @@ public:
 			_text.AppendLine(line);
 		}
 
-		_view.Invalidate();
+		_view.InvalidateView();
+		_path.clear();
+
+		SetTitle(L"Tests");
+
 
 		return 0;
 	}
@@ -205,8 +211,22 @@ public:
 		}
 	}
 
+	void SetTitle(const wchar_t *fileName)
+	{
+		wchar_t title[MAX_PATH + 100];
+		wcscpy_s(title, fileName);
+		wcscat_s(title, L" - ");
+		wcscat_s(title, Title);
+
+		SetWindowText(title);
+	}
+
 	void New()
 	{
+		SetTitle(L"New");
+
+		_text.clear();
+		_view.InvalidateView();
 	}
 
 	void Load(const wchar_t *path)
@@ -215,6 +235,9 @@ public:
 		_text.LoadFromFile(path);
 		_view.Invalidate();
 		_path = path;
+
+		SetTitle(PathFindFileName(path));
+		_view.InvalidateView();
 	}
 
 	void Save(const wchar_t *path)
@@ -226,6 +249,8 @@ public:
 	{
 		wchar_t filters[] = L"Text Files (*.txt)\0*.txt\0\0";
 		wchar_t path[_MAX_PATH] = L"";
+
+		wcscpy_s(path, _path.c_str());
 
 		OPENFILENAME ofn = { 0 };
 		ofn.lStructSize = sizeof(OPENFILENAME);
@@ -258,6 +283,25 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	_frame.SetIcon(icon, TRUE);
 	_frame.SetIcon(icon, FALSE);
 	_frame.ShowWindow(SW_SHOW);
+
+	int argCount;
+	auto args = CommandLineToArgvW(GetCommandLine(), &argCount);
+
+	if (args && argCount > 1)
+	{
+		std::wstring path = args[1];
+
+		if (*path.begin() == '"' && *path.rbegin() == '"')
+		{
+			path = path.substr(1, path.length() - 2);
+		}
+		else if (*path.begin() == '\'' && *path.rbegin() == '\'')
+		{
+			path = path.substr(1, path.length() - 2);
+		}
+
+		_frame.Load(path.c_str());
+	}
 
 	auto hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY));
 	MSG msg;
