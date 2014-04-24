@@ -31,66 +31,73 @@ static void ShouldSplitLine()
 {
 	auto text = "line of text";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
-	InsertChars(buffer, "\n", CPoint(4, 0));
-	Should::Equal("line\n of text", buffer.str());
+	{
+		UndoGroup ug(buffer);
+		buffer.InsertText(ug, CPoint(4, 0), '\n');
+		Should::Equal("line\n of text", buffer.str());
+	}
+
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
 }
 
 static void ShouldCombineLine()
 {	
 	auto text = "line \nof text";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
-	buffer.DeleteText(ug, CPoint(0, 1));
+	{
+		UndoGroup ug(buffer);
+		buffer.DeleteText(ug, CPoint(0, 1));
+		Should::Equal("line of text", buffer.str());
+	}
 
-	Should::Equal("line of text", buffer.str());
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
 }
 
 static void ShouldDeleteChars()
 {
 	auto text = "one\ntwo\nthree";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
+	{
+		UndoGroup ug(buffer);
+		buffer.DeleteText(ug, CPoint(2, 0));
+		buffer.DeleteText(ug, CPoint(2, 1));
+		buffer.DeleteText(ug, CPoint(2, 2));
+		Should::Equal("oe\nto\ntree", buffer.str());
+	}
 
-	buffer.DeleteText(ug, CPoint(2, 0));
-	buffer.DeleteText(ug, CPoint(2, 1));
-	buffer.DeleteText(ug, CPoint(2, 2));
-
-	Should::Equal("oe\nto\ntree", buffer.str());
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
 }
 
 static void ShouldDeleteSelection()
 {
 	auto text = "line of text";
 
-	TextBuffer buffer;	
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
-	buffer.DeleteText(ug, CPoint(2, 0), CPoint(10, 0));
+	{
+		UndoGroup ug(buffer);
+		buffer.DeleteText(ug, CPoint(2, 0), CPoint(10, 0));
+		Should::Equal("lixt", buffer.str());
+	}
 
-	Should::Equal("lixt", buffer.str());
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
 }
 
 static void ShouldDelete2LineSelection()
 {
 	auto text = "one\ntwo\nthree";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
 	UndoGroup ug(buffer);
 	buffer.DeleteText(ug, CPoint(2, 0), CPoint(2, 2));
@@ -102,9 +109,7 @@ static void ShouldDelete1LineSelection()
 {
 	auto text = "one\ntwo\nthree";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
 	UndoGroup ug(buffer);
 	buffer.DeleteText(ug, CPoint(2, 1), CPoint(2, 2));
@@ -120,14 +125,18 @@ static void ShouldInsertSelection()
 	auto text = "line of text";
 	auto selection = "one\ntwo\nthree";
 
-	TextBuffer buffer;
-	InsertChars(buffer, text);
-	Should::Equal(text, buffer.str());
+	TextBuffer buffer(text);
 
 	UndoGroup ug(buffer);
 	buffer.InsertText(ug, CPoint(6, 0), ToUtf16(selection));
 
 	Should::Equal("line oone\ntwo\nthreef text", buffer.str());
+}
+
+static void ShouldReturnSelection()
+{
+	TextBuffer buffer("one\ntwo\nthree");
+	Should::Equal("e\ntwo\nth", ToUtf8(Combine(buffer.Text(CPoint(2, 0), CPoint(2, 2)))));
 }
 
 
@@ -144,6 +153,7 @@ std::string RunTests()
 	tests.Register("Should delete 1 line selection", ShouldDelete1LineSelection);
 	tests.Register("Should delete 2 line selection", ShouldDelete2LineSelection);	
 	tests.Register("Should insert selection", ShouldInsertSelection);
+	tests.Register("Should return selection", ShouldReturnSelection);
 
 	std::stringstream output;
 	tests.Run(output);

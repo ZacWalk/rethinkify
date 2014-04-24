@@ -6,6 +6,8 @@
 #include "TextView.h"
 #include "TextBuffer.h"
 
+#include <shellapi.h>
+
 //
 // Ideas 
 //
@@ -61,7 +63,8 @@ public:
 		MESSAGE_HANDLER(WM_SETFOCUS, OnFocus)
 		MESSAGE_HANDLER(WM_CLOSE, OnClose)
 		MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
-		
+
+		COMMAND_ID_HANDLER(ID_APP_EXIT, OnExit);
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAbout)
 		COMMAND_ID_HANDLER(ID_HELP_RUNTESTS, OnRunTests)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpen)
@@ -109,14 +112,40 @@ public:
 
 	LRESULT OnClose(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
-		DestroyWindow();
-		PostQuitMessage(0);
+		bool destroy = true;
+
+		if (_text.IsModified())
+		{
+			auto id = MessageBox(L"Do you want to save?", Title, MB_YESNOCANCEL | MB_ICONQUESTION);
+
+			if (id == IDYES)
+			{
+				destroy = Save();
+			}
+			else if (id == IDCANCEL)
+			{
+				destroy = false;
+			}
+		}
+
+		if (destroy)
+		{
+			DestroyWindow();
+			PostQuitMessage(0);
+		}
+
 		return 0;
 	}
 
 	LRESULT OnAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
 		CAboutDlg().DoModal(m_hWnd);
+		return 0;
+	}
+
+	LRESULT OnExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		PostMessage(WM_CLOSE);
 		return 0;
 	}
 
@@ -132,7 +161,9 @@ public:
 			_text.AppendLine(line);
 		}
 
-		_view.Invalidate();
+		_view.InvalidateView();
+		_path = L"Tests";
+		SetTitle(L"Tests");
 
 		return 0;
 	}
@@ -145,7 +176,7 @@ public:
 
 	LRESULT OnSave(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		Save(_path.c_str());
+		Save(_path);
 		return 0;
 	}
 
@@ -157,13 +188,27 @@ public:
 
 	LRESULT OnNew(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		if (_text.IsModified()) {
-			if (MessageBox(L"Text has changed. Do you want to save?", Title, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
-				Save();
-			}
+		bool destroy = true;
 
+		if (_text.IsModified())
+		{
+			auto id = MessageBox(L"Do you want to save?", Title, MB_YESNOCANCEL | MB_ICONQUESTION);
+
+			if (id == IDYES)
+			{
+				destroy = Save();
+			}
+			else if (id == IDCANCEL)
+			{
+				destroy = false;
+			}
 		}
-		New();
+
+		if (destroy)
+		{
+			New();
+		}
+
 		return 0;
 	}
 
@@ -183,6 +228,15 @@ public:
 		_view.OnCommand(LOWORD(wParam));
 		return 0;
 	}		
+
+	void SetTitle(const wchar_t *name)
+	{
+		wchar_t title[_MAX_PATH + 10];
+		wcscpy_s(title, name);
+		wcscat_s(title, L" - ");
+		wcscat_s(title, Title);
+		SetWindowText(title);
+	}
 
 	void Load()
 	{
@@ -207,25 +261,41 @@ public:
 
 	void New()
 	{
+		_view.InvalidateView();
+		_path = L"New";
+		SetTitle(L"New");
 	}
 
-	void Load(const wchar_t *path)
+	void Load(const std::wstring &path)
 	{
 		TextBuffer text;
-		_text.LoadFromFile(path);
-		_view.Invalidate();
-		_path = path;
+		
+		if (_text.LoadFromFile(path))
+		{
+			_view.InvalidateView();
+			_path = path;
+			SetTitle(PathFindFileName(path.c_str()));
+		}
 	}
 
-	void Save(const wchar_t *path)
+	bool Save(const std::wstring &path)
 	{
-		_text.SaveToFile(path);
+		if (_text.SaveToFile(path))
+		{
+			_path = path;
+			SetTitle(PathFindFileName(path.c_str()));
+			return true;
+		}
+
+		return false;
 	}
 
-	void Save()
+	bool Save()
 	{
 		wchar_t filters[] = L"Text Files (*.txt)\0*.txt\0\0";
 		wchar_t path[_MAX_PATH] = L"";
+
+		wcscpy_s(path, _path.c_str());
 
 		OPENFILENAME ofn = { 0 };
 		ofn.lStructSize = sizeof(OPENFILENAME);
@@ -237,11 +307,7 @@ public:
 		ofn.lpstrTitle = _T("Save File");
 		ofn.Flags = OFN_OVERWRITEPROMPT | OFN_ENABLESIZING;
 
-		if (GetSaveFileName(&ofn))
-		{
-			_text.SaveToFile(path);
-			_path = path;
-		}
+		return GetSaveFileName(&ofn) && Save(path);
 	}
 };
 
@@ -258,6 +324,14 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	_frame.SetIcon(icon, TRUE);
 	_frame.SetIcon(icon, FALSE);
 	_frame.ShowWindow(SW_SHOW);
+
+	int argCount;
+	auto args = CommandLineToArgvW(GetCommandLine(), &argCount);
+
+	if (argCount > 1)
+	{
+		_frame.Load(UnQuote(args[1]));
+	}
 
 	auto hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY));
 	MSG msg;
