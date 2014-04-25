@@ -8,7 +8,7 @@
 const TCHAR crlf [] = _T("\r\n");
 const int UNDO_BUF_SIZE = 1000;
 
-TextBuffer::TextBuffer(int nCrlfStyle)
+TextBuffer::TextBuffer(const std::string &text, int nCrlfStyle)
 {
 	_modified = FALSE;
 	m_bCreateBackupFile = FALSE;
@@ -16,9 +16,21 @@ TextBuffer::TextBuffer(int nCrlfStyle)
 	m_nCRLFMode = nCrlfStyle;
 	_modified = FALSE;
 	m_nUndoPosition = 0;
-	m_nUndoBufSize = UNDO_BUF_SIZE;
 
-	AppendLine(L"");
+	if (text.empty())
+	{
+		AppendLine(L"");		
+	}
+	else
+	{
+		std::stringstream lines(text);
+		std::string line;
+
+		while (std::getline(lines, line))
+		{
+			AppendLine(line);
+		}
+	}
 }
 
 TextBuffer::~TextBuffer()
@@ -88,12 +100,12 @@ static std::istream& safeGetline(std::istream& is, std::string& t)
 	}
 }
 
-bool TextBuffer::LoadFromFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/)
+bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/)
 {
 	clear();
 
 	bool success = false;
-	std::ifstream ifs(pszFileName);
+	std::ifstream ifs(path);
 	std::string line;
 
 	if (ifs)
@@ -197,7 +209,6 @@ bool TextBuffer::LoadFromFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE
 	//		AppendLine(line);
 
 	//		_modified = FALSE;
-	//		m_nUndoBufSize = UNDO_BUF_SIZE;
 	//		m_nUndoPosition = 0;
 
 	//		success = TRUE;
@@ -221,7 +232,7 @@ static std::wstring TempPathName()
 	return result;
 }
 
-bool TextBuffer::SaveToFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= TRUE*/) const
+bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= TRUE*/) const
 {
 	bool success = false;
 
@@ -241,7 +252,7 @@ bool TextBuffer::SaveToFile(LPCTSTR pszFileName, int nCrlfStyle /*= CRLF_STYLE_A
 
 		fout.close();
 
-		success = ::MoveFile(tempPath.c_str(), pszFileName) != 0;
+		success = ::MoveFile(tempPath.c_str(), path.c_str()) != 0;
 
 		if (success && bClearModifiedFlag)
 		{
@@ -420,34 +431,12 @@ bool TextBuffer::CanRedo()
 
 CPoint TextBuffer::Undo()
 {
-	CPoint location;
-
 	assert(CanUndo());
 
-	/*m_nUndoPosition--;
+	m_nUndoPosition--;
+	_modified = true;
 
-	for (const auto &ur : _undo[m_nUndoPosition])
-	{
-	if (ur._flags & UNDO_INSERT)
-	{
-	InternalDeleteText(ur.m_ptStartPos.y, ur.m_ptStartPos.x, ur.m_ptEndPos.y, ur.m_ptEndPos.x);
-	ptCursorPos = ur.m_ptStartPos;
-	}
-	else
-	{
-	int nEndLine, nEndChar;
-	InternalInsertText(ur.m_ptStartPos.y, ur.m_ptStartPos.x, ur.Text(), nEndLine, nEndChar);
-	ptCursorPos = ur.m_ptEndPos;
-	}
-	}
-
-	if (_modified)
-	SetModified(FALSE);
-
-	if (!_modified)
-	SetModified(TRUE);*/
-
-	return location;
+	return _undo[m_nUndoPosition].Undo(*this);
 }
 
 CPoint TextBuffer::Redo()
@@ -492,7 +481,7 @@ CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const std::
 	return resultLocation;
 }
 
-CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const wchar_t &c)
+CPoint TextBuffer::InsertText(const CPoint &location, const wchar_t &c)
 {
 	CPoint resultLocation = location;
 	auto &li = _lines[location.y];
@@ -518,17 +507,38 @@ CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const wchar
 
 		li._text = after;
 
-		ug.LineChanged(location.y, before, after);
-
 		resultLocation.y = location.y;
 		resultLocation.x = location.x + 1;
 
 		InvalidateLine(location.y);
 	}
 
-	_modified = true;
-
 	return resultLocation;
+}
+
+CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const wchar_t &c)
+{
+	ug.Insert(location, c);
+	_modified = true;
+	return InsertText(location, c);
+}
+
+CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
+{
+	if (location.x == 0)
+	{
+		if (location.y > 0)
+		{
+			ug.Delete(CPoint(_lines[location.y - 1].size(), location.y - 1), location.x > 0 ? _lines[location.y][location.x - 1] : '\n');
+		}
+	}
+	else
+	{
+		ug.Delete(CPoint(location.x - 1, location.y), _lines[location.y][location.x - 1]);
+	}
+
+	_modified = true;
+	return DeleteText(location);
 }
 
 void TextBuffer::DeleteText(UndoGroup &ug, const CPoint &locationStart, const CPoint &locationEnd)
@@ -540,7 +550,6 @@ void TextBuffer::DeleteText(UndoGroup &ug, const CPoint &locationStart, const CP
 		auto after = li._text;
 
 		after.erase(after.begin() + locationStart.x, after.begin() + locationEnd.x);
-		ug.LineChanged(locationStart.y, before, after);
 		li._text = after;
 
 		InvalidateLine(locationStart.y);
@@ -561,7 +570,7 @@ void TextBuffer::DeleteText(UndoGroup &ug, const CPoint &locationStart, const CP
 	_modified = true;
 }
 
-CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
+CPoint TextBuffer::DeleteText(const CPoint &location)
 {
 	auto &line = _lines[location.y];
 	auto resultPos = location;
@@ -588,7 +597,6 @@ CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
 		auto after = li._text;
 
 		after.erase(after.begin() + location.x - 1, after.begin() + location.x);
-		ug.LineChanged(location.y, before, after);
 		li._text = after;
 
 		resultPos.x = location.x - 1;
@@ -597,10 +605,11 @@ CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
 		InvalidateLine(location.y);
 	}
 
-	_modified = true;
 
 	return resultPos;
 }
+
+
 
 static wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
 {

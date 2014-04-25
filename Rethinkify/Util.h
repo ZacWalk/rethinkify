@@ -1,7 +1,7 @@
 #pragma once
 
 
-inline static std::string ToUtf8(const std::wstring &wstr)
+inline std::string ToUtf8(const std::wstring &wstr)
 {
 	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), NULL, 0, NULL, NULL);
 	std::string result(size_needed, 0);
@@ -9,7 +9,7 @@ inline static std::string ToUtf8(const std::wstring &wstr)
 	return result;
 }
 
-inline static std::wstring ToUtf16(const std::string &str)
+inline std::wstring ToUtf16(const std::string &str)
 {
 	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), NULL, 0);
 	std::wstring result(size_needed, 0);
@@ -24,6 +24,32 @@ inline int Clamp(int v, int l, int r)
 	return v;
 }
 
+inline std::wstring UnQuote(const std::wstring &text)
+{
+	if (text.size() > 1 && *text.begin() == '"' && *text.rbegin() == '"')
+	{
+		return text.substr(1, text.length() - 2);
+	}
+	else if (text.size() > 1 && *text.begin() == '\'' && *text.rbegin() == '\'')
+	{
+		return text.substr(1, text.length() - 2);
+	}
+
+	return text;
+}
+
+static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *crlf = L"\n")
+{
+	std::wstring result;
+	auto first = true;
+	for (const auto &line : lines)
+	{
+		if (!first) result += crlf;
+		result += line;
+		first = false;
+	}
+	return result;
+}
 
 class CPoint : public POINT
 {

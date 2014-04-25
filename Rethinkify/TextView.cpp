@@ -22,23 +22,6 @@ const auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
 const auto DRAG_BORDER_X = 5;
 const auto DRAG_BORDER_Y = 5;
 
-static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *crlf = L"\n")
-{
-	std::wstring result;
-	auto first = true;
-	for (const auto &line : lines)
-	{
-		if (!first) result += crlf;
-		result += line;
-		first = false;
-	}
-	return result;
-}
-
-
-/////////////////////////////////////////////////////////////////////////////
-// CEditDropTargetImpl class declaration
-
 class CEditDropTargetImpl : public IDropTarget
 {
 private:
@@ -53,32 +36,6 @@ public:
 	DROPEFFECT OnDragScroll(CWindow* pWnd, DWORD dwKeyState, CPoint point);
 };
 
-
-////////////////////////////////////////////////////////////////////////////
-// TextView
-
-
-
-#define EXPAND_PRIMITIVE(impl, func)	\
-	void TextView::On##func() { impl(FALSE); }	\
-	void TextView::OnExt##func() { impl(TRUE); }
-EXPAND_PRIMITIVE(MoveLeft, CharLeft)
-EXPAND_PRIMITIVE(MoveRight, CharRight)
-EXPAND_PRIMITIVE(MoveWordLeft, WordLeft)
-EXPAND_PRIMITIVE(MoveWordRight, WordRight)
-EXPAND_PRIMITIVE(MoveUp, LineUp)
-EXPAND_PRIMITIVE(MoveDown, LineDown)
-EXPAND_PRIMITIVE(MovePgUp, PageUp)
-EXPAND_PRIMITIVE(MovePgDn, PageDown)
-EXPAND_PRIMITIVE(MoveHome, Home)
-EXPAND_PRIMITIVE(MoveEnd, LineEnd)
-EXPAND_PRIMITIVE(MoveCtrlHome, TextBegin)
-EXPAND_PRIMITIVE(MoveCtrlEnd, TextEnd)
-#undef EXPAND_PRIMITIVE
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TextView construction/destruction
 
 TextView::TextView(TextBuffer &buffer) : _buffer(buffer)
 {
@@ -99,10 +56,6 @@ TextView::~TextView()
 	assert(m_hAccel == nullptr);
 	assert(m_pCacheBitmap == nullptr);
 }
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TextView drawing
 
 void TextView::GetSelection(CPoint &ptStart, CPoint &ptEnd)
 {
@@ -698,8 +651,6 @@ void TextView::ResetView()
 	m_ptCursorPos.y = 0;
 	m_ptSelStart = m_ptSelEnd = m_ptCursorPos;
 	m_bDragSelection = FALSE;
-	m_bVertScrollBarLocked = FALSE;
-	m_bHorzScrollBarLocked = FALSE;
 	if (::IsWindow(m_hWnd))
 		UpdateCaret();
 	m_bLastSearch = FALSE;
@@ -821,10 +772,6 @@ int TextView::GetMaxLineLength() const
 
 	return m_nMaxLineLength;
 }
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TextView printing
 
 void TextView::OnPrepareDC(HDC pDC, CPrintInfo* pInfo)
 {
@@ -1035,11 +982,6 @@ void TextView::OnPrint(HDC pdc, CPrintInfo* pInfo)
 	y += pdc->DrawText(line, &rcPrintRect, DT_LEFT | DT_NOPREFIX | DT_TOP | DT_WORDBREAK);
 	}*/
 }
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TextView message handlers
-
 
 int TextView::GetScreenLines() const
 {
@@ -1564,7 +1506,7 @@ void TextView::InvalidateLine(int index)
 	if (m_nMaxLineLength < nActualLength)
 		m_nMaxLineLength = nActualLength;
 
-	if (!m_bHorzScrollBarLocked) RecalcHorzScrollBar();
+	RecalcHorzScrollBar();
 }
 
 void TextView::InvalidateView()
@@ -1756,7 +1698,7 @@ void TextView::OnEditFind()
 	//	}
 	//
 	//	//	Take the current selection, if any
-	//	if (IsSelection())
+	//	if (HasSelection())
 	//	{
 	//		CPoint ptSelStart, ptSelEnd;
 	//		GetSelection(ptSelStart, ptSelEnd);		if (ptSelStart.y == ptSelEnd.y)
@@ -1879,10 +1821,6 @@ void TextView::SetDisableDragAndDrop(bool bDDAD)
 {
 	m_bDisableDragAndDrop = bDDAD;
 }
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TextView
 
 void TextView::MoveLeft(bool bSelect)
 {
@@ -2707,11 +2645,6 @@ void TextView::OnRButtonDown(const CPoint &point, UINT nFlags)
 	}
 }
 
-bool TextView::IsSelection()
-{
-	return m_ptSelStart != m_ptSelEnd;
-}
-
 void TextView::Copy()
 {
 	if (m_ptSelStart == m_ptSelEnd)
@@ -2792,7 +2725,7 @@ void TextView::OnEditCut()
 
 bool TextView::DeleteCurrentSelection(UndoGroup &ug)
 {
-	if (IsSelection())
+	if (HasSelection())
 	{
 		CPoint ptSelStart, ptSelEnd;
 		GetSelection(ptSelStart, ptSelEnd);
@@ -2831,7 +2764,7 @@ void TextView::Paste()
 
 void TextView::Cut()
 {
-	if (QueryEditable() && IsSelection())
+	if (QueryEditable() && HasSelection())
 	{
 		CPoint ptSelStart, ptSelEnd;
 		GetSelection(ptSelStart, ptSelEnd);
@@ -2932,7 +2865,7 @@ void TextView::OnEditDeleteBack()
 {
 	if (QueryEditable())
 	{
-		if (IsSelection())
+		if (HasSelection())
 		{
 			OnEditDelete();
 		}
@@ -2957,7 +2890,8 @@ void TextView::OnEditTab()
 	{
 		bool bTabify = FALSE;
 		CPoint ptSelStart, ptSelEnd;
-		if (IsSelection())
+
+		if (HasSelection())
 		{
 			GetSelection(ptSelStart, ptSelEnd);
 			bTabify = ptSelStart.y != ptSelEnd.y;
@@ -2970,6 +2904,7 @@ void TextView::OnEditTab()
 			int nStartLine = ptSelStart.y;
 			int nEndLine = ptSelEnd.y;
 			ptSelStart.x = 0;
+
 			if (ptSelEnd.x > 0)
 			{
 				if (ptSelEnd.y == _buffer.LineCount() - 1)
@@ -2983,33 +2918,35 @@ void TextView::OnEditTab()
 				}
 			}
 			else
+			{
 				nEndLine--;
+			}
+
 			SetSelection(ptSelStart, ptSelEnd);
 			SetCursorPos(ptSelEnd);
 			EnsureVisible(ptSelEnd);
 
-			//	Shift selection to right
-			m_bHorzScrollBarLocked = TRUE;
 			static const TCHAR pszText [] = _T("\t");
+
 			for (int L = nStartLine; L <= nEndLine; L++)
 			{
 				_buffer.InsertText(ug, CPoint(0, L), pszText);
 			}
-			m_bHorzScrollBarLocked = FALSE;
+
 			RecalcHorzScrollBar();
-			return;
 		}
+		else
+		{
+			UndoGroup ug(_buffer);
+			DeleteCurrentSelection(ug);
 
+			auto location = _buffer.InsertText(ug, GetCursorPos(), L'\t');
 
-		UndoGroup ug(_buffer);
-		DeleteCurrentSelection(ug);
-
-		auto location = _buffer.InsertText(ug, GetCursorPos(), L'\t');
-
-		SetSelection(location, location);
-		SetAnchor(location);
-		SetCursorPos(location);
-		EnsureVisible(location);
+			SetSelection(location, location);
+			SetAnchor(location);
+			SetCursorPos(location);
+			EnsureVisible(location);
+		}
 	}
 }
 
@@ -3019,7 +2956,7 @@ void TextView::OnEditUntab()
 	{
 		bool bTabify = FALSE;
 		CPoint ptSelStart, ptSelEnd;
-		if (IsSelection())
+		if (HasSelection())
 		{
 			GetSelection(ptSelStart, ptSelEnd);
 			bTabify = ptSelStart.y != ptSelEnd.y;
@@ -3052,8 +2989,6 @@ void TextView::OnEditUntab()
 			SetCursorPos(ptSelEnd);
 			EnsureVisible(ptSelEnd);
 
-			//	Shift selection to left
-			m_bHorzScrollBarLocked = TRUE;
 			for (int L = nStartLine; L <= nEndLine; L++)
 			{
 				const auto &line = _buffer[L];
@@ -3084,7 +3019,7 @@ void TextView::OnEditUntab()
 					}
 				}
 			}
-			m_bHorzScrollBarLocked = FALSE;
+
 			RecalcHorzScrollBar();
 		}
 		else
@@ -3103,12 +3038,18 @@ void TextView::OnEditUntab()
 				const auto &line = _buffer[ptCursorPos.y];
 				int nCurrentOffset = 0;
 				int I = 0;
+
 				while (nCurrentOffset < nNewOffset)
 				{
 					if (line[I] == _T('\t'))
+					{
 						nCurrentOffset = nCurrentOffset / tabSize * tabSize + tabSize;
+					}
 					else
+					{
 						nCurrentOffset++;
+					}
+
 					I++;
 				}
 
@@ -3354,7 +3295,7 @@ void TextView::OnEditReplace()
 	//dlg.m_sText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_FIND_WHAT, _T(""));
 	//dlg.m_sNewText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, _T(""));
 
-	//if (IsSelection())
+	//if (HasSelection())
 	//{
 	//	GetSelection(m_ptSavedSelStart, m_ptSavedSelEnd);
 	//	m_bSelectionPushed = TRUE;
@@ -3394,7 +3335,7 @@ void TextView::OnEditReplace()
 bool TextView::ReplaceSelection(LPCTSTR pszNewText)
 {
 	//assert(pszNewText != nullptr);
-	//if (! IsSelection())
+	//if (! HasSelection())
 	//	return FALSE;
 
 	//DeleteCurrentSelection();
@@ -3581,7 +3522,7 @@ void TextView::EnableMenuItems(HMENU hMenu)
 		case ID_EDIT_SELECT_ALL: enable = true; break;
 		case ID_EDIT_REPEAT: enable = m_bLastSearch; break;
 		case ID_EDIT_FIND_PREVIOUS: enable = m_bLastSearch; break;
-		case ID_EDIT_CUT: enable = IsSelection(); break;
+		case ID_EDIT_CUT: enable = HasSelection(); break;
 		case ID_EDIT_PASTE: enable = TextInClipboard(); break;
 		case ID_EDIT_UNDO: enable = _buffer.CanUndo(); break;
 		case ID_EDIT_REDO: enable = _buffer.CanRedo(); break;
