@@ -346,27 +346,27 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 }
 
 
-std::vector<std::wstring> TextBuffer::Text(const CPoint &locationStart, const CPoint &locationEnd)
+std::vector<std::wstring> TextBuffer::Text(const TextSelection &selection)
 {
 	std::vector<std::wstring> result;
 
-	if (locationStart.y == locationEnd.y)
+	if (selection._start.y == selection._end.y)
 	{
-		result.push_back(_lines[locationStart.y]._text.substr(locationStart.x, locationEnd.y));
+		result.push_back(_lines[selection._start.y]._text.substr(selection._start.x, selection._end.x - selection._start.x));
 	}
 	else
 	{
-		for (int y = locationStart.y; y <= locationEnd.y; y++)
+		for (int y = selection._start.y; y <= selection._end.y; y++)
 		{
 			const auto &text = _lines[y]._text;
 
-			if (y == locationStart.y)
+			if (y == selection._start.y)
 			{
-				result.push_back(text.substr(locationStart.x, text.size()));
+				result.push_back(text.substr(selection._start.x, text.size() - selection._start.x));
 			}
-			else if (y == locationEnd.y)
+			else if (y == selection._end.y)
 			{
-				result.push_back(text.substr(0, locationEnd.y));
+				result.push_back(text.substr(0, selection._end.x));
 			}
 			else
 			{
@@ -417,63 +417,42 @@ void TextBuffer::InvalidateView()
 }
 
 
-bool TextBuffer::CanUndo()
+bool TextBuffer::CanUndo() const
 {
 	assert(m_nUndoPosition >= 0 && m_nUndoPosition <= _undo.size());
 	return m_nUndoPosition > 0;
 }
 
-bool TextBuffer::CanRedo()
+bool TextBuffer::CanRedo() const
 {
 	assert(m_nUndoPosition >= 0 && m_nUndoPosition <= _undo.size());
 	return m_nUndoPosition < _undo.size();
 }
 
-CPoint TextBuffer::Undo()
+TextLocation TextBuffer::Undo()
 {
 	assert(CanUndo());
-
 	m_nUndoPosition--;
 	_modified = true;
-
 	return _undo[m_nUndoPosition].Undo(*this);
 }
 
-CPoint TextBuffer::Redo()
+TextLocation TextBuffer::Redo()
 {
-	CPoint location;
-
-	assert(CanRedo());
-
-	/*for (const auto &ur : _undo[m_nUndoPosition])
-	{
-	if (ur._flags & UNDO_INSERT)
-	{
-	int nEndLine, nEndChar;
-	InternalInsertText(ur.m_ptStartPos.y, ur.m_ptStartPos.x, ur.Text(), nEndLine, nEndChar);
-	ptCursorPos = ur.m_ptEndPos;
-	}
-	else
-	{
-	InternalDeleteText(ur.m_ptStartPos.y, ur.m_ptStartPos.x, ur.m_ptEndPos.y, ur.m_ptEndPos.x);
-	ptCursorPos = ur.m_ptStartPos;
-	}
-	}
-
-	m_nUndoPosition ++;
-
-	SetModified(_modified);*/
-
-	return TRUE;
+	assert(CanRedo());	
+	_modified = true;
+	auto result = _undo[m_nUndoPosition].Redo(*this);
+	m_nUndoPosition++;
+	return result;
 }
 
-CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const std::wstring &text)
+TextLocation TextBuffer::InsertText(const TextLocation &location, const std::wstring &text)
 {
-	CPoint resultLocation = location;
+	TextLocation resultLocation = location;
 
 	for (const auto &c : text)
 	{
-		resultLocation = InsertText(ug, resultLocation, c);
+		resultLocation = InsertText(resultLocation, c);
 	}
 
 	_modified = true;
@@ -481,9 +460,24 @@ CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const std::
 	return resultLocation;
 }
 
-CPoint TextBuffer::InsertText(const CPoint &location, const wchar_t &c)
+TextLocation TextBuffer::InsertText(UndoGroup &ug, const TextLocation &location, const std::wstring &text)
+{	
+	TextLocation resultLocation = location;
+
+	for (const auto &c : text)
+	{
+		resultLocation = InsertText(resultLocation, c);
+	}
+
+	ug.Insert(TextSelection(location, resultLocation), text);
+	_modified = true;
+
+	return resultLocation;
+}
+
+TextLocation TextBuffer::InsertText(const TextLocation &location, const wchar_t &c)
 {
-	CPoint resultLocation = location;
+	TextLocation resultLocation = location;
 	auto &li = _lines[location.y];
 
 	if (c == L'\n')
@@ -516,61 +510,68 @@ CPoint TextBuffer::InsertText(const CPoint &location, const wchar_t &c)
 	return resultLocation;
 }
 
-CPoint TextBuffer::InsertText(UndoGroup &ug, const CPoint &location, const wchar_t &c)
+TextLocation TextBuffer::InsertText(UndoGroup &ug, const TextLocation &location, const wchar_t &c)
 {
 	ug.Insert(location, c);
 	_modified = true;
 	return InsertText(location, c);
 }
 
-CPoint TextBuffer::DeleteText(UndoGroup &ug, const CPoint &location)
+TextLocation TextBuffer::DeleteText(UndoGroup &ug, const TextLocation &location)
 {
 	if (location.x == 0)
 	{
 		if (location.y > 0)
 		{
-			ug.Delete(CPoint(_lines[location.y - 1].size(), location.y - 1), location.x > 0 ? _lines[location.y][location.x - 1] : '\n');
+			ug.Delete(TextLocation(_lines[location.y - 1].size(), location.y - 1), location.x > 0 ? _lines[location.y][location.x - 1] : '\n');
 		}
 	}
 	else
 	{
-		ug.Delete(CPoint(location.x - 1, location.y), _lines[location.y][location.x - 1]);
+		ug.Delete(TextLocation(location.x - 1, location.y), _lines[location.y][location.x - 1]);
 	}
 
 	_modified = true;
 	return DeleteText(location);
 }
 
-void TextBuffer::DeleteText(UndoGroup &ug, const CPoint &locationStart, const CPoint &locationEnd)
+TextLocation TextBuffer::DeleteText(const TextSelection &selection)
 {
-	if (locationStart.y == locationEnd.y)
+	if (selection._start.y == selection._end.y)
 	{
-		auto &li = _lines[locationStart.y];
+		auto &li = _lines[selection._start.y];
 		auto before = li._text;
 		auto after = li._text;
 
-		after.erase(after.begin() + locationStart.x, after.begin() + locationEnd.x);
+		after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
 		li._text = after;
 
-		InvalidateLine(locationStart.y);
+		InvalidateLine(selection._start.y);
 	}
 	else
 	{
-		_lines[locationStart.y]._text.erase(_lines[locationStart.y]._text.begin() + locationStart.x, _lines[locationStart.y]._text.end());
-		_lines[locationStart.y]._text.append(_lines[locationEnd.y]._text.begin() + locationEnd.x, _lines[locationEnd.y]._text.end());
+		_lines[selection._start.y]._text.erase(_lines[selection._start.y]._text.begin() + selection._start.x, _lines[selection._start.y]._text.end());
+		_lines[selection._start.y]._text.append(_lines[selection._end.y]._text.begin() + selection._end.x, _lines[selection._end.y]._text.end());
 
-		if (locationStart.y + 1 < locationEnd.y + 1)
+		if (selection._start.y + 1 < selection._end.y + 1)
 		{
-			_lines.erase(_lines.begin() + locationStart.y + 1, _lines.begin() + locationEnd.y + 1);
+			_lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
 		}
 
 		InvalidateView();
 	}
 
-	_modified = true;
+	return selection._start;
 }
 
-CPoint TextBuffer::DeleteText(const CPoint &location)
+TextLocation TextBuffer::DeleteText(UndoGroup &ug, const TextSelection &selection)
+{
+	ug.Delete(selection, Combine(Text(selection)));
+	_modified = true;
+	return DeleteText(selection);
+}
+
+TextLocation TextBuffer::DeleteText(const TextLocation &location)
 {
 	auto &line = _lines[location.y];
 	auto resultPos = location;
@@ -680,16 +681,16 @@ static int FindStringHelper(LPCTSTR pszFindWhere, LPCTSTR pszFindWhat, bool bWho
 	return -1;
 }
 
-bool TextBuffer::FindText(const std::wstring &text, const CPoint &ptStartPos, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos)
+bool TextBuffer::FindText(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
 {
 	int nLineCount = _lines.size();
 
-	return FindTextInBlock(text, ptStartPos, CPoint(0, 0), CPoint(_lines[nLineCount - 1]._text.size(), nLineCount - 1), dwFlags, bWrapSearch, pptFoundPos);
+	return FindTextInBlock(text, ptStartPos, TextLocation(0, 0), TextLocation(_lines[nLineCount - 1]._text.size(), nLineCount - 1), dwFlags, bWrapSearch, pptFoundPos);
 }
 
-bool TextBuffer::FindTextInBlock(const std::wstring &what, const CPoint &ptStartPosition, const CPoint &ptBlockBegin, const CPoint &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos)
+bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &ptStartPosition, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
 {
-	CPoint ptCurrentPos = ptStartPosition;
+	TextLocation ptCurrentPos = ptStartPosition;
 
 	assert(ptBlockBegin.y < ptBlockEnd.y || ptBlockBegin.y == ptBlockEnd.y && ptBlockBegin.x <= ptBlockEnd.x);
 
@@ -743,7 +744,7 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const CPoint &ptStart
 
 			//	Start again from the end of text
 			bWrapSearch = FALSE;
-			ptCurrentPos = CPoint(0, _lines.size() - 1);
+			ptCurrentPos = TextLocation(0, _lines.size() - 1);
 		}
 	}
 	else

@@ -22,6 +22,35 @@ enum
 	REPLACE_SELECTION = 0x0100
 };
 
+class TextLocation
+{
+public:
+	int x;
+	int y;
+
+	TextLocation(int xx = 0, int yy = 0) { x = xx; y = yy; }
+
+	bool operator==(const TextLocation &other) const { return x == other.x && y == other.y; }
+	bool operator!=(const TextLocation &other) const { return x != other.x && y != other.y; }
+};
+
+class TextSelection
+{
+public:
+	TextLocation _start;
+	TextLocation _end;
+
+	TextSelection() { }
+	TextSelection(const TextLocation &start, const TextLocation &end) { _start = start; _end = end; }
+	TextSelection(int x1, int y1, int x2, int y2) : _start(x1, y1), _end(x2, y2) { }
+
+	bool operator==(const TextSelection &other) const { return _start == other._start && _end == other._end; }
+	bool operator!=(const TextSelection &other) const { return _start != other._start && _end != other._end; }
+
+	bool empty() const { return _start == _end; };
+};
+
+
 
 struct IView
 {
@@ -60,40 +89,69 @@ private:
 	{
 	public:
 
-		CPoint _location;
+		TextSelection _selection;
 		bool _insert;
-		wchar_t _c;
+		std::wstring _text;
 
 	public:
 
-		UndoStep() : _c(0), _insert(false){};
-		UndoStep(const CPoint &location, const wchar_t &c, bool insert) : _c(c), _location(location), _insert(insert){};
-		UndoStep(const UndoStep &other) : _c(other._c), _location(other._location), _insert(other._insert) {};
+		UndoStep() : _insert(false){};
+		UndoStep(const TextLocation &location, const wchar_t &c, bool insert) : _text(1, c), _selection(location, location), _insert(insert){};
+		UndoStep(const TextLocation &location, const std::wstring &text, bool insert) : _text(text), _selection(location, location), _insert(insert){};
+		UndoStep(const TextSelection &selection, const std::wstring &text, bool insert) : _text(text), _selection(selection), _insert(insert){};
+		UndoStep(const UndoStep &other) : _text(other._text), _selection(other._selection), _insert(other._insert) {};
 
 		const UndoStep& operator=(const UndoStep &other)
 		{
-			_c = other._c;
-			_location = other._location;
+			_text = other._text;
+			_selection = other._selection;
 			_insert = other._insert;
 			return *this;
 		};
 
-		CPoint Undo(TextBuffer &buffer)
+		TextLocation Undo(TextBuffer &buffer)
 		{
 			if (_insert)
 			{
-				if (_c == '\n')
+				if (_text == L"\n")
 				{
-					return buffer.DeleteText(CPoint(0, _location.y + 1));
+					return buffer.DeleteText(TextLocation(0, _selection._start.y + 1));
 				}
-				else
+				else if (_text.size() == 1)
 				{
-					return buffer.DeleteText(_location);
+					return buffer.DeleteText(TextLocation(_selection._start.x + 1, _selection._start.y));
+				}
+				else 
+				{
+					return buffer.DeleteText(_selection);
 				}
 			}
 			else 
 			{
-				return buffer.InsertText(_location, _c);
+				return buffer.InsertText(_selection._start, _text);
+			}
+		}
+
+		TextLocation Redo(TextBuffer &buffer)
+		{
+			if (_insert)
+			{
+				return buffer.InsertText(_selection._start, _text);
+			}
+			else
+			{
+				if (_text == L"\n")
+				{
+					return buffer.DeleteText(TextLocation(0, _selection._start.y + 1));
+				}
+				else if (_text.size() == 1)
+				{
+					return buffer.DeleteText(TextLocation(_selection._start.x + 1, _selection._start.y));
+				}
+				else
+				{
+					return buffer.DeleteText(_selection);
+				}
 			}
 		}
 	};
@@ -102,32 +160,41 @@ private:
 	{
 	public:
 
-		CPoint _before;
-		CPoint _after;
 		std::vector<UndoStep> _steps;
 
 	public:
 
 		UndoItem()  {};
-		UndoItem(const CPoint &before, const CPoint &after) : _before(before), _after(after) {};
-		UndoItem(const UndoItem &other) : _steps(other._steps), _before(other._before), _after(other._after) {};
+		UndoItem(const UndoItem &other) : _steps(other._steps) {};
 
 		const UndoItem& operator=(const UndoItem &other)
 		{
-			_after = other._after;
-			_before = other._before;
 			_steps = other._steps;
 			return *this;
 		};
 
-		CPoint Undo(TextBuffer &buffer)
+		TextLocation Undo(TextBuffer &buffer)
 		{
+			TextLocation location;
+
 			for (auto i = _steps.rbegin(); i != _steps.rend(); i++)
 			{
-				i->Undo(buffer);
+				location = i->Undo(buffer);
 			}
 
-			return _before;
+			return location;
+		}
+
+		TextLocation Redo(TextBuffer &buffer)
+		{
+			TextLocation location;
+
+			for (auto i = _steps.begin(); i != _steps.end(); i++)
+			{
+				location = i->Redo(buffer);
+			}
+
+			return location;
 		}
 
 	};
@@ -178,25 +245,25 @@ public:
 
 	const size_t LineCount() const { return _lines.size(); };
 	const Line &operator[](int n) const { return _lines[n];  };
-	std::vector<std::wstring> Text(const CPoint &locationStart, const CPoint &locationEnd);
+	std::vector<std::wstring> Text(const TextSelection &selection);
 
-	CPoint InsertText(UndoGroup &ug, const CPoint &location, const std::wstring &text);
-	CPoint InsertText(UndoGroup &ug, const CPoint &location, const wchar_t &c);
-	void DeleteText(UndoGroup &ug, const CPoint &locationStart, const CPoint &locationEnd);
-	CPoint DeleteText(UndoGroup &ug, const CPoint &location);
+	TextLocation InsertText(UndoGroup &ug, const TextLocation &location, const std::wstring &text);
+	TextLocation InsertText(UndoGroup &ug, const TextLocation &location, const wchar_t &c);
+	TextLocation DeleteText(UndoGroup &ug, const TextSelection &selection);
+	TextLocation DeleteText(UndoGroup &ug, const TextLocation &location);
 
-	CPoint InsertText(const CPoint &location, const std::wstring &text);
-	CPoint InsertText(const CPoint &location, const wchar_t &c);
-	void DeleteText(const CPoint &locationStart, const CPoint &locationEnd);
-	CPoint DeleteText(const CPoint &location);
+	TextLocation InsertText(const TextLocation &location, const std::wstring &text);
+	TextLocation InsertText(const TextLocation &location, const wchar_t &c);
+	TextLocation DeleteText(const TextSelection &selection);
+	TextLocation DeleteText(const TextLocation &location);
 
-	bool CanUndo();
-	bool CanRedo();
-	CPoint Undo();
-	CPoint Redo();
+	bool CanUndo() const;
+	bool CanRedo() const;
+	TextLocation Undo();
+	TextLocation Redo();
 
-	bool FindText(const std::wstring &text, const CPoint &ptStartPos, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos);
-	bool FindTextInBlock(const std::wstring &text, const CPoint &ptStartPos, const CPoint &ptBlockBegin, const CPoint &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, CPoint *pptFoundPos);
+	bool FindText(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
+	bool FindTextInBlock(const std::wstring &text, const TextLocation &ptStartPos, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
 
 	void InvalidateLine(int index);
 	void InvalidateView();
@@ -221,14 +288,24 @@ public:
 		_buffer.m_nUndoPosition = _buffer._undo.size();
 	}
 
-	void Insert(const CPoint &location, const wchar_t &c)
+	void Insert(const TextLocation &location, const wchar_t &c)
 	{
 		_undo._steps.push_back(TextBuffer::UndoStep(location, c, true));
 	}
 
-	void Delete(const CPoint &location, const wchar_t &c)
+	void Insert(const TextSelection &selection, const std::wstring &text)
+	{
+		_undo._steps.push_back(TextBuffer::UndoStep(selection, text, true));
+	}
+
+	void Delete(const TextLocation &location, const wchar_t &c)
 	{
 		_undo._steps.push_back(TextBuffer::UndoStep(location, c, false));
+	}
+
+	void Delete(const TextSelection &selection, const std::wstring &text)
+	{
+		_undo._steps.push_back(TextBuffer::UndoStep(selection, text, false));
 	}
 };
 

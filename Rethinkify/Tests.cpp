@@ -2,7 +2,7 @@
 #include "TextBuffer.h"
 #include "Should.h"
 
-static void InsertChars(TextBuffer &buffer, const char *chars, CPoint location = CPoint(0, 0))
+static void InsertChars(TextBuffer &buffer, const char *chars, TextLocation location = TextLocation(0, 0))
 {
 	auto p = chars;
 	UndoGroup ug(buffer);
@@ -30,113 +30,154 @@ static void ShouldInsertSingleChars()
 static void ShouldSplitLine()
 {
 	auto text = "line of text";
+	auto expected = "line\n of text";
 
 	TextBuffer buffer(text);
 
 	{
 		UndoGroup ug(buffer);
-		buffer.InsertText(ug, CPoint(4, 0), '\n');
+		buffer.InsertText(ug, TextLocation(4, 0), '\n');
 		Should::Equal("line\n of text", buffer.str());
 	}
 
 	buffer.Undo();
 	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldCombineLine()
 {	
 	auto text = "line \nof text";
+	auto expected = "line of text";
 
 	TextBuffer buffer(text);
 
 	{
 		UndoGroup ug(buffer);
-		buffer.DeleteText(ug, CPoint(0, 1));
-		Should::Equal("line of text", buffer.str());
+		buffer.DeleteText(ug, TextLocation(0, 1));
+		Should::Equal(expected, buffer.str());
 	}
 
 	buffer.Undo();
 	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldDeleteChars()
 {
 	auto text = "one\ntwo\nthree";
+	auto expected = "oe\nto\ntree";
 
 	TextBuffer buffer(text);
 
 	{
 		UndoGroup ug(buffer);
-		buffer.DeleteText(ug, CPoint(2, 0));
-		buffer.DeleteText(ug, CPoint(2, 1));
-		buffer.DeleteText(ug, CPoint(2, 2));
-		Should::Equal("oe\nto\ntree", buffer.str());
+		buffer.DeleteText(ug, TextLocation(2, 0));
+		buffer.DeleteText(ug, TextLocation(2, 1));
+		buffer.DeleteText(ug, TextLocation(2, 2));
+		Should::Equal(expected, buffer.str());
 	}
 
 	buffer.Undo();
 	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldDeleteSelection()
 {
 	auto text = "line of text";
+	auto expected = "lixt";
 
 	TextBuffer buffer(text);
 
 	{
 		UndoGroup ug(buffer);
-		buffer.DeleteText(ug, CPoint(2, 0), CPoint(10, 0));
-		Should::Equal("lixt", buffer.str());
+		buffer.DeleteText(ug, TextSelection(2, 0, 10, 0));
+		Should::Equal(expected, buffer.str());
 	}
 
 	buffer.Undo();
 	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldDelete2LineSelection()
 {
 	auto text = "one\ntwo\nthree";
+	auto expected = "onree";
 
 	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
-	buffer.DeleteText(ug, CPoint(2, 0), CPoint(2, 2));
+	{
+		UndoGroup ug(buffer);
+		buffer.DeleteText(ug, TextSelection(2, 0, 2, 2));
+		Should::Equal(expected, buffer.str());
+	}
 
-	Should::Equal("onree", buffer.str());
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldDelete1LineSelection()
 {
 	auto text = "one\ntwo\nthree";
+	auto expected = "on";
 
 	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
-	buffer.DeleteText(ug, CPoint(2, 1), CPoint(2, 2));
+	{
+		UndoGroup ug(buffer);
+		buffer.DeleteText(ug, TextSelection(2, 1, 2, 2));
 
-	Should::Equal("one\ntwree", buffer.str());
+		Should::Equal("one\ntwree", buffer.str());
 
-	buffer.DeleteText(ug, CPoint(2, 0), CPoint(5, 1));
-	Should::Equal("on", buffer.str());
+		buffer.DeleteText(ug, TextSelection(2, 0, 5, 1));
+		Should::Equal(expected, buffer.str());
+	}
+
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldInsertSelection()
 {
 	auto text = "line of text";
 	auto selection = "one\ntwo\nthree";
+	auto expected = "line oone\ntwo\nthreef text";
 
 	TextBuffer buffer(text);
 
-	UndoGroup ug(buffer);
-	buffer.InsertText(ug, CPoint(6, 0), ToUtf16(selection));
+	{
+		UndoGroup ug(buffer);
+		buffer.InsertText(ug, TextLocation(6, 0), ToUtf16(selection));
+		Should::Equal(expected, buffer.str());
+	}
 
-	Should::Equal("line oone\ntwo\nthreef text", buffer.str());
+	buffer.Undo();
+	Should::Equal(text, buffer.str(), "Undo");
+
+	buffer.Redo();
+	Should::Equal(expected, buffer.str(), "Redo");
 }
 
 static void ShouldReturnSelection()
 {
 	TextBuffer buffer("one\ntwo\nthree");
-	Should::Equal("e\ntwo\nth", ToUtf8(Combine(buffer.Text(CPoint(2, 0), CPoint(2, 2)))));
+	Should::Equal("e\ntwo\nth", ToUtf8(Combine(buffer.Text(TextSelection(2, 0, 2, 2)))));
 }
 
 

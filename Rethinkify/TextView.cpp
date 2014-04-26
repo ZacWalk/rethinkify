@@ -57,11 +57,10 @@ TextView::~TextView()
 	assert(m_pCacheBitmap == nullptr);
 }
 
-void TextView::GetSelection(CPoint &ptStart, CPoint &ptEnd)
+const TextSelection &TextView::GetSelection() const
 {
 	PrepareSelBounds();
-	ptStart = m_ptDrawSelStart;
-	ptEnd = m_ptDrawSelEnd;
+	return m_ptDrawSel;
 }
 
 int TextView::GetLineActualLength(int nLineIndex) const
@@ -203,7 +202,7 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 	return result;
 }
 
-void TextView::DrawLineHelperImpl(HDC pdc, CPoint &ptOrigin, const CRect &rcClip, LPCTSTR pszChars, int nOffset, int nCount)
+void TextView::DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, LPCTSTR pszChars, int nOffset, int nCount)
 {
 	assert(nCount >= 0);
 	if (nCount > 0)
@@ -234,34 +233,34 @@ void TextView::DrawLineHelperImpl(HDC pdc, CPoint &ptOrigin, const CRect &rcClip
 	}
 }
 
-void TextView::DrawLineHelper(HDC pdc, CPoint &ptOrigin, const CRect &rcClip, int nColorIndex, LPCTSTR pszChars, int nOffset, int nCount, CPoint ptTextPos)
+void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, int nColorIndex, LPCTSTR pszChars, int nOffset, int nCount, TextLocation ptTextPos)
 {
 	if (nCount > 0)
 	{
 		if (m_bFocused || m_bShowInactiveSelection)
 		{
 			int nSelBegin = 0, nSelEnd = 0;
-			if (m_ptDrawSelStart.y > ptTextPos.y)
+			if (m_ptDrawSel._start.y > ptTextPos.y)
 			{
 				nSelBegin = nCount;
 			}
 			else
-				if (m_ptDrawSelStart.y == ptTextPos.y)
+				if (m_ptDrawSel._start.y == ptTextPos.y)
 				{
-				nSelBegin = m_ptDrawSelStart.x - ptTextPos.x;
+				nSelBegin = m_ptDrawSel._start.x - ptTextPos.x;
 				if (nSelBegin < 0)
 					nSelBegin = 0;
 				if (nSelBegin > nCount)
 					nSelBegin = nCount;
 				}
-			if (m_ptDrawSelEnd.y > ptTextPos.y)
+			if (m_ptDrawSel._end.y > ptTextPos.y)
 			{
 				nSelEnd = nCount;
 			}
 			else
-				if (m_ptDrawSelEnd.y == ptTextPos.y)
+				if (m_ptDrawSel._end.y == ptTextPos.y)
 				{
-				nSelEnd = m_ptDrawSelEnd.x - ptTextPos.x;
+				nSelEnd = m_ptDrawSel._end.x - ptTextPos.x;
 				if (nSelEnd < 0)
 					nSelEnd = 0;
 				if (nSelEnd > nCount)
@@ -382,7 +381,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 		{
 			//	Draw the empty line
 			CRect rect = rc;
-			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(CPoint(0, nLineIndex)))
+			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(0, nLineIndex)))
 			{
 				FillSolidRect(pdc, rect.left, rect.top, GetCharWidth(), rect.Height(), GetColor(COLORINDEX_SELBKGND));
 				rect.left += GetCharWidth();
@@ -400,7 +399,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 		assert(_parseCookies[nLineIndex] != (DWORD) -1);
 
 		//	Draw the line text
-		CPoint origin(rc.left - m_nOffsetChar * GetCharWidth(), rc.top);
+		TextLocation origin(rc.left - m_nOffsetChar * GetCharWidth(), rc.top);
 		SetBkColor(pdc, crBkgnd);
 		if (crText != CLR_NONE)
 			SetTextColor(pdc, crText);
@@ -413,7 +412,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 			if (crText == CLR_NONE)
 				SetTextColor(pdc, GetColor(COLORINDEX_NORMALTEXT));
 			SelectObject(pdc, GetFont(GetItalic(COLORINDEX_NORMALTEXT), GetBold(COLORINDEX_NORMALTEXT)));
-			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, CPoint(0, nLineIndex));
+			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, TextLocation(0, nLineIndex));
 			for (int I = 0; I < nBlocks - 1; I++)
 			{
 				assert(pBuf[I].m_nCharPos >= 0 && pBuf[I].m_nCharPos <= nLength);
@@ -422,7 +421,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 				SelectObject(pdc, GetFont(GetItalic(pBuf[I].m_nColorIndex), GetBold(pBuf[I].m_nColorIndex)));
 				DrawLineHelper(pdc, origin, rc, pBuf[I].m_nColorIndex, pszChars,
 					pBuf[I].m_nCharPos, pBuf[I + 1].m_nCharPos - pBuf[I].m_nCharPos,
-					CPoint(pBuf[I].m_nCharPos, nLineIndex));
+					TextLocation(pBuf[I].m_nCharPos, nLineIndex));
 			}
 			assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
 			if (crText == CLR_NONE)
@@ -431,14 +430,14 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 				GetBold(pBuf[nBlocks - 1].m_nColorIndex)));
 			DrawLineHelper(pdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
 				pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
-				CPoint(pBuf[nBlocks - 1].m_nCharPos, nLineIndex));
+				TextLocation(pBuf[nBlocks - 1].m_nCharPos, nLineIndex));
 		}
 		else
 		{
 			if (crText == CLR_NONE)
 				SetTextColor(pdc, GetColor(COLORINDEX_NORMALTEXT));
 			SelectObject(pdc, GetFont(GetItalic(COLORINDEX_NORMALTEXT), GetBold(COLORINDEX_NORMALTEXT)));
-			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, nLength, CPoint(0, nLineIndex));
+			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, nLength, TextLocation(0, nLineIndex));
 		}
 
 		//	Draw whitespaces to the left of the text
@@ -447,7 +446,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 			frect.left = origin.x;
 		if (frect.right > frect.left)
 		{
-			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(CPoint(nLength, nLineIndex)))
+			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(nLength, nLineIndex)))
 			{
 				FillSolidRect(pdc, frect.left, frect.top, GetCharWidth(), frect.Height(),
 					GetColor(COLORINDEX_SELBKGND));
@@ -531,43 +530,42 @@ void TextView::DrawMargin(HDC pdc, const CRect &rect, int nLineIndex)
 	}
 }
 
-bool TextView::IsInsideSelBlock(CPoint ptTextPos)
+bool TextView::IsInsideSelBlock(TextLocation ptTextPos)
 {
-	if (ptTextPos.y < m_ptDrawSelStart.y)
+	if (ptTextPos.y < m_ptDrawSel._start.y)
 		return FALSE;
-	if (ptTextPos.y > m_ptDrawSelEnd.y)
+	if (ptTextPos.y > m_ptDrawSel._end.y)
 		return FALSE;
-	if (ptTextPos.y < m_ptDrawSelEnd.y && ptTextPos.y > m_ptDrawSelStart.y)
+	if (ptTextPos.y < m_ptDrawSel._end.y && ptTextPos.y > m_ptDrawSel._start.y)
 		return TRUE;
-	if (m_ptDrawSelStart.y < m_ptDrawSelEnd.y)
+	if (m_ptDrawSel._start.y < m_ptDrawSel._end.y)
 	{
-		if (ptTextPos.y == m_ptDrawSelEnd.y)
-			return ptTextPos.x < m_ptDrawSelEnd.x;
-		assert(ptTextPos.y == m_ptDrawSelStart.y);
-		return ptTextPos.x >= m_ptDrawSelStart.x;
+		if (ptTextPos.y == m_ptDrawSel._end.y)
+			return ptTextPos.x < m_ptDrawSel._end.x;
+		assert(ptTextPos.y == m_ptDrawSel._start.y);
+		return ptTextPos.x >= m_ptDrawSel._start.x;
 	}
-	assert(m_ptDrawSelStart.y == m_ptDrawSelEnd.y);
-	return ptTextPos.x >= m_ptDrawSelStart.x && ptTextPos.x < m_ptDrawSelEnd.x;
+	assert(m_ptDrawSel._start.y == m_ptDrawSel._end.y);
+	return ptTextPos.x >= m_ptDrawSel._start.x && ptTextPos.x < m_ptDrawSel._end.x;
 }
 
-bool TextView::IsInsideSelection(const CPoint &ptTextPos)
+bool TextView::IsInsideSelection(const TextLocation &ptTextPos)
 {
 	PrepareSelBounds();
 	return IsInsideSelBlock(ptTextPos);
 }
 
-void TextView::PrepareSelBounds()
+void TextView::PrepareSelBounds() const
 {
-	if (m_ptSelStart.y < m_ptSelEnd.y ||
-		(m_ptSelStart.y == m_ptSelEnd.y && m_ptSelStart.x < m_ptSelEnd.x))
+	if (_selection._start.y < _selection._end.y || (_selection._start.y == _selection._end.y && _selection._start.x < _selection._end.x))
 	{
-		m_ptDrawSelStart = m_ptSelStart;
-		m_ptDrawSelEnd = m_ptSelEnd;
+		m_ptDrawSel._start = _selection._start;
+		m_ptDrawSel._end = _selection._end;
 	}
 	else
 	{
-		m_ptDrawSelStart = m_ptSelEnd;
-		m_ptDrawSelEnd = m_ptSelStart;
+		m_ptDrawSel._start = _selection._end;
+		m_ptDrawSel._end = _selection._start;
 	}
 }
 
@@ -649,7 +647,7 @@ void TextView::ResetView()
 
 	m_ptCursorPos.x = 0;
 	m_ptCursorPos.y = 0;
-	m_ptSelStart = m_ptSelEnd = m_ptCursorPos;
+	_selection._start = _selection._end = m_ptCursorPos;
 	m_bDragSelection = FALSE;
 	if (::IsWindow(m_hWnd))
 		UpdateCaret();
@@ -1229,7 +1227,7 @@ bool TextView::OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message)
 		}
 		else
 		{
-			CPoint ptText = ClientToText(pt);
+			TextLocation ptText = ClientToText(pt);
 			PrepareSelBounds();
 
 			if (IsInsideSelBlock(ptText))
@@ -1249,11 +1247,11 @@ bool TextView::OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message)
 	return FALSE;
 }
 
-CPoint TextView::ClientToText(const CPoint &point)
+TextLocation TextView::ClientToText(const CPoint &point)
 {
 	int nLineCount = _buffer.LineCount();
 
-	CPoint pt;
+	TextLocation pt;
 	pt.y = m_nTopLine + point.y / GetLineHeight();
 	if (pt.y >= nLineCount)
 		pt.y = nLineCount - 1;
@@ -1292,7 +1290,7 @@ CPoint TextView::ClientToText(const CPoint &point)
 }
 
 
-CPoint TextView::TextToClient(const CPoint &point)
+CPoint TextView::TextToClient(const TextLocation &point)
 {
 	const auto &line = _buffer[point.y];
 
@@ -1348,27 +1346,19 @@ void TextView::InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin /*
 	InvalidateRect(rcInvalid, FALSE);
 }
 
-void TextView::SetSelection(const CPoint &ptStart, const CPoint &ptEnd)
+void TextView::SetSelection(const TextSelection &sel)
 {
-	InvalidateLines(ptStart.y, ptEnd.y);
-	InvalidateLines(m_ptSelStart.y, m_ptSelEnd.y);
+	InvalidateLines(sel._start.y, sel._end.y);
+	InvalidateLines(_selection._start.y, _selection._end.y);
 
-	m_ptSelStart = ptStart;
-	m_ptSelEnd = ptEnd;
-}
-
-CPoint TextView::AdjustTextPoint(const CPoint &point) const
-{
-	CPoint result(point);
-	result.x += GetCharWidth() / 2;	//todo
-	return result;
+	_selection = sel;
 }
 
 void TextView::OnSetFocus(CWindow* pOldWnd)
 {
 	m_bFocused = TRUE;
-	if (m_ptSelStart != m_ptSelEnd)
-		InvalidateLines(m_ptSelStart.y, m_ptSelEnd.y);
+	if (_selection._start != _selection._end)
+		InvalidateLines(_selection._start.y, _selection._end.y);
 	UpdateCaret();
 }
 
@@ -1422,7 +1412,7 @@ int TextView::ApproxActualOffset(int nLineIndex, int nOffset)
 	return nLength;
 }
 
-void TextView::EnsureVisible(CPoint pt)
+void TextView::EnsureVisible(TextLocation pt)
 {
 	//	Scroll vertically
 	int nLineCount = _buffer.LineCount();
@@ -1474,8 +1464,8 @@ void TextView::OnKillFocus(CWindow* pNewWnd)
 {
 	m_bFocused = FALSE;
 	UpdateCaret();
-	if (m_ptSelStart != m_ptSelEnd)
-		InvalidateLines(m_ptSelStart.y, m_ptSelEnd.y);
+	if (_selection._start != _selection._end)
+		InvalidateLines(_selection._start.y, _selection._end.y);
 	if (m_bDragSelection)
 	{
 		ReleaseCapture();
@@ -1489,9 +1479,9 @@ void TextView::OnSysColorChange()
 	Invalidate();
 }
 
-std::vector<std::wstring> TextView::Text(const CPoint &ptStart, const CPoint &ptEnd) const
+std::vector<std::wstring> TextView::Text(const TextSelection &selection) const
 {
-	return _buffer.Text(ptStart, ptEnd);
+	return _buffer.Text(selection);
 }
 
 void TextView::InvalidateLine(int index)
@@ -1551,7 +1541,7 @@ int TextView::OnCreate()
 	return 0;
 }
 
-void TextView::SetAnchor(const CPoint &ptNewAnchor)
+void TextView::SetAnchor(const TextLocation &ptNewAnchor)
 {
 	m_ptAnchor = ptNewAnchor;
 }
@@ -1570,7 +1560,7 @@ bool TextView::PreTranslateMessage(MSG *pMsg)
 	return FALSE;
 }
 
-void TextView::SetCursorPos(const CPoint &ptCursorPos)
+void TextView::SetCursorPos(const TextLocation &ptCursorPos)
 {
 	m_ptCursorPos = ptCursorPos;
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
@@ -1640,10 +1630,10 @@ void TextView::HideCursor()
 HGLOBAL TextView::PrepareDragData()
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart == m_ptDrawSelEnd)
+	if (m_ptDrawSel._start == m_ptDrawSel._end)
 		return nullptr;
 
-	auto text = ToUtf8(Combine(Text(m_ptDrawSelStart, m_ptDrawSelEnd)));
+	auto text = ToUtf8(Combine(Text(m_ptDrawSel)));
 	auto len = text.size() + 1;
 
 	HGLOBAL hData = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
@@ -1654,19 +1644,19 @@ HGLOBAL TextView::PrepareDragData()
 	strcpy_s(pszData, len, text.c_str());
 	::GlobalUnlock(hData);
 
-	m_ptDraggedTextBegin = m_ptDrawSelStart;
-	m_ptDraggedTextEnd = m_ptDrawSelEnd;
+	m_ptDraggedText = m_ptDrawSel;
+
 	return hData;
 }
 
 
 
-bool TextView::HighlightText(const CPoint &ptStartPos, int nLength)
+bool TextView::HighlightText(const TextLocation &ptStartPos, int nLength)
 {
 	m_ptCursorPos = ptStartPos;
 	m_ptCursorPos.x += nLength;
 	m_ptAnchor = m_ptCursorPos;
-	SetSelection(ptStartPos, m_ptCursorPos);
+	SetSelection(TextSelection(ptStartPos, m_ptCursorPos));
 	UpdateCaret();
 	EnsureVisible(m_ptCursorPos);
 	return TRUE;
@@ -1700,7 +1690,7 @@ void TextView::OnEditFind()
 	//	//	Take the current selection, if any
 	//	if (HasSelection())
 	//	{
-	//		CPoint ptSelStart, ptSelEnd;
+	//		TextLocation ptSelStart, ptSelEnd;
 	//		GetSelection(ptSelStart, ptSelEnd);		if (ptSelStart.y == ptSelEnd.y)
 	//		{
 	//			LPCTSTR pszChars = GetLineChars(ptSelStart.y);
@@ -1740,7 +1730,7 @@ void TextView::OnEditRepeat()
 {
 	//if (m_bLastSearch)
 	//{
-	//	CPoint ptFoundPos;
+	//	TextLocation ptFoundPos;
 	//	if (! FindText(_lastFindWhat, m_ptCursorPos, m_dwLastSearchFlags, TRUE, &ptFoundPos))
 	//	{
 	//		std::wstring prompt;
@@ -1826,9 +1816,9 @@ void TextView::MoveLeft(bool bSelect)
 {
 	PrepareSelBounds();
 
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
 	{
-		m_ptCursorPos = m_ptDrawSelStart;
+		m_ptCursorPos = m_ptDrawSel._start;
 	}
 	else
 	{
@@ -1848,15 +1838,15 @@ void TextView::MoveLeft(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveRight(bool bSelect)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
 	{
-		m_ptCursorPos = m_ptDrawSelEnd;
+		m_ptCursorPos = m_ptDrawSel._end;
 	}
 	else
 	{
@@ -1876,13 +1866,13 @@ void TextView::MoveRight(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveWordLeft(bool bSelect)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
 	{
 		MoveLeft(bSelect);
 		return;
@@ -1926,13 +1916,13 @@ void TextView::MoveWordLeft(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveWordRight(bool bSelect)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
 	{
 		MoveRight(bSelect);
 		return;
@@ -1978,14 +1968,14 @@ void TextView::MoveWordRight(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveUp(bool bSelect)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
-		m_ptCursorPos = m_ptDrawSelStart;
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+		m_ptCursorPos = m_ptDrawSel._start;
 
 	if (m_ptCursorPos.y > 0)
 	{
@@ -2003,14 +1993,15 @@ void TextView::MoveUp(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveDown(bool bSelect)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSelStart != m_ptDrawSelEnd && !bSelect)
-		m_ptCursorPos = m_ptDrawSelEnd;
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+		m_ptCursorPos = m_ptDrawSel._end;
 
 	if (m_ptCursorPos.y < _buffer.LineCount() - 1)
 	{
@@ -2029,7 +2020,7 @@ void TextView::MoveDown(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveHome(bool bSelect)
@@ -2048,7 +2039,7 @@ void TextView::MoveHome(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveEnd(bool bSelect)
@@ -2059,7 +2050,7 @@ void TextView::MoveEnd(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MovePgUp(bool bSelect)
@@ -2086,7 +2077,7 @@ void TextView::MovePgUp(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MovePgDn(bool bSelect)
@@ -2112,7 +2103,7 @@ void TextView::MovePgDn(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveCtrlHome(bool bSelect)
@@ -2124,7 +2115,7 @@ void TextView::MoveCtrlHome(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::MoveCtrlEnd(bool bSelect)
@@ -2136,7 +2127,7 @@ void TextView::MoveCtrlEnd(bool bSelect)
 	UpdateCaret();
 	if (!bSelect)
 		m_ptAnchor = m_ptCursorPos;
-	SetSelection(m_ptAnchor, m_ptCursorPos);
+	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
 void TextView::ScrollUp()
@@ -2173,7 +2164,7 @@ void TextView::ScrollRight()
 	}
 }
 
-CPoint TextView::WordToRight(CPoint pt)
+TextLocation TextView::WordToRight(TextLocation pt)
 {
 	const auto &line = _buffer[pt.y];
 
@@ -2186,7 +2177,7 @@ CPoint TextView::WordToRight(CPoint pt)
 	return pt;
 }
 
-CPoint TextView::WordToLeft(CPoint pt)
+TextLocation TextView::WordToLeft(TextLocation pt)
 {
 	const auto &line = _buffer[pt.y];
 
@@ -2204,7 +2195,7 @@ void TextView::SelectAll()
 	int nLineCount = _buffer.LineCount();
 	m_ptCursorPos.x = _buffer[nLineCount - 1].size();
 	m_ptCursorPos.y = nLineCount - 1;
-	SetSelection(CPoint(0, 0), m_ptCursorPos);
+	SetSelection(TextSelection(TextLocation(0, 0), m_ptCursorPos));
 	UpdateCaret();
 }
 
@@ -2215,7 +2206,6 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 
 	if (point.x < GetMarginWidth())
 	{
-		AdjustTextPoint(point);
 		if (bControl)
 		{
 			SelectAll();
@@ -2227,7 +2217,7 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			if (!bShift)
 				m_ptAnchor = m_ptCursorPos;
 
-			CPoint ptStart, ptEnd;
+			TextLocation ptStart, ptEnd;
 			ptStart = m_ptAnchor;
 			if (ptStart.y == _buffer.LineCount() - 1)
 				ptStart.x = _buffer[ptStart.y].size();
@@ -2243,7 +2233,7 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			m_ptCursorPos = ptEnd;
 			UpdateCaret();
 			EnsureVisible(m_ptCursorPos);
-			SetSelection(ptStart, ptEnd);
+			SetSelection(TextSelection(ptStart, ptEnd));
 
 			SetCapture();
 			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -2255,7 +2245,7 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 	}
 	else
 	{
-		CPoint ptText = ClientToText(point);
+		TextLocation ptText = ClientToText(point);
 		PrepareSelBounds();
 
 		if ((IsInsideSelBlock(ptText)) &&				// If Inside Selection Area
@@ -2265,12 +2255,11 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 		}
 		else
 		{
-			AdjustTextPoint(point);
 			m_ptCursorPos = ClientToText(point);
 			if (!bShift)
 				m_ptAnchor = m_ptCursorPos;
 
-			CPoint ptStart, ptEnd;
+			TextLocation ptStart, ptEnd;
 			if (bControl)
 			{
 				if (m_ptCursorPos.y < m_ptAnchor.y ||
@@ -2294,7 +2283,7 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			m_ptCursorPos = ptEnd;
 			UpdateCaret();
 			EnsureVisible(m_ptCursorPos);
-			SetSelection(ptStart, ptEnd);
+			SetSelection(TextSelection(ptStart, ptEnd));
 
 			SetCapture();
 			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -2318,11 +2307,9 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 	if (m_bDragSelection)
 	{
 		bool bOnMargin = point.x < GetMarginWidth();
+		TextLocation ptNewCursorPos = ClientToText(point);
+		TextLocation ptStart, ptEnd;
 
-		AdjustTextPoint(point);
-		CPoint ptNewCursorPos = ClientToText(point);
-
-		CPoint ptStart, ptEnd;
 		if (m_bLineSelection)
 		{
 			if (bOnMargin)
@@ -2360,7 +2347,7 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 					m_ptCursorPos.x = 0;
 				}
 				UpdateCaret();
-				SetSelection(ptNewCursorPos, ptEnd);
+				SetSelection(TextSelection(ptNewCursorPos, ptEnd));
 				return;
 			}
 
@@ -2391,7 +2378,7 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 
 		m_ptCursorPos = ptEnd;
 		UpdateCaret();
-		SetSelection(ptStart, ptEnd);
+		SetSelection(TextSelection(ptStart, ptEnd));
 	}
 
 	if (m_bPreparingToDrag)
@@ -2421,13 +2408,12 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 {
 	if (m_bDragSelection)
 	{
-		AdjustTextPoint(point);
-		CPoint ptNewCursorPos = ClientToText(point);
+		TextLocation ptNewCursorPos = ClientToText(point);
 
-		CPoint ptStart, ptEnd;
+		TextLocation ptStart, ptEnd;
 		if (m_bLineSelection)
 		{
-			CPoint ptEnd;
+			TextLocation ptEnd;
 			if (ptNewCursorPos.y < m_ptAnchor.y ||
 				ptNewCursorPos.y == m_ptAnchor.y && ptNewCursorPos.x < m_ptAnchor.x)
 			{
@@ -2461,7 +2447,7 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 			}
 			EnsureVisible(m_ptCursorPos);
 			UpdateCaret();
-			SetSelection(ptNewCursorPos, ptEnd);
+			SetSelection(TextSelection(ptNewCursorPos, ptEnd));
 		}
 		else
 		{
@@ -2488,7 +2474,7 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 			m_ptCursorPos = ptEnd;
 			EnsureVisible(m_ptCursorPos);
 			UpdateCaret();
-			SetSelection(ptStart, ptEnd);
+			SetSelection(TextSelection(ptStart, ptEnd));
 		}
 
 		ReleaseCapture();
@@ -2499,12 +2485,10 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 	if (m_bPreparingToDrag)
 	{
 		m_bPreparingToDrag = FALSE;
-
-		AdjustTextPoint(point);
 		m_ptCursorPos = ClientToText(point);
 		EnsureVisible(m_ptCursorPos);
 		UpdateCaret();
-		SetSelection(m_ptCursorPos, m_ptCursorPos);
+		SetSelection(TextSelection(m_ptCursorPos, m_ptCursorPos));
 	}
 }
 
@@ -2573,14 +2557,14 @@ void TextView::OnTimer(UINT nIDEvent)
 		//	Fix changes
 		if (bChanged)
 		{
-			AdjustTextPoint(pt);
-			CPoint ptNewCursorPos = ClientToText(pt);
+			TextLocation ptNewCursorPos = ClientToText(pt);
+
 			if (ptNewCursorPos != m_ptCursorPos)
 			{
 				m_ptCursorPos = ptNewCursorPos;
 				UpdateCaret();
 			}
-			SetSelection(m_ptAnchor, m_ptCursorPos);
+			SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 		}
 	}
 }
@@ -2589,12 +2573,10 @@ void TextView::OnLButtonDblClk(const CPoint &point, UINT nFlags)
 {
 	if (!m_bDragSelection)
 	{
-		AdjustTextPoint(point);
-
 		m_ptCursorPos = ClientToText(point);
 		m_ptAnchor = m_ptCursorPos;
 
-		CPoint ptStart, ptEnd;
+		TextLocation ptStart, ptEnd;
 		if (m_ptCursorPos.y < m_ptAnchor.y ||
 			m_ptCursorPos.y == m_ptAnchor.y && m_ptCursorPos.x < m_ptAnchor.x)
 		{
@@ -2610,7 +2592,7 @@ void TextView::OnLButtonDblClk(const CPoint &point, UINT nFlags)
 		m_ptCursorPos = ptEnd;
 		UpdateCaret();
 		EnsureVisible(m_ptCursorPos);
-		SetSelection(ptStart, ptEnd);
+		SetSelection(TextSelection(ptStart, ptEnd));
 
 		SetCapture();
 		m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -2633,13 +2615,12 @@ void TextView::OnEditSelectAll()
 
 void TextView::OnRButtonDown(const CPoint &point, UINT nFlags)
 {
-	CPoint pt = point;
-	AdjustTextPoint(pt);
-	pt = ClientToText(pt);
+	auto pt = ClientToText(point);
+
 	if (!IsInsideSelBlock(pt))
 	{
 		m_ptAnchor = m_ptCursorPos = pt;
-		SetSelection(m_ptCursorPos, m_ptCursorPos);
+		SetSelection(TextSelection(m_ptCursorPos, m_ptCursorPos));
 		EnsureVisible(m_ptCursorPos);
 		UpdateCaret();
 	}
@@ -2647,11 +2628,11 @@ void TextView::OnRButtonDown(const CPoint &point, UINT nFlags)
 
 void TextView::Copy()
 {
-	if (m_ptSelStart == m_ptSelEnd)
+	if (_selection._start == _selection._end)
 		return;
 
 	PrepareSelBounds();
-	PutToClipboard(Combine(Text(m_ptDrawSelStart, m_ptDrawSelEnd)));
+	PutToClipboard(Combine(Text(m_ptDrawSel)));
 }
 
 bool TextView::TextInClipboard()
@@ -2727,16 +2708,15 @@ bool TextView::DeleteCurrentSelection(UndoGroup &ug)
 {
 	if (HasSelection())
 	{
-		CPoint ptSelStart, ptSelEnd;
-		GetSelection(ptSelStart, ptSelEnd);
+		auto sel = GetSelection();
+		auto pos = sel._start;
 
-		CPoint ptCursorPos = ptSelStart;
-		SetAnchor(ptCursorPos);
-		SetSelection(ptCursorPos, ptCursorPos);
-		SetCursorPos(ptCursorPos);
-		EnsureVisible(ptCursorPos);
+		SetAnchor(pos);
+		SetSelection(TextSelection(pos, pos));
+		SetCursorPos(pos);
+		EnsureVisible(pos);
 
-		_buffer.DeleteText(ug, ptSelStart, ptSelEnd);
+		_buffer.DeleteText(ug, pos);
 		return TRUE;
 	}
 	return FALSE;
@@ -2755,7 +2735,7 @@ void TextView::Paste()
 		{
 			auto location = _buffer.InsertText(ug, GetCursorPos(), text);
 			SetAnchor(location);
-			SetSelection(location, location);
+			SetSelection(TextSelection(location, location));
 			SetCursorPos(location);
 			EnsureVisible(location);
 		}
@@ -2766,18 +2746,17 @@ void TextView::Cut()
 {
 	if (QueryEditable() && HasSelection())
 	{
-		CPoint ptSelStart, ptSelEnd;
-		GetSelection(ptSelStart, ptSelEnd);
-		PutToClipboard(Combine(Text(ptSelStart, ptSelEnd)));
+		auto sel = GetSelection();		
+		PutToClipboard(Combine(Text(sel)));
 
-		CPoint ptCursorPos = ptSelStart;
-		SetAnchor(ptCursorPos);
-		SetSelection(ptCursorPos, ptCursorPos);
-		SetCursorPos(ptCursorPos);
-		EnsureVisible(ptCursorPos);
+		auto pos = sel._start;
+		SetAnchor(pos);
+		SetSelection(TextSelection(pos, pos));
+		SetCursorPos(pos);
+		EnsureVisible(pos);
 
 		UndoGroup ug(_buffer);
-		_buffer.DeleteText(ug, ptSelStart, ptSelEnd);
+		_buffer.DeleteText(ug, sel);
 	}
 }
 
@@ -2785,29 +2764,32 @@ void TextView::OnEditDelete()
 {
 	if (QueryEditable())
 	{
-		CPoint ptSelStart, ptSelEnd;
-		GetSelection(ptSelStart, ptSelEnd);
-		if (ptSelStart == ptSelEnd)
+		auto sel = GetSelection();
+
+		if (sel.empty())
 		{
-			if (ptSelEnd.x == _buffer[ptSelEnd.y].size())
+			if (sel._end.x == _buffer[sel._end.y].size())
 			{
-				if (ptSelEnd.y == _buffer.LineCount() - 1)
+				if (sel._end.y == _buffer.LineCount() - 1)
 					return;
-				ptSelEnd.y++;
-				ptSelEnd.x = 0;
+
+				sel._end.y++;
+				sel._end.x = 0;
 			}
 			else
-				ptSelEnd.x++;
+			{
+				sel._end.x++;
+			}
 		}
 
-		CPoint ptCursorPos = ptSelStart;
-		SetAnchor(ptCursorPos);
-		SetSelection(ptCursorPos, ptCursorPos);
-		SetCursorPos(ptCursorPos);
-		EnsureVisible(ptCursorPos);
+		auto pos = sel._start;
+		SetAnchor(pos);
+		SetSelection(TextSelection(pos, pos));
+		SetCursorPos(pos);
+		EnsureVisible(pos);
 
 		UndoGroup ug(_buffer);
-		_buffer.DeleteText(ug, ptSelStart, ptSelEnd);
+		_buffer.DeleteText(ug, sel);
 	}
 }
 
@@ -2826,7 +2808,7 @@ void TextView::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 			DeleteCurrentSelection(ug);
 
 			auto location = _buffer.InsertText(ug, GetCursorPos(), L'\n');
-			SetSelection(location, location);
+			SetSelection(TextSelection(location, location));
 			SetAnchor(location);
 			SetCursorPos(location);
 			EnsureVisible(location);
@@ -2844,16 +2826,14 @@ void TextView::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 			if (HasSelection())
 			{
-				CPoint ptSelStart, ptSelEnd;
-				GetSelection(ptSelStart, ptSelEnd);
-
-				location = ptSelStart;
+				auto sel = GetSelection();
+				location = sel._start;
 				DeleteCurrentSelection(ug);
 			}
 
 			location = _buffer.InsertText(ug, location, nChar);
 
-			SetSelection(location, location);
+			SetSelection(TextSelection(location, location));
 			SetAnchor(location);
 			SetCursorPos(location);
 			EnsureVisible(location);
@@ -2877,7 +2857,7 @@ void TextView::OnEditDeleteBack()
 			auto newPosition = _buffer.DeleteText(ug, ptCursorPos);
 
 			SetAnchor(newPosition);
-			SetSelection(newPosition, newPosition);
+			SetSelection(TextSelection(newPosition, newPosition));
 			SetCursorPos(newPosition);
 			EnsureVisible(newPosition);
 		}
@@ -2889,32 +2869,32 @@ void TextView::OnEditTab()
 	if (QueryEditable())
 	{
 		bool bTabify = FALSE;
-		CPoint ptSelStart, ptSelEnd;
+		TextSelection sel;
 
 		if (HasSelection())
 		{
-			GetSelection(ptSelStart, ptSelEnd);
-			bTabify = ptSelStart.y != ptSelEnd.y;
+			sel = GetSelection();
+			bTabify = sel._start.y != sel._end.y;
 		}
 
 		if (bTabify)
 		{
 			UndoGroup ug(_buffer);
 
-			int nStartLine = ptSelStart.y;
-			int nEndLine = ptSelEnd.y;
-			ptSelStart.x = 0;
+			int nStartLine = sel._start.y;
+			int nEndLine = sel._end.y;
+			sel._start.x = 0;
 
-			if (ptSelEnd.x > 0)
+			if (sel._end.x > 0)
 			{
-				if (ptSelEnd.y == _buffer.LineCount() - 1)
+				if (sel._end.y == _buffer.LineCount() - 1)
 				{
-					ptSelEnd.x = _buffer[ptSelEnd.y].size();
+					sel._end.x = _buffer[sel._end.y].size();
 				}
 				else
 				{
-					ptSelEnd.x = 0;
-					ptSelEnd.y++;
+					sel._end.x = 0;
+					sel._end.y++;
 				}
 			}
 			else
@@ -2922,15 +2902,15 @@ void TextView::OnEditTab()
 				nEndLine--;
 			}
 
-			SetSelection(ptSelStart, ptSelEnd);
-			SetCursorPos(ptSelEnd);
-			EnsureVisible(ptSelEnd);
+			SetSelection(sel);
+			SetCursorPos(sel._end);
+			EnsureVisible(sel._end);
 
 			static const TCHAR pszText [] = _T("\t");
 
 			for (int L = nStartLine; L <= nEndLine; L++)
 			{
-				_buffer.InsertText(ug, CPoint(0, L), pszText);
+				_buffer.InsertText(ug, TextLocation(0, L), pszText);
 			}
 
 			RecalcHorzScrollBar();
@@ -2942,7 +2922,7 @@ void TextView::OnEditTab()
 
 			auto location = _buffer.InsertText(ug, GetCursorPos(), L'\t');
 
-			SetSelection(location, location);
+			SetSelection(TextSelection(location, location));
 			SetAnchor(location);
 			SetCursorPos(location);
 			EnsureVisible(location);
@@ -2955,39 +2935,38 @@ void TextView::OnEditUntab()
 	if (QueryEditable())
 	{
 		bool bTabify = FALSE;
-		CPoint ptSelStart, ptSelEnd;
+		TextSelection sel;
+
 		if (HasSelection())
 		{
-			GetSelection(ptSelStart, ptSelEnd);
-			bTabify = ptSelStart.y != ptSelEnd.y;
+			sel = GetSelection();
+			bTabify = sel._start.y != sel._end.y;
 		}
 
 		if (bTabify)
 		{
 			UndoGroup ug(_buffer);
 
-			CPoint ptSelStart, ptSelEnd;
-			GetSelection(ptSelStart, ptSelEnd);
-			int nStartLine = ptSelStart.y;
-			int nEndLine = ptSelEnd.y;
-			ptSelStart.x = 0;
-			if (ptSelEnd.x > 0)
+			int nStartLine = sel._start.y;
+			int nEndLine = sel._end.y;
+			sel._start.x = 0;
+			if (sel._end.x > 0)
 			{
-				if (ptSelEnd.y == _buffer.LineCount() - 1)
+				if (sel._end.y == _buffer.LineCount() - 1)
 				{
-					ptSelEnd.x = _buffer[ptSelEnd.y].size();
+					sel._end.x = _buffer[sel._end.y].size();
 				}
 				else
 				{
-					ptSelEnd.x = 0;
-					ptSelEnd.y++;
+					sel._end.x = 0;
+					sel._end.y++;
 				}
 			}
 			else
 				nEndLine--;
-			SetSelection(ptSelStart, ptSelEnd);
-			SetCursorPos(ptSelEnd);
-			EnsureVisible(ptSelEnd);
+			SetSelection(sel);
+			SetCursorPos(sel._end);
+			EnsureVisible(sel._end);
 
 			for (int L = nStartLine; L <= nEndLine; L++)
 			{
@@ -3015,7 +2994,7 @@ void TextView::OnEditUntab()
 
 					if (nPos > 0)
 					{
-						_buffer.DeleteText(ug, CPoint(0, L), CPoint(nPos, L));
+						_buffer.DeleteText(ug, TextSelection(0, L, nPos, L));
 					}
 				}
 			}
@@ -3056,7 +3035,7 @@ void TextView::OnEditUntab()
 				assert(nCurrentOffset == nNewOffset);
 
 				ptCursorPos.x = I;
-				SetSelection(ptCursorPos, ptCursorPos);
+				SetSelection(TextSelection(ptCursorPos, ptCursorPos));
 				SetAnchor(ptCursorPos);
 				SetCursorPos(ptCursorPos);
 				EnsureVisible(ptCursorPos);
@@ -3205,7 +3184,7 @@ bool TextView::DoDropText(COleDataObject *pDataObject, const CPoint &ptClient)
 	//if (hData == nullptr)
 	//	return FALSE;
 
-	//CPoint ptDropPos = ClientToText(ptClient);
+	//TextLocation ptDropPos = ClientToText(ptClient);
 	//if (IsDraggingText() && IsInsideSelection(ptDropPos))
 	//{
 	//	SetAnchor(ptDropPos);
@@ -3221,7 +3200,7 @@ bool TextView::DoDropText(COleDataObject *pDataObject, const CPoint &ptClient)
 
 	//int x, y;
 	//_buffer.InsertText(this, ptDropPos.y, ptDropPos.x, A2T(pszText), y, x, CE_ACTION_DRAGDROP);
-	//CPoint ptCurPos(x, y);
+	//TextLocation ptCurPos(x, y);
 	//SetAnchor(ptDropPos);
 	//SetSelection(ptDropPos, ptCurPos);
 	//SetCursorPos(ptCurPos);
@@ -3274,7 +3253,7 @@ void TextView::OnDropSource(DROPEFFECT de)
 	if (m_bDraggingText && de == DROPEFFECT_MOVE)
 	{
 		UndoGroup ug(_buffer);
-		_buffer.DeleteText(ug, m_ptDraggedTextBegin, m_ptDraggedTextEnd);
+		_buffer.DeleteText(ug, m_ptDraggedText);
 	}
 }
 
@@ -3340,10 +3319,10 @@ bool TextView::ReplaceSelection(LPCTSTR pszNewText)
 
 	//DeleteCurrentSelection();
 
-	//CPoint ptCursorPos = GetCursorPos();
+	//TextLocation ptCursorPos = GetCursorPos();
 	//int x, y;
 	//_buffer.InsertText(this, ptCursorPos.y, ptCursorPos.x, pszNewText, y, x, CE_ACTION_REPLACE);
-	//CPoint ptEndOfBlock = CPoint(x, y);
+	//TextLocation ptEndOfBlock = TextLocation(x, y);
 	//SetAnchor(ptEndOfBlock);
 	//SetSelection(ptCursorPos, ptEndOfBlock);
 	//SetCursorPos(ptEndOfBlock);
@@ -3359,7 +3338,7 @@ void TextView::OnEditUndo()
 	{
 		auto location = _buffer.Undo();
 		SetAnchor(location);
-		SetSelection(location, location);
+		SetSelection(TextSelection(location, location));
 		SetCursorPos(location);
 		EnsureVisible(location);
 	}
@@ -3372,7 +3351,7 @@ void TextView::OnEditRedo()
 	{
 		auto location = _buffer.Redo();
 		SetAnchor(location);
-		SetSelection(location, location);
+		SetSelection(TextSelection(location, location));
 		SetCursorPos(location);
 		EnsureVisible(location);
 	}
@@ -3388,7 +3367,7 @@ void TextView::OnEditRedo()
 //		if (nAction == CE_ACTION_TYPING && _tcscmp(text.c_str(), _T("\r\n")) == 0 && !_overtype)
 //		{
 //			//	Enter stroke!
-//			CPoint ptCursorPos = GetCursorPos();
+//			TextLocation ptCursorPos = GetCursorPos();
 //			assert(ptCursorPos.y > 0);
 //
 //			//	Take indentation from the previos line
@@ -3409,7 +3388,7 @@ void TextView::OnEditRedo()
 //				int x, y;
 //				_buffer.InsertText(ug, ptCursorPos.y, ptCursorPos.x, pszInsertStr, y, x, CE_ACTION_AUTOINDENT);
 //
-//				CPoint pt(x, y);
+//				TextLocation pt(x, y);
 //				SetCursorPos(pt);
 //				SetSelection(pt, pt);
 //				SetAnchor(pt);
@@ -3518,7 +3497,7 @@ void TextView::EnableMenuItems(HMENU hMenu)
 
 		switch (id)
 		{
-		case ID_EDIT_COPY: enable = m_ptSelStart != m_ptSelEnd; break;
+		case ID_EDIT_COPY: enable = _selection._start != _selection._end; break;
 		case ID_EDIT_SELECT_ALL: enable = true; break;
 		case ID_EDIT_REPEAT: enable = m_bLastSearch; break;
 		case ID_EDIT_FIND_PREVIOUS: enable = m_bLastSearch; break;

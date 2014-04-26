@@ -44,10 +44,19 @@ static inline std::wstring Combine(const std::vector<std::wstring> &lines, const
 	auto first = true;
 	for (const auto &line : lines)
 	{
-		if (!first) result += crlf;
-		result += line;
-		first = false;
+		if (first)
+		{
+			result = line;
+			first = false;
+		}
+		else
+		{
+			result += crlf;
+			result += line;
+
+		}
 	}
+
 	return result;
 }
 

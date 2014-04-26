@@ -57,14 +57,16 @@ private:
 	};
 
 
-	CPoint	m_ptDropPos;
-	CPoint	m_ptSavedCaretPos;
-	CPoint	m_ptSavedSelStart, m_ptSavedSelEnd;
-	CPoint m_ptAnchor;
-	CPoint m_ptCursorPos;
-	CPoint m_ptDraggedTextBegin, m_ptDraggedTextEnd;
-	CPoint m_ptDrawSelStart, m_ptDrawSelEnd;
-	CPoint m_ptSelStart, m_ptSelEnd;
+	TextLocation m_ptDropPos;
+	TextLocation m_ptSavedCaretPos;	
+	TextLocation m_ptAnchor;
+	TextLocation m_ptCursorPos;
+
+	TextSelection m_ptSavedSel;
+	TextSelection m_ptDraggedText;
+	mutable TextSelection m_ptDrawSel;
+	TextSelection _selection;
+
 	CRect m_ptPageArea, m_rcPrintArea;
 	DWORD m_dwLastSearchFlags;
 	HACCEL m_hAccel;
@@ -103,22 +105,22 @@ private:
 	mutable int m_nScreenLines, m_nScreenChars;
 	mutable std::vector<DWORD> _parseCookies;
 	std::wstring _lastFindWhat;
+	CEditDropTargetImpl *m_pDropTarget;
 
 
 	COLORREF GetColor(int nColorIndex) const;
-	CPoint AdjustTextPoint(const CPoint &point) const;
-	CPoint ClientToText(const CPoint &point);
-	const CPoint &GetCursorPos() const { return m_ptCursorPos; };
-	CPoint TextToClient(const CPoint &point);
-	CPoint WordToLeft(CPoint pt);
-	CPoint WordToRight(CPoint pt);
+	TextLocation ClientToText(const CPoint &point);
+	const TextLocation &GetCursorPos() const { return m_ptCursorPos; };
+	CPoint TextToClient(const TextLocation &point);
+	TextLocation WordToLeft(TextLocation pt);
+	TextLocation WordToRight(TextLocation pt);
 	DROPEFFECT GetDropEffect();
 	DWORD GetParseCookie(int nLineIndex);
 	DWORD ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems);
 	HFONT GetFont(bool bItalic = FALSE, bool bBold = FALSE);
 	HGLOBAL PrepareDragData();
 	HINSTANCE GetResourceHandle();
-	bool HasSelection() const { return m_ptSelStart != m_ptSelEnd; };
+	bool HasSelection() const { return !_selection.empty(); };
 	bool DeleteCurrentSelection(UndoGroup &ug);
 	bool GetBold(int nColorIndex);
 	bool GetDisableDragAndDrop() const;
@@ -126,9 +128,9 @@ private:
 	bool GetItalic(int nColorIndex);
 	bool GetSelectionMargin() const;
 	bool GetViewTabs() const;
-	bool HighlightText(const CPoint &ptStartPos, int nLength);
-	bool IsInsideSelBlock(CPoint ptTextPos);
-	bool IsInsideSelection(const CPoint &ptTextPos);
+	bool HighlightText(const TextLocation &ptStartPos, int nLength);
+	bool IsInsideSelBlock(TextLocation ptTextPos);
+	bool IsInsideSelection(const TextLocation &ptTextPos);
 	bool OnPreparePrinting(CPrintInfo* pInfo);
 	bool PreTranslateMessage(MSG* pMsg);
 	bool PutToClipboard(const std::wstring &text);
@@ -144,19 +146,19 @@ private:
 	int GetTabSize() const;
 	int PrintLineHeight(HDC pdc, int nLine);
 	std::wstring ExpandChars(const std::wstring &text, int nOffset, int nCount);
-	std::vector<std::wstring> Text(const CPoint &ptStart, const CPoint &ptEnd) const;
+	std::vector<std::wstring> Text(const TextSelection &selection) const;
 	void CalcLineCharDim() const;
 	void Copy();
-	void DrawLineHelper(HDC pdc, CPoint &ptOrigin, const CRect &rcClip, int nColorIndex, LPCTSTR pszChars, int nOffset, int nCount, CPoint ptTextPos);
-	void DrawLineHelperImpl(HDC pdc, CPoint &ptOrigin, const CRect &rcClip, LPCTSTR pszChars, int nOffset, int nCount);
+	void DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, int nColorIndex, LPCTSTR pszChars, int nOffset, int nCount, TextLocation ptTextPos);
+	void DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, LPCTSTR pszChars, int nOffset, int nCount);
 	void DrawMargin(HDC pdc, const CRect &rect, int nLineIndex);
 	void DrawSingleLine(HDC pdc, const CRect &rect, int nLineIndex);
-	void EnsureVisible(CPoint pt);
+	void EnsureVisible(TextLocation pt);
 	void GetFont(LOGFONT &lf);
 	void GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace);
 	void GetPrintFooterText(int nPageNum, std::wstring &text);
 	void GetPrintHeaderText(int nPageNum, std::wstring &text);
-	void GetSelection(CPoint &ptStart, CPoint &ptEnd);
+	const TextSelection &GetSelection() const;
 	void HideCursor();
 	void InvalidateLine(int index);
 	void InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin = FALSE);	
@@ -178,7 +180,7 @@ private:
 	void OnEndPrinting(HDC pDC, CPrintInfo* pInfo);
 	void OnPrepareDC(HDC pDC, CPrintInfo* pInfo = nullptr);
 	void OnPrint(HDC pDC, CPrintInfo* pInfo);
-	void PrepareSelBounds();
+	void PrepareSelBounds() const;
 	void PrintFooter(HDC pdc, int nPageNum);
 	void PrintHeader(HDC pdc, int nPageNum);
 	void RecalcHorzScrollBar(bool bPositionOnly = FALSE);
@@ -188,10 +190,10 @@ private:
 	void ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar = true);
 	void ScrollToLine(int nNewTopLine, bool bTrackScrollBar = true);
 	void SelectAll();
-	void SetAnchor(const CPoint &ptNewAnchor);
-	void SetCursorPos(const CPoint &ptCursorPos);
+	void SetAnchor(const TextLocation &ptNewAnchor);
+	void SetCursorPos(const TextLocation &ptCursorPos);
 	void SetDisableDragAndDrop(bool bDDAD);
-	void SetSelection(const CPoint &ptStart, const CPoint &ptEnd);
+	void SetSelection(const TextSelection &sel);
 	void SetSelectionMargin(bool bSelMargin);
 	void SetTabSize(int nTabSize);
 	void SetViewTabs(bool bViewTabs);
@@ -382,74 +384,56 @@ public:
 		case ID_EDIT_REDO: OnEditRedo(); break;
 		}
 	}
-
-	void OnDestroy();
-	bool OnEraseBkgnd(HDC pDC);
-	void OnSize(UINT nType, int cx, int cy);
-	void OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
-	bool OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message);
-	void OnLButtonDown(const CPoint &point, UINT nFlags);
-	void OnSetFocus(CWindow* pOldWnd);
-	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
-	void OnLButtonUp(const CPoint &point, UINT nFlags);
-	void OnMouseMove(const CPoint &point, UINT nFlags);
-	void OnMouseWheel(const CPoint &point, int zDelta);
-	void OnTimer(UINT nIDEvent);
-	void OnKillFocus(CWindow* pNewWnd);
-	void OnLButtonDblClk(const CPoint &point, UINT nFlags);
-	void OnEditCopy();
-	void OnEditSelectAll();
-	void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags);
-	void OnRButtonDown(const CPoint &point, UINT nFlags);
-	void OnSysColorChange();
-	int OnCreate();
-
-	void OnEditFind();
-	void OnEditRepeat();
-	void OnEditFindPrevious();
-	void OnFilePageSetup();	
-
-	void ScrollUp();
-	void ScrollDown();
-	void ScrollLeft();
-	void ScrollRight();
-
-protected:
-	CEditDropTargetImpl *m_pDropTarget;
-	void Paste();
-	void Cut();
-
-public:
-
-	bool GetAutoIndent() const;
-	void SetAutoIndent(bool bAutoIndent);
-
-	bool GetOverwriteMode() const;
-	void SetOverwriteMode(bool bOvrMode = TRUE);
-
-	void ShowDropIndicator(const CPoint &point);
-	void HideDropIndicator();
-
+	
 	bool DoDropText(COleDataObject *pDataObject, const CPoint &ptClient);
-	void DoDragScroll(const CPoint &point);
-
+	bool GetAutoIndent() const;
+	bool GetOverwriteMode() const;
+	bool OnEraseBkgnd(HDC pDC);
+	bool OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message);
 	bool QueryEditable();
-
 	bool ReplaceSelection(LPCTSTR pszNewText);
+	int OnCreate();
+	void Cut();
+	void DoDragScroll(const CPoint &point);
 	void EnableMenuItems(HMENU h);
-
-
-protected:
-
-	void OnEditPaste();
+	void HideDropIndicator();
+	void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags);
+	void OnDestroy();
+	void OnEditCopy();
 	void OnEditCut();
 	void OnEditDelete();
 	void OnEditDeleteBack();
-	void OnEditUntab();
-	void OnEditTab();
-	void OnEditReplace();
-	void OnEditUndo();
+	void OnEditFind();
+	void OnEditFindPrevious();
+	void OnEditPaste();
 	void OnEditRedo();
-
+	void OnEditRepeat();
+	void OnEditReplace();
+	void OnEditSelectAll();
+	void OnEditTab();
+	void OnEditUndo();
+	void OnEditUntab();
+	void OnFilePageSetup();
+	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
+	void OnKillFocus(CWindow* pNewWnd);
+	void OnLButtonDblClk(const CPoint &point, UINT nFlags);
+	void OnLButtonDown(const CPoint &point, UINT nFlags);
+	void OnLButtonUp(const CPoint &point, UINT nFlags);
+	void OnMouseMove(const CPoint &point, UINT nFlags);
+	void OnMouseWheel(const CPoint &point, int zDelta);
+	void OnRButtonDown(const CPoint &point, UINT nFlags);
+	void OnSetFocus(CWindow* pOldWnd);
+	void OnSize(UINT nType, int cx, int cy);
+	void OnSysColorChange();
+	void OnTimer(UINT nIDEvent);
+	void OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
+	void Paste();
+	void ScrollDown();
+	void ScrollLeft();
+	void ScrollRight();
+	void ScrollUp();
+	void SetAutoIndent(bool bAutoIndent);
+	void SetOverwriteMode(bool bOvrMode = TRUE);
+	void ShowDropIndicator(const CPoint &point);
 };
 
