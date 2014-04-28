@@ -39,13 +39,12 @@ public:
 
 TextView::TextView(TextBuffer &buffer) : _buffer(buffer)
 {
-	m_hAccel = nullptr;
-	//m_pDropTarget = nullptr;
-	m_pCacheBitmap = nullptr;
+	_dropTarget = nullptr;
+	_backBuffer = nullptr;
 
 	memset(m_apFonts, 0, sizeof(HFONT) * 4);
 
-	m_bSelMargin = TRUE;
+	m_bSelMargin = true;
 	_buffer.AddView(this);
 
 	ResetView();
@@ -53,8 +52,8 @@ TextView::TextView(TextBuffer &buffer) : _buffer(buffer)
 
 TextView::~TextView()
 {
-	assert(m_hAccel == nullptr);
-	assert(m_pCacheBitmap == nullptr);
+	assert(_dropTarget == nullptr);
+	assert(_backBuffer == nullptr);
 }
 
 const TextSelection &TextView::GetSelection() const
@@ -73,7 +72,7 @@ int TextView::GetLineActualLength(int nLineIndex) const
 
 	if (_actualLineLengths[nLineIndex] == 0)
 	{
-		int nActualLength = 0;
+		auto nActualLength = 0;
 		const auto &line = _buffer[nLineIndex];
 
 		if (!line.empty())
@@ -116,7 +115,7 @@ void TextView::ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar)
 		ScrollWindow(nScrollChars * GetCharWidth(), 0, &rcScroll, &rcScroll);
 		UpdateWindow();
 		if (bTrackScrollBar)
-			RecalcHorzScrollBar(TRUE);
+			RecalcHorzScrollBar(true);
 	}
 }
 
@@ -129,11 +128,11 @@ void TextView::ScrollToLine(int nNewTopLine, bool bTrackScrollBar)
 		ScrollWindow(0, nScrollLines * GetLineHeight());
 		UpdateWindow();
 		if (bTrackScrollBar)
-			RecalcVertScrollBar(TRUE);
+			RecalcVertScrollBar(true);
 	}
 }
 
-std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nCount)
+std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nCount) const
 {
 	std::wstring result;
 
@@ -142,11 +141,11 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 		auto pszChars = text.c_str();
 		int tabSize = GetTabSize();
 		int nActualOffset = 0;
-		int I = 0;
+		int i = 0;
 
-		for (I = 0; I < nOffset; I++)
+		for (i = 0; i < nOffset; i++)
 		{
-			if (pszChars[I] == _T('\t'))
+			if (pszChars[i] == _T('\t'))
 				nActualOffset += (tabSize - nActualOffset % tabSize);
 			else
 				nActualOffset++;
@@ -156,9 +155,9 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 		int nLength = nCount;
 
 		int nTabCount = 0;
-		for (I = 0; I < nLength; I++)
+		for (i = 0; i < nLength; i++)
 		{
-			if (pszChars[I] == _T('\t'))
+			if (pszChars[i] == _T('\t'))
 				nTabCount++;
 		}
 
@@ -166,9 +165,9 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 
 		if (nTabCount > 0 || m_bViewTabs)
 		{
-			for (I = 0; I < nLength; I++)
+			for (i = 0; i < nLength; i++)
 			{
-				if (pszChars[I] == _T('\t'))
+				if (pszChars[i] == _T('\t'))
 				{
 					int nSpaces = tabSize - (nActualOffset + nCurPos) % tabSize;
 
@@ -187,7 +186,7 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 				}
 				else
 				{
-					result += (pszChars[I] == _T(' ') && m_bViewTabs) ? SPACE_CHARACTER : pszChars[I];
+					result += (pszChars[i] == _T(' ') && m_bViewTabs) ? SPACE_CHARACTER : pszChars[i];
 					nCurPos++;
 				}
 			}
@@ -202,25 +201,22 @@ std::wstring TextView::ExpandChars(const std::wstring &text, int nOffset, int nC
 	return result;
 }
 
-void TextView::DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, LPCTSTR pszChars, int nOffset, int nCount)
+void TextView::DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, const wchar_t * pszChars, int nOffset, int nCount) const
 {
-	assert(nCount >= 0);
 	if (nCount > 0)
 	{
 		auto line = ExpandChars(pszChars, nOffset, nCount);
-		int nWidth = rcClip.right - ptOrigin.x;
+		auto nWidth = rcClip.right - ptOrigin.x;
 
 		if (nWidth > 0)
 		{
-			int nCharWidth = GetCharWidth();
-			int nCount = line.size();
-			int nCountFit = nWidth / nCharWidth + 1;
+			auto nCharWidth = GetCharWidth();
+			auto nCount = line.size();
+			auto nCountFit = nWidth / nCharWidth + 1;
+
 			if (nCount > nCountFit)
 				nCount = nCountFit;
-#ifdef _DEBUG
-			//CSize sz = pdc->GetTextExtent(line, nCount);
-			//assert(sz.cx == m_nCharWidth * nCount);
-#endif
+
 			/*
 			CRect rcBounds = rcClip;
 			rcBounds.left = ptOrigin.x;
@@ -233,7 +229,7 @@ void TextView::DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &
 	}
 }
 
-void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, int nColorIndex, LPCTSTR pszChars, int nOffset, int nCount, TextLocation ptTextPos)
+void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, int nColorIndex, const wchar_t * pszChars, int nOffset, int nCount, TextLocation ptTextPos) const
 {
 	if (nCount > 0)
 	{
@@ -296,16 +292,16 @@ void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcCl
 	}
 }
 
-void TextView::GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace)
+void TextView::GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const
 {
-	bDrawWhitespace = TRUE;
+	bDrawWhitespace = true;
 	crText = RGB(255, 255, 255);
 	crBkgnd = CLR_NONE;
 	crText = CLR_NONE;
-	bDrawWhitespace = FALSE;
+	bDrawWhitespace = false;
 }
 
-DWORD TextView::GetParseCookie(int nLineIndex)
+DWORD TextView::GetParseCookie(int nLineIndex) const
 {
 	const auto invalid = (DWORD) -1;
 	int nLineCount = _buffer.LineCount();
@@ -321,21 +317,21 @@ DWORD TextView::GetParseCookie(int nLineIndex)
 	if (_parseCookies[nLineIndex] != invalid)
 		return _parseCookies[nLineIndex];
 
-	int L = nLineIndex;
-	while (L >= 0 && _parseCookies[L] == invalid)
-		L--;
-	L++;
+	int i = nLineIndex;
+	while (i >= 0 && _parseCookies[i] == invalid)
+		i--;
+	i++;
 
 	int nBlocks;
-	while (L <= nLineIndex)
+	while (i <= nLineIndex)
 	{
 		DWORD dwCookie = 0;
-		if (L > 0)
-			dwCookie = _parseCookies[L - 1];
+		if (i > 0)
+			dwCookie = _parseCookies[i - 1];
 		assert(dwCookie != (DWORD) -1);
-		_parseCookies[L] = ParseLine(dwCookie, L, nullptr, nBlocks);
-		assert(_parseCookies[L] != (DWORD) -1);
-		L++;
+		_parseCookies[i] = ParseLine(dwCookie, i, nullptr, nBlocks);
+		assert(_parseCookies[i] != (DWORD) -1);
+		i++;
 	}
 
 	return _parseCookies[nLineIndex];
@@ -344,8 +340,8 @@ DWORD TextView::GetParseCookie(int nLineIndex)
 static void FillSolidRect(HDC hdc, const CRect &rc, COLORREF clr)
 {
 	auto r = rc;
-	COLORREF clrOld = ::SetBkColor(hdc, clr);
-	ATLASSERT(clrOld != CLR_INVALID);
+	auto clrOld = ::SetBkColor(hdc, clr);
+
 	if (clrOld != CLR_INVALID)
 	{
 		::ExtTextOut(hdc, 0, 0, ETO_OPAQUE, r, nullptr, 0, nullptr);
@@ -359,7 +355,7 @@ static void FillSolidRect(HDC hdc, int l, int t, int w, int h, COLORREF clr)
 	FillSolidRect(hdc, rc, clr);
 }
 
-void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
+void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
 {
 	if (nLineIndex == -1)
 	{
@@ -369,9 +365,10 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 	else
 	{
 		//	Acquire the background color for the current line
-		bool bDrawWhitespace = FALSE;
+		auto bDrawWhitespace = false;
 		COLORREF crBkgnd, crText;
 		GetLineColors(nLineIndex, crBkgnd, crText, bDrawWhitespace);
+
 		if (crBkgnd == CLR_NONE)
 			crBkgnd = GetColor(COLORINDEX_BKGND);
 
@@ -392,9 +389,10 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 
 		//	Parse the line
 		auto nLength = line.size();
-		DWORD dwCookie = GetParseCookie(nLineIndex - 1);
-		TEXTBLOCK *pBuf = (TEXTBLOCK *) _alloca(sizeof(TEXTBLOCK) * nLength * 3);
-		int nBlocks = 0;
+		auto dwCookie = GetParseCookie(nLineIndex - 1);
+		auto pBuf = (TEXTBLOCK *) _alloca(sizeof(TEXTBLOCK) * nLength * 3);
+		auto nBlocks = 0;
+
 		_parseCookies[nLineIndex] = ParseLine(dwCookie, nLineIndex, pBuf, nBlocks);
 		assert(_parseCookies[nLineIndex] != (DWORD) -1);
 
@@ -403,7 +401,8 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 		SetBkColor(pdc, crBkgnd);
 		if (crText != CLR_NONE)
 			SetTextColor(pdc, crText);
-		bool bColorSet = FALSE;
+
+		auto bColorSet = false;
 		auto pszChars = line.c_str();
 
 		if (nBlocks > 0)
@@ -413,15 +412,15 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 				SetTextColor(pdc, GetColor(COLORINDEX_NORMALTEXT));
 			SelectObject(pdc, GetFont(GetItalic(COLORINDEX_NORMALTEXT), GetBold(COLORINDEX_NORMALTEXT)));
 			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, TextLocation(0, nLineIndex));
-			for (int I = 0; I < nBlocks - 1; I++)
+			for (int i = 0; i < nBlocks - 1; i++)
 			{
-				assert(pBuf[I].m_nCharPos >= 0 && pBuf[I].m_nCharPos <= nLength);
+				assert(pBuf[i].m_nCharPos >= 0 && pBuf[i].m_nCharPos <= nLength);
 				if (crText == CLR_NONE)
-					SetTextColor(pdc, GetColor(pBuf[I].m_nColorIndex));
-				SelectObject(pdc, GetFont(GetItalic(pBuf[I].m_nColorIndex), GetBold(pBuf[I].m_nColorIndex)));
-				DrawLineHelper(pdc, origin, rc, pBuf[I].m_nColorIndex, pszChars,
-					pBuf[I].m_nCharPos, pBuf[I + 1].m_nCharPos - pBuf[I].m_nCharPos,
-					TextLocation(pBuf[I].m_nCharPos, nLineIndex));
+					SetTextColor(pdc, GetColor(pBuf[i].m_nColorIndex));
+				SelectObject(pdc, GetFont(GetItalic(pBuf[i].m_nColorIndex), GetBold(pBuf[i].m_nColorIndex)));
+				DrawLineHelper(pdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
+					pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
+					TextLocation(pBuf[i].m_nCharPos, nLineIndex));
 			}
 			assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
 			if (crText == CLR_NONE)
@@ -441,15 +440,14 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex)
 		}
 
 		//	Draw whitespaces to the left of the text
-		CRect frect = rc;
+		auto frect = rc;
 		if (origin.x > frect.left)
 			frect.left = origin.x;
 		if (frect.right > frect.left)
 		{
 			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(nLength, nLineIndex)))
 			{
-				FillSolidRect(pdc, frect.left, frect.top, GetCharWidth(), frect.Height(),
-					GetColor(COLORINDEX_SELBKGND));
+				FillSolidRect(pdc, frect.left, frect.top, GetCharWidth(), frect.Height(), GetColor(COLORINDEX_SELBKGND));
 				frect.left += GetCharWidth();
 			}
 			if (frect.right > frect.left)
@@ -518,7 +516,7 @@ COLORREF TextView::GetColor(int nColorIndex) const
 //}
 
 
-void TextView::DrawMargin(HDC pdc, const CRect &rect, int nLineIndex)
+void TextView::DrawMargin(HDC pdc, const CRect &rect, int nLineIndex) const
 {
 	if (!m_bSelMargin)
 	{
@@ -530,14 +528,14 @@ void TextView::DrawMargin(HDC pdc, const CRect &rect, int nLineIndex)
 	}
 }
 
-bool TextView::IsInsideSelBlock(TextLocation ptTextPos)
+bool TextView::IsInsideSelBlock(TextLocation ptTextPos) const
 {
 	if (ptTextPos.y < m_ptDrawSel._start.y)
-		return FALSE;
+		return false;
 	if (ptTextPos.y > m_ptDrawSel._end.y)
-		return FALSE;
+		return false;
 	if (ptTextPos.y < m_ptDrawSel._end.y && ptTextPos.y > m_ptDrawSel._start.y)
-		return TRUE;
+		return true;
 	if (m_ptDrawSel._start.y < m_ptDrawSel._end.y)
 	{
 		if (ptTextPos.y == m_ptDrawSel._end.y)
@@ -549,7 +547,7 @@ bool TextView::IsInsideSelBlock(TextLocation ptTextPos)
 	return ptTextPos.x >= m_ptDrawSel._start.x && ptTextPos.x < m_ptDrawSel._end.x;
 }
 
-bool TextView::IsInsideSelection(const TextLocation &ptTextPos)
+bool TextView::IsInsideSelection(const TextLocation &ptTextPos) const
 {
 	PrepareSelBounds();
 	return IsInsideSelBlock(ptTextPos);
@@ -574,27 +572,26 @@ void TextView::OnDraw(HDC pdc)
 	CRect rcClient;
 	GetClientRect(rcClient);
 
-	int nLineCount = _buffer.LineCount();
-	int nLineHeight = GetLineHeight();
+	auto nLineCount = _buffer.LineCount();
+	auto nLineHeight = GetLineHeight();
 	PrepareSelBounds();
 
-	HDC cacheDC;
-	cacheDC = CreateCompatibleDC(pdc);
+	auto cacheDC = CreateCompatibleDC(pdc);
 
-	if (m_pCacheBitmap == nullptr)
+	if (_backBuffer == nullptr)
 	{
-		m_pCacheBitmap = CreateCompatibleBitmap(pdc, rcClient.Width(), nLineHeight);
+		_backBuffer = CreateCompatibleBitmap(pdc, rcClient.Width(), nLineHeight);
 	}
 
-	auto pOldBitmap = SelectObject(cacheDC, m_pCacheBitmap);
+	auto pOldBitmap = SelectObject(cacheDC, _backBuffer);
 
-	CRect rcLine;
-	rcLine = rcClient;
+	auto rcLine = rcClient;
 	rcLine.bottom = rcLine.top + nLineHeight;
 	CRect rcCacheMargin(0, 0, GetMarginWidth(), nLineHeight);
 	CRect rcCacheLine(GetMarginWidth(), 0, rcLine.Width(), nLineHeight);
 
-	int nCurrentLine = m_nTopLine;
+	auto nCurrentLine = m_nTopLine;
+
 	while (rcLine.top < rcClient.bottom)
 	{
 		if (nCurrentLine < nLineCount)
@@ -620,7 +617,7 @@ void TextView::OnDraw(HDC pdc)
 
 void TextView::ResetView()
 {
-	m_bAutoIndent = TRUE;
+	m_bAutoIndent = true;
 	m_nTopLine = 0;
 	m_nOffsetChar = 0;
 	m_nLineHeight = -1;
@@ -633,30 +630,21 @@ void TextView::ResetView()
 	m_ptAnchor.x = 0;
 	m_ptAnchor.y = 0;
 
-	for (int I = 0; I < 4; I++)
-	{
-		if (m_apFonts[I] != nullptr)
-		{
-			DeleteObject(m_apFonts[I]);
-			m_apFonts[I] = nullptr;
-		}
-	}
-
 	_parseCookies.clear();
 	_actualLineLengths.clear();
 
 	m_ptCursorPos.x = 0;
 	m_ptCursorPos.y = 0;
 	_selection._start = _selection._end = m_ptCursorPos;
-	m_bDragSelection = FALSE;
+	m_bDragSelection = false;
 	if (::IsWindow(m_hWnd))
 		UpdateCaret();
-	m_bLastSearch = FALSE;
-	m_bShowInactiveSelection = FALSE;
-	m_bPrintHeader = FALSE;
-	m_bPrintFooter = TRUE;
+	m_bLastSearch = false;
+	m_bShowInactiveSelection = false;
+	m_bPrintHeader = false;
+	m_bPrintFooter = true;
 
-	m_bMultipleSearch = FALSE;	// More search
+	m_bMultipleSearch = false;	// More search
 }
 
 void TextView::UpdateCaret()
@@ -696,21 +684,20 @@ void TextView::SetTabSize(int tabSize)
 	}
 }
 
-HFONT TextView::GetFont(bool bItalic /*= FALSE*/, bool bBold /*= FALSE*/)
+HFONT TextView::GetFont(bool bItalic /*= false*/, bool bBold /*= false*/) const
 {
 	int nIndex = 0;
-	if (bBold)
-		nIndex |= 1;
-	if (bItalic)
-		nIndex |= 2;
+	if (bBold) nIndex |= 1;
+	if (bItalic) nIndex |= 2;
 
 	if (m_apFonts[nIndex] == nullptr)
 	{
-		m_apFonts[nIndex] = nullptr;
-		m_lfBaseFont.lfWeight = bBold ? FW_BOLD : FW_NORMAL;
-		m_lfBaseFont.lfItalic = (BYTE) bItalic;
-		m_apFonts[nIndex] = ::CreateFontIndirect(&m_lfBaseFont);
+		auto f = _font;
+		f.lfWeight = bBold ? FW_BOLD : FW_NORMAL;
+		f.lfItalic = (BYTE) bItalic;
+		m_apFonts[nIndex] = ::CreateFontIndirect(&f);
 	}
+
 	return m_apFonts[nIndex];
 }
 
@@ -720,12 +707,14 @@ void TextView::CalcLineCharDim() const
 	HDC pdc = pThis->GetDC();
 
 	auto pOldFont = SelectObject(pdc, pThis->GetFont());
-	CSize szCharExt;
-	GetTextExtentExPoint(pdc, _T("X"), 1, 1, nullptr, nullptr, &szCharExt);
-	m_nLineHeight = szCharExt.cy;
+	
+	CSize extent;
+	GetTextExtentExPoint(pdc, _T("X"), 1, 1, nullptr, nullptr, &extent);
+
+	m_nLineHeight = extent.cy;
 	if (m_nLineHeight < 1)
 		m_nLineHeight = 1;
-	m_nCharWidth = szCharExt.cx;
+	m_nCharWidth = extent.cx;
 	/*
 	TEXTMETRIC tm;
 	if (pdc->GetTextMetrics(&tm))
@@ -759,9 +748,9 @@ int TextView::GetMaxLineLength() const
 		m_nMaxLineLength = 0;
 		auto nLineCount = _buffer.LineCount();
 
-		for (int I = 0; I < nLineCount; I++)
+		for (int i = 0; i < nLineCount; i++)
 		{
-			int nActualLength = GetLineActualLength(I);
+			int nActualLength = GetLineActualLength(i);
 
 			if (m_nMaxLineLength < nActualLength)
 				m_nMaxLineLength = nActualLength;
@@ -777,9 +766,9 @@ void TextView::OnPrepareDC(HDC pDC, CPrintInfo* pInfo)
 
 	if (pInfo != nullptr)
 	{
-	pInfo->m_bContinuePrinting = TRUE;
-	if (m_pnPages != nullptr && (int) pInfo->m_nCurPage > m_nPrintPages)
-	pInfo->m_bContinuePrinting = FALSE;
+	pInfo->m_bContinuePrinting = true;
+	if (_pages != nullptr && (int) pInfo->m_nCurPage > _pages.size())
+	pInfo->m_bContinuePrinting = false;
 	}*/
 }
 
@@ -801,110 +790,101 @@ int TextView::PrintLineHeight(HDC pdc, int nLine)
 
 	auto expanded = ExpandChars(line._text, 0, line.size());
 
-	CRect rcPrintArea = m_rcPrintArea;
+	auto rcPrintArea = m_rcPrintArea;
 	DrawText(pdc, expanded.c_str(), -1, rcPrintArea, DT_LEFT | DT_NOPREFIX | DT_TOP | DT_WORDBREAK | DT_CALCRECT);
 	return rcPrintArea.Height();
 }
 
-void TextView::GetPrintHeaderText(int nPageNum, std::wstring &text)
+std::wstring TextView::GetPrintHeaderText(int nPageNum) const
 {
 	assert(m_bPrintHeader);
-	text = _T("");
+	return std::wstring();
 }
 
-void TextView::GetPrintFooterText(int nPageNum, std::wstring &text)
+std::wstring TextView::GetPrintFooterText(int nPageNum) const
 {
 	assert(m_bPrintFooter);
-	//TODO text.Format(_T("Page %d/%d"), nPageNum, m_nPrintPages);
+	return String::Format(L"Page %d of %d", nPageNum, _pages.size());
 }
 
-void TextView::PrintHeader(HDC pdc, int nPageNum)
+void TextView::PrintHeader(HDC pdc, int nPageNum) const
 {
-	CRect rcHeader = m_rcPrintArea;
+	auto rcHeader = m_rcPrintArea;
 	rcHeader.bottom = rcHeader.top;
 	rcHeader.top -= (m_nPrintLineHeight + m_nPrintLineHeight / 2);
 
-	std::wstring text;
-	GetPrintHeaderText(nPageNum, text);
+	auto text = GetPrintHeaderText(nPageNum);
 	if (!text.empty())
 		DrawText(pdc, text.c_str(), -1, rcHeader, DT_CENTER | DT_NOPREFIX | DT_TOP | DT_SINGLELINE);
 }
 
-void TextView::PrintFooter(HDC pdc, int nPageNum)
+void TextView::PrintFooter(HDC pdc, int nPageNum) const
 {
-	CRect rcFooter = m_rcPrintArea;
+	auto rcFooter = m_rcPrintArea;
 	rcFooter.top = rcFooter.bottom;
 	rcFooter.bottom += (m_nPrintLineHeight + m_nPrintLineHeight / 2);
 
-	std::wstring text;
-	GetPrintFooterText(nPageNum, text);
+	auto text= GetPrintFooterText(nPageNum);
+
 	if (!text.empty())
 		DrawText(pdc, text.c_str(), -1, &rcFooter, DT_CENTER | DT_NOPREFIX | DT_BOTTOM | DT_SINGLELINE);
 }
 
 void TextView::RecalcPageLayouts(HDC pdc, CPrintInfo *pInfo)
 {
+	// http://msdn.microsoft.com/en-us/library/ms646829(v=vs.85).aspx#setting_up
+
 	/*m_ptPageArea = pInfo->m_rectDraw;
 	m_ptPageArea.NormalizeRect();
 
-	m_nPrintLineHeight = pdc->GetTextExtent(_T("X")).cy;
+	CSize extent;
+	GetTextExtentExPoint(pdc, _T("X"), 1, 1, nullptr, nullptr, &extent);
+	m_nPrintLineHeight = extent.cy;
 
 	m_rcPrintArea = m_ptPageArea;
 	CSize szTopLeft, szBottomRight;
-	CWinApp *pApp = AfxGetApp();
-	assert(pApp != nullptr);
+
 	szTopLeft.cx = pApp->GetProfileInt(REG_PAGE_SUBKEY, REG_MARGIN_LEFT, DEFAULT_PRINT_MARGIN);
 	szBottomRight.cx = pApp->GetProfileInt(REG_PAGE_SUBKEY, REG_MARGIN_RIGHT, DEFAULT_PRINT_MARGIN);
 	szTopLeft.cy = pApp->GetProfileInt(REG_PAGE_SUBKEY, REG_MARGIN_TOP, DEFAULT_PRINT_MARGIN);
 	szBottomRight.cy = pApp->GetProfileInt(REG_PAGE_SUBKEY, REG_MARGIN_BOTTOM, DEFAULT_PRINT_MARGIN);
+
 	pdc->HIMETRICtoLP(&szTopLeft);
 	pdc->HIMETRICtoLP(&szBottomRight);
+
 	m_rcPrintArea.left += szTopLeft.cx;
 	m_rcPrintArea.right -= szBottomRight.cx;
 	m_rcPrintArea.top += szTopLeft.cy;
 	m_rcPrintArea.bottom -= szBottomRight.cy;
 	if (m_bPrintHeader)
-	m_rcPrintArea.top += m_nPrintLineHeight + m_nPrintLineHeight / 2;
+		m_rcPrintArea.top += m_nPrintLineHeight + m_nPrintLineHeight / 2;
 	if (m_bPrintFooter)
-	m_rcPrintArea.bottom += m_nPrintLineHeight + m_nPrintLineHeight / 2;
+		m_rcPrintArea.bottom += m_nPrintLineHeight + m_nPrintLineHeight / 2;
 
-	int nLimit = 32;
-	m_nPrintPages = 1;
-	//m_pnPages = new int[nLimit];
-	m_pnPages[0] = 0;
+	_pages.clear();
 
 	int nLineCount = _buffer.LineCount();
 	int nLine = 1;
 	int y = m_rcPrintArea.top + PrintLineHeight(pdc, 0);
 	while (nLine < nLineCount)
 	{
-	int nHeight = PrintLineHeight(pdc, nLine);
-	if (y + nHeight <= m_rcPrintArea.bottom)
-	{
-	y += nHeight;
-	}
-	else
-	{
-	assert(nLimit >= m_nPrintPages);
-	if (nLimit <= m_nPrintPages)
-	{
-	nLimit += 32;
-	//int *pnNewPages = new int[nLimit];
-	memcpy(pnNewPages, m_pnPages, sizeof(int) * m_nPrintPages);
-	delete m_pnPages;
-	m_pnPages = pnNewPages;
-	}
-	assert(nLimit > m_nPrintPages);
-	m_pnPages[m_nPrintPages ++] = nLine;
-	y = m_rcPrintArea.top + nHeight;
-	}
-	nLine ++;
+		int nHeight = PrintLineHeight(pdc, nLine);
+		if (y + nHeight <= m_rcPrintArea.bottom)
+		{
+			y += nHeight;
+		}
+		else
+		{
+			_pages.push_back(nLine);
+			y = m_rcPrintArea.top + nHeight;
+		}
+		nLine++;
 	}*/
 }
 
 void TextView::OnBeginPrinting(HDC pdc, CPrintInfo *pInfo)
 {
-	/*assert(m_pnPages == nullptr);
+	/*assert(_pages == nullptr);
 	assert(m_pPrintFont == nullptr);
 	HFONT pDisplayFont = GetFont();
 
@@ -934,29 +914,29 @@ void TextView::OnEndPrinting(HDC pdc, CPrintInfo *pInfo)
 	delete m_pPrintFont;
 	m_pPrintFont = nullptr;
 	}
-	if (m_pnPages != nullptr)
+	if (_pages != nullptr)
 	{
-	delete m_pnPages;
-	m_pnPages = nullptr;
+	delete _pages;
+	_pages = nullptr;
 	}
-	m_nPrintPages = 0;
+	_pages.size() = 0;
 	m_nPrintLineHeight = 0;*/
 }
 
 void TextView::OnPrint(HDC pdc, CPrintInfo* pInfo)
 {
-	/*if (m_pnPages == nullptr)
+	/*if (_pages == nullptr)
 	{
 	RecalcPageLayouts(pdc, pInfo);
-	assert(m_pnPages != nullptr);
+	assert(_pages != nullptr);
 	}
 
-	assert(pInfo->m_nCurPage >= 1 && (int) pInfo->m_nCurPage <= m_nPrintPages);
-	int nLine = m_pnPages[pInfo->m_nCurPage - 1];
+	assert(pInfo->m_nCurPage >= 1 && (int) pInfo->m_nCurPage <= _pages.size());
+	int nLine = _pages[pInfo->m_nCurPage - 1];
 	int nEndLine = _buffer.LineCount();
-	if ((int) pInfo->m_nCurPage < m_nPrintPages)
-	nEndLine = m_pnPages[pInfo->m_nCurPage];
-	TRACE(_T("Printing page %d of %d, lines %d - %d\n"), pInfo->m_nCurPage, m_nPrintPages,
+	if ((int) pInfo->m_nCurPage < _pages.size())
+	nEndLine = _pages[pInfo->m_nCurPage];
+	TRACE(_T("Printing page %d of %d, lines %d - %d\n"), pInfo->m_nCurPage, _pages.size(),
 	nLine, nEndLine - 1);
 
 	if (m_bPrintHeader)
@@ -992,14 +972,14 @@ int TextView::GetScreenLines() const
 	return m_nScreenLines;
 }
 
-bool TextView::GetItalic(int nColorIndex)
+bool TextView::GetItalic(int nColorIndex) const
 {
-	return FALSE;
+	return false;
 }
 
-bool TextView::GetBold(int nColorIndex)
+bool TextView::GetBold(int nColorIndex) const
 {
-	return FALSE;
+	return false;
 }
 
 int TextView::GetScreenChars() const
@@ -1015,42 +995,39 @@ int TextView::GetScreenChars() const
 
 void TextView::OnDestroy()
 {
-	/*if (m_pDropTarget != nullptr)
+	/*if (_dropTarget != nullptr)
 	{
-	m_pDropTarget->Revoke();
-	delete m_pDropTarget;
-	m_pDropTarget = nullptr;
+	_dropTarget->Revoke();
+	delete _dropTarget;
+	_dropTarget = nullptr;
 	}*/
 
-	m_hAccel = nullptr;
-
-
-	for (int I = 0; I < 4; I++)
+	for (int i = 0; i < 4; i++)
 	{
-		if (m_apFonts[I] != nullptr)
+		if (m_apFonts[i] != nullptr)
 		{
-			DeleteObject(m_apFonts[I]);
-			m_apFonts[I] = nullptr;
+			DeleteObject(m_apFonts[i]);
+			m_apFonts[i] = nullptr;
 		}
 	}
-	if (m_pCacheBitmap != nullptr)
+	if (_backBuffer != nullptr)
 	{
-		DeleteObject(m_pCacheBitmap);
-		m_pCacheBitmap = nullptr;
+		DeleteObject(_backBuffer);
+		_backBuffer = nullptr;
 	}
 }
 
 bool TextView::OnEraseBkgnd(HDC pdc)
 {
-	return TRUE;
+	return true;
 }
 
 void TextView::OnSize(UINT nType, int cx, int cy)
 {
-	if (m_pCacheBitmap != nullptr)
+	if (_backBuffer != nullptr)
 	{
-		DeleteObject(m_pCacheBitmap);
-		m_pCacheBitmap = nullptr;
+		DeleteObject(_backBuffer);
+		_backBuffer = nullptr;
 	}
 
 	m_nScreenLines = -1;
@@ -1060,7 +1037,7 @@ void TextView::OnSize(UINT nType, int cx, int cy)
 }
 
 
-void TextView::RecalcVertScrollBar(bool bPositionOnly /*= FALSE*/)
+void TextView::RecalcVertScrollBar(bool bPositionOnly /*= false*/)
 {
 	SCROLLINFO si;
 	si.cbSize = sizeof(si);
@@ -1135,7 +1112,7 @@ void TextView::OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
 	ScrollToLine(nNewTopLine);
 }
 
-void TextView::RecalcHorzScrollBar(bool bPositionOnly /*= FALSE*/)
+void TextView::RecalcHorzScrollBar(bool bPositionOnly /*= false*/)
 {
 	//	Again, we cannot use nPos because it's 16-bit
 	SCROLLINFO si;
@@ -1206,7 +1183,7 @@ void TextView::OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
 		nNewOffset = nMaxLineLength - 1;
 	if (nNewOffset < 0)
 		nNewOffset = 0;
-	ScrollToChar(nNewOffset, TRUE);
+	ScrollToChar(nNewOffset, true);
 	UpdateCaret();
 }
 
@@ -1242,12 +1219,12 @@ bool TextView::OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message)
 				::SetCursor(beam);
 			}
 		}
-		return TRUE;
+		return true;
 	}
-	return FALSE;
+	return false;
 }
 
-TextLocation TextView::ClientToText(const CPoint &point)
+TextLocation TextView::ClientToText(const CPoint &point) const
 {
 	int nLineCount = _buffer.LineCount();
 
@@ -1290,7 +1267,7 @@ TextLocation TextView::ClientToText(const CPoint &point)
 }
 
 
-CPoint TextView::TextToClient(const TextLocation &point)
+CPoint TextView::TextToClient(const TextLocation &point) const
 {
 	const auto &line = _buffer[point.y];
 
@@ -1315,9 +1292,9 @@ CPoint TextView::TextToClient(const TextLocation &point)
 	return pt;
 }
 
-void TextView::InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin /*= FALSE*/)
+void TextView::InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin /*= false*/)
 {
-	bInvalidateMargin = TRUE;
+	bInvalidateMargin = true;
 
 	CRect rcInvalid;
 	GetClientRect(&rcInvalid);
@@ -1343,7 +1320,7 @@ void TextView::InvalidateLines(int nLine1, int nLine2, bool bInvalidateMargin /*
 		rcInvalid.bottom = (nLine2 - m_nTopLine + 1) * GetLineHeight();
 	}
 
-	InvalidateRect(rcInvalid, FALSE);
+	InvalidateRect(rcInvalid, false);
 }
 
 void TextView::SetSelection(const TextSelection &sel)
@@ -1356,7 +1333,7 @@ void TextView::SetSelection(const TextSelection &sel)
 
 void TextView::OnSetFocus(CWindow* pOldWnd)
 {
-	m_bFocused = TRUE;
+	m_bFocused = true;
 	if (_selection._start != _selection._end)
 		InvalidateLines(_selection._start.y, _selection._end.y);
 	UpdateCaret();
@@ -1370,9 +1347,9 @@ int TextView::CalculateActualOffset(int nLineIndex, int nCharIndex)
 	int nOffset = 0;
 	int tabSize = GetTabSize();
 
-	for (int I = 0; I < nCharIndex; I++)
+	for (int i = 0; i < nCharIndex; i++)
 	{
-		if (line[I] == _T('\t'))
+		if (line[i] == _T('\t'))
 			nOffset += (tabSize - nOffset % tabSize);
 		else
 			nOffset++;
@@ -1391,9 +1368,9 @@ int TextView::ApproxActualOffset(int nLineIndex, int nOffset)
 	int nCurrentOffset = 0;
 	int tabSize = GetTabSize();
 
-	for (int I = 0; I < nLength; I++)
+	for (int i = 0; i < nLength; i++)
 	{
-		if (line[I] == _T('\t'))
+		if (line[i] == _T('\t'))
 		{
 			nCurrentOffset += (tabSize - nCurrentOffset % tabSize);
 		}
@@ -1405,8 +1382,8 @@ int TextView::ApproxActualOffset(int nLineIndex, int nOffset)
 		if (nCurrentOffset >= nOffset)
 		{
 			if (nOffset <= nCurrentOffset - tabSize / 2)
-				return I;
-			return I + 1;
+				return i;
+			return i + 1;
 		}
 	}
 	return nLength;
@@ -1462,7 +1439,7 @@ void TextView::EnsureVisible(TextLocation pt)
 
 void TextView::OnKillFocus(CWindow* pNewWnd)
 {
-	m_bFocused = FALSE;
+	m_bFocused = false;
 	UpdateCaret();
 	if (_selection._start != _selection._end)
 		InvalidateLines(_selection._start.y, _selection._end.y);
@@ -1470,7 +1447,7 @@ void TextView::OnKillFocus(CWindow* pNewWnd)
 	{
 		ReleaseCapture();
 		KillTimer(m_nDragSelTimer);
-		m_bDragSelection = FALSE;
+		m_bDragSelection = false;
 	}
 }
 
@@ -1504,7 +1481,7 @@ void TextView::InvalidateView()
 	ResetView();
 	RecalcVertScrollBar();
 	RecalcHorzScrollBar();
-	Invalidate(FALSE);
+	Invalidate(false);
 }
 
 HINSTANCE TextView::GetResourceHandle()
@@ -1514,28 +1491,26 @@ HINSTANCE TextView::GetResourceHandle()
 
 int TextView::OnCreate()
 {
-	memset(&m_lfBaseFont, 0, sizeof(m_lfBaseFont));
-	lstrcpy(m_lfBaseFont.lfFaceName, _T("FixedSys"));
-	m_lfBaseFont.lfHeight = 0;
-	m_lfBaseFont.lfWeight = FW_NORMAL;
-	m_lfBaseFont.lfItalic = FALSE;
-	m_lfBaseFont.lfCharSet = DEFAULT_CHARSET;
-	m_lfBaseFont.lfOutPrecision = OUT_DEFAULT_PRECIS;
-	m_lfBaseFont.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-	m_lfBaseFont.lfQuality = DEFAULT_QUALITY;
-	m_lfBaseFont.lfPitchAndFamily = DEFAULT_PITCH;
+	memset(&_font, 0, sizeof(_font));
+	_font.lfWeight = FW_NORMAL;
+	_font.lfCharSet = ANSI_CHARSET;
+	_font.lfOutPrecision = OUT_DEFAULT_PRECIS;
+	_font.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+	_font.lfQuality = CLEARTYPE_NATURAL_QUALITY;
+	_font.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+	wcscpy_s(_font.lfFaceName, L"Consolas");
 
-	assert(m_hAccel == nullptr);
-	m_hAccel = ::LoadAccelerators(GetResourceHandle(), MAKEINTRESOURCE(IDC_RETHINKIFY));
-	assert(m_hAccel != nullptr);
+	m_nScreenLines = -1;
+	m_nScreenChars = -1;
+	m_nCharWidth = -1;
+	m_nLineHeight = -1;
 
-	assert(m_pDropTarget == nullptr);
-	/*m_pDropTarget = new CEditDropTargetImpl(this);
-	if (! m_pDropTarget->Register(this))
+	/*_dropTarget = new CEditDropTargetImpl(this);
+	if (! _dropTarget->Register(this))
 	{
 	TRACE0("Warning: Unable to register drop target for TextView.\n");
-	delete m_pDropTarget;
-	m_pDropTarget = nullptr;
+	delete _dropTarget;
+	_dropTarget = nullptr;
 	}*/
 
 	return 0;
@@ -1544,20 +1519,6 @@ int TextView::OnCreate()
 void TextView::SetAnchor(const TextLocation &ptNewAnchor)
 {
 	m_ptAnchor = ptNewAnchor;
-}
-
-bool TextView::PreTranslateMessage(MSG *pMsg)
-{
-	if (pMsg->message >= WM_KEYFIRST && pMsg->message <= WM_KEYLAST)
-	{
-		if (m_hAccel != nullptr)
-		{
-			if (::TranslateAccelerator(m_hWnd, m_hAccel, pMsg))
-				return TRUE;
-		}
-	}
-
-	return FALSE;
 }
 
 void TextView::SetCursorPos(const TextLocation &ptCursorPos)
@@ -1581,49 +1542,15 @@ void TextView::SetSelectionMargin(bool bSelMargin)
 	}
 }
 
-void TextView::GetFont(LOGFONT &lf)
-{
-	lf = m_lfBaseFont;
-}
-
-void TextView::SetFont(const LOGFONT &lf)
-{
-	m_lfBaseFont = lf;
-	m_nScreenLines = -1;
-	m_nScreenChars = -1;
-	m_nCharWidth = -1;
-	m_nLineHeight = -1;
-	if (m_pCacheBitmap != nullptr)
-	{
-		DeleteObject(m_pCacheBitmap);
-		m_pCacheBitmap = nullptr;
-	}
-	for (int I = 0; I < 4; I++)
-	{
-		if (m_apFonts[I] != nullptr)
-		{
-			DeleteObject(m_apFonts[I]);
-			m_apFonts[I] = nullptr;
-		}
-	}
-	if (::IsWindow(m_hWnd))
-	{
-		RecalcVertScrollBar();
-		RecalcHorzScrollBar();
-		UpdateCaret();
-		Invalidate();
-	}
-}
-
 void TextView::ShowCursor()
 {
-	m_bCursorHidden = FALSE;
+	m_bCursorHidden = false;
 	UpdateCaret();
 }
 
 void TextView::HideCursor()
 {
-	m_bCursorHidden = TRUE;
+	m_bCursorHidden = true;
 	UpdateCaret();
 }
 
@@ -1633,15 +1560,15 @@ HGLOBAL TextView::PrepareDragData()
 	if (m_ptDrawSel._start == m_ptDrawSel._end)
 		return nullptr;
 
-	auto text = ToUtf8(Combine(Text(m_ptDrawSel)));
+	auto text = Combine(Text(m_ptDrawSel));
 	auto len = text.size() + 1;
+	auto hData = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
 
-	HGLOBAL hData = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
 	if (hData == nullptr)
 		return nullptr;
 
-	char* pszData = (char*) ::GlobalLock(hData);
-	strcpy_s(pszData, len, text.c_str());
+	auto pszData = (wchar_t*) ::GlobalLock(hData);
+	wcscpy_s(pszData, len, text.c_str());
 	::GlobalUnlock(hData);
 
 	m_ptDraggedText = m_ptDrawSel;
@@ -1659,7 +1586,7 @@ bool TextView::HighlightText(const TextLocation &ptStartPos, int nLength)
 	SetSelection(TextSelection(ptStartPos, m_ptCursorPos));
 	UpdateCaret();
 	EnsureVisible(m_ptCursorPos);
-	return TRUE;
+	return true;
 }
 
 
@@ -1681,8 +1608,8 @@ void TextView::OnEditFind()
 	//	else
 	//	{
 	//		//	Take search parameters from registry
-	//		dlg.m_bMatchCase = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_MATCH_CASE, FALSE);
-	//		dlg.m_bWholeWord = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_WHOLE_WORD, FALSE);
+	//		dlg.m_bMatchCase = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_MATCH_CASE, false);
+	//		dlg.m_bWholeWord = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_WHOLE_WORD, false);
 	//		dlg.m_nDirection = 1;		//	Search down
 	//		dlg.m_sText = pApp->GetProfileString(REG_FIND_SUBKEY, REG_FIND_WHAT, _T(""));
 	//	}
@@ -1693,7 +1620,7 @@ void TextView::OnEditFind()
 	//		TextLocation ptSelStart, ptSelEnd;
 	//		GetSelection(ptSelStart, ptSelEnd);		if (ptSelStart.y == ptSelEnd.y)
 	//		{
-	//			LPCTSTR pszChars = GetLineChars(ptSelStart.y);
+	//			const wchar_t * pszChars = GetLineChars(ptSelStart.y);
 	//			int nChars = ptSelEnd.x - ptSelStart.x;
 	//			lstrcpyn(dlg.m_sText.GetBuffer(nChars + 1), pszChars + ptSelStart.x, nChars + 1);
 	//			dlg.m_sText.ReleaseBuffer();
@@ -1702,12 +1629,12 @@ void TextView::OnEditFind()
 	//
 	//	//	Execute Find dialog
 	//	dlg.m_ptCurrentPos = m_ptCursorPos;		//	Search from cursor position
-	//	m_bShowInactiveSelection = TRUE;
+	//	m_bShowInactiveSelection = true;
 	//	dlg.DoModal();
-	//	m_bShowInactiveSelection = FALSE;
+	//	m_bShowInactiveSelection = false;
 	//
 	//	//	Save search parameters for 'F3' command
-	//	m_bLastSearch = TRUE;
+	//	m_bLastSearch = true;
 	//	if (_lastFindWhat != nullptr)
 	//		free(_lastFindWhat);
 	//	_lastFindWhat = _wcsdup(dlg.m_sText);
@@ -1731,7 +1658,7 @@ void TextView::OnEditRepeat()
 	//if (m_bLastSearch)
 	//{
 	//	TextLocation ptFoundPos;
-	//	if (! FindText(_lastFindWhat, m_ptCursorPos, m_dwLastSearchFlags, TRUE, &ptFoundPos))
+	//	if (! FindText(_lastFindWhat, m_ptCursorPos, m_dwLastSearchFlags, true, &ptFoundPos))
 	//	{
 	//		std::wstring prompt;
 	//		prompt.Format(IDS_EDIT_TEXT_NOT_FOUND, _lastFindWhat);
@@ -1739,7 +1666,7 @@ void TextView::OnEditRepeat()
 	//		return;
 	//	}
 	//	HighlightText(ptFoundPos, lstrlen(_lastFindWhat));
-	//	m_bMultipleSearch = TRUE;       // More search       
+	//	m_bMultipleSearch = true;       // More search       
 	//}
 }
 
@@ -1812,11 +1739,11 @@ void TextView::SetDisableDragAndDrop(bool bDDAD)
 	m_bDisableDragAndDrop = bDDAD;
 }
 
-void TextView::MoveLeft(bool bSelect)
+void TextView::MoveLeft(bool select)
 {
 	PrepareSelBounds();
 
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 	{
 		m_ptCursorPos = m_ptDrawSel._start;
 	}
@@ -1836,15 +1763,15 @@ void TextView::MoveLeft(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveRight(bool bSelect)
+void TextView::MoveRight(bool select)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 	{
 		m_ptCursorPos = m_ptDrawSel._end;
 	}
@@ -1864,20 +1791,20 @@ void TextView::MoveRight(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveWordLeft(bool bSelect)
+void TextView::MoveWordLeft(bool select)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 	{
-		MoveLeft(bSelect);
+		MoveLeft(select);
 		return;
 	}
-
 
 	if (m_ptCursorPos.x == 0)
 	{
@@ -1891,7 +1818,9 @@ void TextView::MoveWordLeft(bool bSelect)
 	const auto &line = _buffer[m_ptCursorPos.y];
 	auto nPos = m_ptCursorPos.x;
 
-	while (nPos > 0 && isspace(line[nPos - 1]))
+	WordToLeft(m_ptCursorPos);
+
+	while (nPos > 0 && iswspace(line[nPos - 1]))
 		nPos--;
 
 	if (nPos > 0)
@@ -1905,7 +1834,7 @@ void TextView::MoveWordLeft(bool bSelect)
 		else
 		{
 			while (nPos > 0 && !iswalnum(line[nPos - 1])
-				&& line[nPos - 1] != _T('_') && !isspace(line[nPos - 1]))
+				&& line[nPos - 1] != _T('_') && !iswspace(line[nPos - 1]))
 				nPos--;
 		}
 	}
@@ -1914,17 +1843,17 @@ void TextView::MoveWordLeft(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveWordRight(bool bSelect)
+void TextView::MoveWordRight(bool select)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 	{
-		MoveRight(bSelect);
+		MoveRight(select);
 		return;
 	}
 
@@ -1940,7 +1869,7 @@ void TextView::MoveWordRight(bool bSelect)
 
 	if (m_ptCursorPos.x == nLength)
 	{
-		MoveRight(bSelect);
+		MoveRight(select);
 		return;
 	}
 
@@ -1955,26 +1884,26 @@ void TextView::MoveWordRight(bool bSelect)
 	else
 	{
 		while (nPos < nLength && !iswalnum(line[nPos])
-			&& line[nPos] != _T('_') && !isspace(line[nPos]))
+			&& line[nPos] != _T('_') && !iswspace(line[nPos]))
 			nPos++;
 	}
 
-	while (nPos < nLength && isspace(line[nPos]))
+	while (nPos < nLength && iswspace(line[nPos]))
 		nPos++;
 
 	m_ptCursorPos.x = nPos;
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveUp(bool bSelect)
+void TextView::MoveUp(bool select)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 		m_ptCursorPos = m_ptDrawSel._start;
 
 	if (m_ptCursorPos.y > 0)
@@ -1991,16 +1920,16 @@ void TextView::MoveUp(bool bSelect)
 	}
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveDown(bool bSelect)
+void TextView::MoveDown(bool select)
 {
 	PrepareSelBounds();
-	if (m_ptDrawSel._start != m_ptDrawSel._end && !bSelect)
+	if (m_ptDrawSel._start != m_ptDrawSel._end && !select)
 		m_ptCursorPos = m_ptDrawSel._end;
 
 	if (m_ptCursorPos.y < _buffer.LineCount() - 1)
@@ -2018,17 +1947,17 @@ void TextView::MoveDown(bool bSelect)
 	}
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveHome(bool bSelect)
+void TextView::MoveHome(bool select)
 {
 	const auto &line = _buffer[m_ptCursorPos.y];
 
 	int nHomePos = 0;
-	while (nHomePos < line.size() && isspace(line[nHomePos]))
+	while (nHomePos < line.size() && iswspace(line[nHomePos]))
 		nHomePos++;
 	if (nHomePos == line.size() || m_ptCursorPos.x == nHomePos)
 		m_ptCursorPos.x = 0;
@@ -2037,23 +1966,23 @@ void TextView::MoveHome(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveEnd(bool bSelect)
+void TextView::MoveEnd(bool select)
 {
 	m_ptCursorPos.x = _buffer[m_ptCursorPos.y].size();
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MovePgUp(bool bSelect)
+void TextView::MovePgUp(bool select)
 {
 	int nNewTopLine = m_nTopLine - GetScreenLines() + 1;
 	if (nNewTopLine < 0)
@@ -2075,12 +2004,12 @@ void TextView::MovePgUp(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);	//todo: no vertical scroll
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MovePgDn(bool bSelect)
+void TextView::MovePgDn(bool select)
 {
 	int nNewTopLine = m_nTopLine + GetScreenLines() - 1;
 	if (nNewTopLine >= _buffer.LineCount())
@@ -2101,31 +2030,31 @@ void TextView::MovePgDn(bool bSelect)
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);	//todo: no vertical scroll
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveCtrlHome(bool bSelect)
+void TextView::MoveCtrlHome(bool select)
 {
 	m_ptCursorPos.x = 0;
 	m_ptCursorPos.y = 0;
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
 
-void TextView::MoveCtrlEnd(bool bSelect)
+void TextView::MoveCtrlEnd(bool select)
 {
 	m_ptCursorPos.y = _buffer.LineCount() - 1;
 	m_ptCursorPos.x = _buffer[m_ptCursorPos.y].size();
 	m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
 	EnsureVisible(m_ptCursorPos);
 	UpdateCaret();
-	if (!bSelect)
+	if (!select)
 		m_ptAnchor = m_ptCursorPos;
 	SetSelection(TextSelection(m_ptAnchor, m_ptCursorPos));
 }
@@ -2164,7 +2093,7 @@ void TextView::ScrollRight()
 	}
 }
 
-TextLocation TextView::WordToRight(TextLocation pt)
+TextLocation TextView::WordToRight(TextLocation pt) const 
 {
 	const auto &line = _buffer[pt.y];
 
@@ -2177,7 +2106,7 @@ TextLocation TextView::WordToRight(TextLocation pt)
 	return pt;
 }
 
-TextLocation TextView::WordToLeft(TextLocation pt)
+TextLocation TextView::WordToLeft(TextLocation pt) const
 {
 	const auto &line = _buffer[pt.y];
 
@@ -2238,9 +2167,9 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			SetCapture();
 			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
 			assert(m_nDragSelTimer != 0);
-			m_bWordSelection = FALSE;
-			m_bLineSelection = TRUE;
-			m_bDragSelection = TRUE;
+			m_bWordSelection = false;
+			m_bLineSelection = true;
+			m_bDragSelection = true;
 		}
 	}
 	else
@@ -2251,7 +2180,7 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 		if ((IsInsideSelBlock(ptText)) &&				// If Inside Selection Area
 			(!m_bDisableDragAndDrop))				// And D&D Not Disabled
 		{
-			m_bPreparingToDrag = TRUE;
+			m_bPreparingToDrag = true;
 		}
 		else
 		{
@@ -2289,8 +2218,8 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
 			assert(m_nDragSelTimer != 0);
 			m_bWordSelection = bControl;
-			m_bLineSelection = FALSE;
-			m_bDragSelection = TRUE;
+			m_bLineSelection = false;
+			m_bDragSelection = true;
 		}
 	}
 }
@@ -2353,7 +2282,7 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 
 			//	Moving to normal selection mode
 			::SetCursor(::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM)));
-			m_bLineSelection = m_bWordSelection = FALSE;
+			m_bLineSelection = m_bWordSelection = false;
 		}
 
 		if (m_bWordSelection)
@@ -2383,7 +2312,7 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 
 	if (m_bPreparingToDrag)
 	{
-		m_bPreparingToDrag = FALSE;
+		m_bPreparingToDrag = false;
 		HGLOBAL hData = PrepareDragData();
 		if (hData != nullptr)
 		{
@@ -2391,12 +2320,12 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 
 
 			/*COleDataSource ds;
-			ds.CacheGlobalData(CF_TEXT, hData);
-			m_bDraggingText = TRUE;
+			ds.CacheGlobalData(CF_UNICODETEXT, hData);
+			m_bDraggingText = true;
 			DROPEFFECT de = ds.DoDragDrop(GetDropEffect());
 			if (de != DROPEFFECT_NONE)
 			OnDropSource(de);
-			m_bDraggingText = FALSE;
+			m_bDraggingText = false;
 
 			if (_buffer != nullptr)
 			_buffer.FlushUndoGroup(this);*/
@@ -2479,12 +2408,12 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 
 		ReleaseCapture();
 		KillTimer(m_nDragSelTimer);
-		m_bDragSelection = FALSE;
+		m_bDragSelection = false;
 	}
 
 	if (m_bPreparingToDrag)
 	{
-		m_bPreparingToDrag = FALSE;
+		m_bPreparingToDrag = false;
 		m_ptCursorPos = ClientToText(point);
 		EnsureVisible(m_ptCursorPos);
 		UpdateCaret();
@@ -2503,7 +2432,7 @@ void TextView::OnTimer(UINT nIDEvent)
 		CRect rcClient;
 		GetClientRect(&rcClient);
 
-		bool bChanged = FALSE;
+		bool bChanged = false;
 
 		//	Scroll vertically, if necessary
 		int nNewTopLine = m_nTopLine;
@@ -2530,7 +2459,7 @@ void TextView::OnTimer(UINT nIDEvent)
 		if (m_nTopLine != nNewTopLine)
 		{
 			ScrollToLine(nNewTopLine);
-			bChanged = TRUE;
+			bChanged = true;
 		}
 
 		//	Scroll horizontally, if necessary
@@ -2551,7 +2480,7 @@ void TextView::OnTimer(UINT nIDEvent)
 		{
 			ScrollToChar(nNewOffsetChar);
 			UpdateCaret();
-			bChanged = TRUE;
+			bChanged = true;
 		}
 
 		//	Fix changes
@@ -2597,21 +2526,12 @@ void TextView::OnLButtonDblClk(const CPoint &point, UINT nFlags)
 		SetCapture();
 		m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
 		assert(m_nDragSelTimer != 0);
-		m_bWordSelection = TRUE;
-		m_bLineSelection = FALSE;
-		m_bDragSelection = TRUE;
+		m_bWordSelection = true;
+		m_bLineSelection = false;
+		m_bDragSelection = true;
 	}
 }
 
-void TextView::OnEditCopy()
-{
-	Copy();
-}
-
-void TextView::OnEditSelectAll()
-{
-	SelectAll();
-}
 
 void TextView::OnRButtonDown(const CPoint &point, UINT nFlags)
 {
@@ -2637,28 +2557,27 @@ void TextView::Copy()
 
 bool TextView::TextInClipboard()
 {
-	return IsClipboardFormatAvailable(CF_TEXT) != 0;
+	return IsClipboardFormatAvailable(CF_UNICODETEXT) != 0;
 }
 
-bool TextView::PutToClipboard(const std::wstring &textUtf16)
+bool TextView::PutToClipboard(const std::wstring &text)
 {
 	// TODO CWaitCursor wc;
-	bool success = false;
+	auto success = false;
 
 	if (OpenClipboard())
 	{
 		EmptyClipboard();
 
-		auto text = ToUtf8(textUtf16);
 		auto len = text.size() + 1;
-		HGLOBAL hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len);
+		auto hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
 
 		if (hData != nullptr)
 		{
-			LPSTR pszData = (LPSTR) ::GlobalLock(hData);
-			strcpy_s(pszData, len, text.c_str());
+			auto pszData = (wchar_t*) ::GlobalLock(hData);
+			wcscpy_s(pszData, len, text.c_str());
 			GlobalUnlock(hData);
-			success = SetClipboardData(CF_TEXT, hData) != nullptr;
+			success = SetClipboardData(CF_UNICODETEXT, hData) != nullptr;
 		}
 		CloseClipboard();
 	}
@@ -2666,27 +2585,30 @@ bool TextView::PutToClipboard(const std::wstring &textUtf16)
 	return success;
 }
 
-bool TextView::GetFromClipboard(std::wstring &text) const
+std::wstring TextView::GetFromClipboard() const
 {
-	// TODO
-	bool bSuccess = FALSE;
-	/*if (OpenClipboard())
-	{
-	HGLOBAL hData = GetClipboardData(CF_TEXT);
-	if (hData != nullptr)
-	{
-	LPSTR pszData = (LPSTR) GlobalLock(hData);
+	std::wstring result;
+	auto pThis = const_cast<TextView*>(this);
 
-	if (pszData != nullptr)
+	if (pThis->OpenClipboard())
 	{
-	text = pszData;
-	GlobalUnlock(hData);
-	bSuccess = TRUE;
+		auto hData = GetClipboardData(CF_UNICODETEXT);
+
+		if (hData != nullptr)
+		{
+			auto pszData = (const wchar_t *) GlobalLock(hData);
+
+			if (pszData != nullptr)
+			{
+				result = pszData;
+				GlobalUnlock(hData);
+			}
+		}
+
+		CloseClipboard();
 	}
-	}
-	CloseClipboard();
-	}*/
-	return bSuccess;
+
+	return result;
 }
 
 bool TextView::QueryEditable()
@@ -2694,50 +2616,17 @@ bool TextView::QueryEditable()
 	return true;
 }
 
-void TextView::OnEditPaste()
-{
-	Paste();
-}
-
-void TextView::OnEditCut()
-{
-	Cut();
-}
-
-bool TextView::DeleteCurrentSelection(UndoGroup &ug)
-{
-	if (HasSelection())
-	{
-		auto sel = GetSelection();
-		auto pos = sel._start;
-
-		SetAnchor(pos);
-		SetSelection(TextSelection(pos, pos));
-		SetCursorPos(pos);
-		EnsureVisible(pos);
-
-		_buffer.DeleteText(ug, pos);
-		return TRUE;
-	}
-	return FALSE;
-}
-
 void TextView::Paste()
 {
 	if (QueryEditable())
 	{
-		UndoGroup ug(_buffer);
-		DeleteCurrentSelection(ug);
+		auto text = GetFromClipboard();
 
-		std::wstring text;
-
-		if (GetFromClipboard(text))
+		if (!text.empty())
 		{
-			auto location = _buffer.InsertText(ug, GetCursorPos(), text);
-			SetAnchor(location);
-			SetSelection(TextSelection(location, location));
-			SetCursorPos(location);
-			EnsureVisible(location);
+			UndoGroup ug(_buffer);
+			auto pos = _buffer.DeleteText(ug, GetSelection());
+			Locate(_buffer.InsertText(ug, pos, text));
 		}
 	}
 }
@@ -2746,17 +2635,11 @@ void TextView::Cut()
 {
 	if (QueryEditable() && HasSelection())
 	{
-		auto sel = GetSelection();		
+		auto sel = GetSelection();
 		PutToClipboard(Combine(Text(sel)));
 
-		auto pos = sel._start;
-		SetAnchor(pos);
-		SetSelection(TextSelection(pos, pos));
-		SetCursorPos(pos);
-		EnsureVisible(pos);
-
 		UndoGroup ug(_buffer);
-		_buffer.DeleteText(ug, sel);
+		Locate(_buffer.DeleteText(ug, sel));
 	}
 }
 
@@ -2782,14 +2665,8 @@ void TextView::OnEditDelete()
 			}
 		}
 
-		auto pos = sel._start;
-		SetAnchor(pos);
-		SetSelection(TextSelection(pos, pos));
-		SetCursorPos(pos);
-		EnsureVisible(pos);
-
 		UndoGroup ug(_buffer);
-		_buffer.DeleteText(ug, sel);
+		Locate(_buffer.DeleteText(ug, sel));
 	}
 }
 
@@ -2799,19 +2676,15 @@ void TextView::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 		(::GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0)
 		return;
 
-	bool bTranslated = FALSE;
+	bool bTranslated = false;
+
 	if (nChar == VK_RETURN)
 	{
 		if (QueryEditable())
 		{
 			UndoGroup ug(_buffer);
-			DeleteCurrentSelection(ug);
-
-			auto location = _buffer.InsertText(ug, GetCursorPos(), L'\n');
-			SetSelection(TextSelection(location, location));
-			SetAnchor(location);
-			SetCursorPos(location);
-			EnsureVisible(location);
+			auto pos = _buffer.DeleteText(ug, GetSelection());
+			Locate(_buffer.InsertText(ug, pos, L'\n'));
 		}
 
 		return;
@@ -2822,21 +2695,8 @@ void TextView::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
 		if (QueryEditable())
 		{
 			UndoGroup ug(_buffer);
-			auto location = GetCursorPos();
-
-			if (HasSelection())
-			{
-				auto sel = GetSelection();
-				location = sel._start;
-				DeleteCurrentSelection(ug);
-			}
-
-			location = _buffer.InsertText(ug, location, nChar);
-
-			SetSelection(TextSelection(location, location));
-			SetAnchor(location);
-			SetCursorPos(location);
-			EnsureVisible(location);
+			auto pos = _buffer.DeleteText(ug, GetSelection());
+			Locate(_buffer.InsertText(ug, pos, nChar));
 		}
 	}
 }
@@ -2851,15 +2711,8 @@ void TextView::OnEditDeleteBack()
 		}
 		else
 		{
-			auto ptCursorPos = GetCursorPos();
-
 			UndoGroup ug(_buffer);
-			auto newPosition = _buffer.DeleteText(ug, ptCursorPos);
-
-			SetAnchor(newPosition);
-			SetSelection(TextSelection(newPosition, newPosition));
-			SetCursorPos(newPosition);
-			EnsureVisible(newPosition);
+			Locate(_buffer.DeleteText(ug, GetCursorPos()));
 		}
 	}
 }
@@ -2868,16 +2721,9 @@ void TextView::OnEditTab()
 {
 	if (QueryEditable())
 	{
-		bool bTabify = FALSE;
-		TextSelection sel;
+		auto sel = GetSelection();
 
-		if (HasSelection())
-		{
-			sel = GetSelection();
-			bTabify = sel._start.y != sel._end.y;
-		}
-
-		if (bTabify)
+		if (sel._end.y > sel._start.y)
 		{
 			UndoGroup ug(_buffer);
 
@@ -2908,9 +2754,9 @@ void TextView::OnEditTab()
 
 			static const TCHAR pszText [] = _T("\t");
 
-			for (int L = nStartLine; L <= nEndLine; L++)
+			for (int i = nStartLine; i <= nEndLine; i++)
 			{
-				_buffer.InsertText(ug, TextLocation(0, L), pszText);
+				_buffer.InsertText(ug, TextLocation(0, i), pszText);
 			}
 
 			RecalcHorzScrollBar();
@@ -2918,14 +2764,8 @@ void TextView::OnEditTab()
 		else
 		{
 			UndoGroup ug(_buffer);
-			DeleteCurrentSelection(ug);
-
-			auto location = _buffer.InsertText(ug, GetCursorPos(), L'\t');
-
-			SetSelection(TextSelection(location, location));
-			SetAnchor(location);
-			SetCursorPos(location);
-			EnsureVisible(location);
+			auto pos = _buffer.DeleteText(ug, GetSelection());
+			Locate(_buffer.InsertText(ug, pos, L'\t'));
 		}
 	}
 }
@@ -2934,16 +2774,9 @@ void TextView::OnEditUntab()
 {
 	if (QueryEditable())
 	{
-		bool bTabify = FALSE;
-		TextSelection sel;
+		auto sel = GetSelection();
 
-		if (HasSelection())
-		{
-			sel = GetSelection();
-			bTabify = sel._start.y != sel._end.y;
-		}
-
-		if (bTabify)
+		if (sel._end.y > sel._start.y)
 		{
 			UndoGroup ug(_buffer);
 
@@ -2968,9 +2801,9 @@ void TextView::OnEditUntab()
 			SetCursorPos(sel._end);
 			EnsureVisible(sel._end);
 
-			for (int L = nStartLine; L <= nEndLine; L++)
+			for (int i = nStartLine; i <= nEndLine; i++)
 			{
-				const auto &line = _buffer[L];
+				const auto &line = _buffer[i];
 
 				if (!line.empty())
 				{
@@ -2994,7 +2827,7 @@ void TextView::OnEditUntab()
 
 					if (nPos > 0)
 					{
-						_buffer.DeleteText(ug, TextSelection(0, L, nPos, L));
+						_buffer.DeleteText(ug, TextSelection(0, i, nPos, i));
 					}
 				}
 			}
@@ -3016,11 +2849,11 @@ void TextView::OnEditUntab()
 
 				const auto &line = _buffer[ptCursorPos.y];
 				int nCurrentOffset = 0;
-				int I = 0;
+				int i = 0;
 
 				while (nCurrentOffset < nNewOffset)
 				{
-					if (line[I] == _T('\t'))
+					if (line[i] == _T('\t'))
 					{
 						nCurrentOffset = nCurrentOffset / tabSize * tabSize + tabSize;
 					}
@@ -3029,16 +2862,13 @@ void TextView::OnEditUntab()
 						nCurrentOffset++;
 					}
 
-					I++;
+					i++;
 				}
 
 				assert(nCurrentOffset == nNewOffset);
 
-				ptCursorPos.x = I;
-				SetSelection(TextSelection(ptCursorPos, ptCursorPos));
-				SetAnchor(ptCursorPos);
-				SetCursorPos(ptCursorPos);
-				EnsureVisible(ptCursorPos);
+				ptCursorPos.x = i;
+				Locate(ptCursorPos);
 			}
 		}
 	}
@@ -3046,7 +2876,7 @@ void TextView::OnEditUntab()
 
 DROPEFFECT CEditDropTargetImpl::OnDragEnter(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
 {
-	/*if (! pDataObject->IsDataAvailable(CF_TEXT))
+	/*if (! pDataObject->IsDataAvailable(CF_UNICODETEXT))
 	{
 	m_pOwner->HideDropIndicator();
 	return DROPEFFECT_NONE;
@@ -3065,7 +2895,7 @@ void CEditDropTargetImpl::OnDragLeave(CWindow* pWnd)
 DROPEFFECT CEditDropTargetImpl::OnDragOver(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
 {
 	///*
-	//	if (! pDataObject->IsDataAvailable(CF_TEXT))
+	//	if (! pDataObject->IsDataAvailable(CF_UNICODETEXT))
 	//	{
 	//		m_pOwner->HideDropIndicator();
 	//		return DROPEFFECT_NONE;
@@ -3083,10 +2913,10 @@ DROPEFFECT CEditDropTargetImpl::OnDragOver(CWindow* pWnd, COleDataObject* pDataO
 	//		m_pOwner -> HideDropIndicator();					// Hide Drop Caret
 	//		return DROPEFFECT_NONE;							    // Return DE_NONE
 	//	}
-	////	if ((pDataObject->IsDataAvailable( CF_TEXT ) ) ||	    // If Text Available
+	////	if ((pDataObject->IsDataAvailable( CF_UNICODETEXT ) ) ||	    // If Text Available
 	////			( pDataObject -> IsDataAvailable( xxx ) ) ||	// Or xxx Available
 	////			( pDataObject -> IsDataAvailable( yyy ) ) )		// Or yyy Available
-	//	if (pDataObject->IsDataAvailable(CF_TEXT))		  	    // If Text Available
+	//	if (pDataObject->IsDataAvailable(CF_UNICODETEXT))		  	    // If Text Available
 	//	{
 	//		bDataSupported = true;								// Set Flag
 	//	}
@@ -3115,10 +2945,10 @@ bool CEditDropTargetImpl::OnDrop(CWindow* pWnd, COleDataObject* pDataObject, DRO
 	//	{
 	//		return DROPEFFECT_NONE;							// Return DE_NONE
 	//	}
-	////	if( ( pDataObject -> IsDataAvailable( CF_TEXT ) ) ||	// If Text Available
+	////	if( ( pDataObject -> IsDataAvailable( CF_UNICODETEXT ) ) ||	// If Text Available
 	////			( pDataObject -> IsDataAvailable( xxx ) ) ||	// Or xxx Available
 	////			( pDataObject -> IsDataAvailable( yyy ) ) )		// Or yyy Available
-	//	if (pDataObject->IsDataAvailable(CF_TEXT))			    // If Text Available
+	//	if (pDataObject->IsDataAvailable(CF_UNICODETEXT))			    // If Text Available
 	//	{
 	//		bDataSupported = true;								// Set Flag
 	//	}
@@ -3180,9 +3010,9 @@ void TextView::DoDragScroll(const CPoint &point)
 
 bool TextView::DoDropText(COleDataObject *pDataObject, const CPoint &ptClient)
 {
-	//HGLOBAL hData = pDataObject->GetGlobalData(CF_TEXT);
+	//HGLOBAL hData = pDataObject->GetGlobalData(CF_UNICODETEXT);
 	//if (hData == nullptr)
-	//	return FALSE;
+	//	return false;
 
 	//TextLocation ptDropPos = ClientToText(ptClient);
 	//if (IsDraggingText() && IsInsideSelection(ptDropPos))
@@ -3191,12 +3021,12 @@ bool TextView::DoDropText(COleDataObject *pDataObject, const CPoint &ptClient)
 	//	SetSelection(ptDropPos, ptDropPos);
 	//	SetCursorPos(ptDropPos);
 	//	EnsureVisible(ptDropPos);
-	//	return FALSE;
+	//	return false;
 	//}
 
-	//LPSTR pszText = (LPSTR) ::GlobalLock(hData);
+	//auto pszText = (const char *) ::GlobalLock(hData);
 	//if (pszText == nullptr)
-	//	return FALSE;
+	//	return false;
 
 	//int x, y;
 	//_buffer.InsertText(this, ptDropPos.y, ptDropPos.x, A2T(pszText), y, x, CE_ACTION_DRAGDROP);
@@ -3207,7 +3037,7 @@ bool TextView::DoDropText(COleDataObject *pDataObject, const CPoint &ptClient)
 	//EnsureVisible(ptCurPos);
 
 	//::GlobalUnlock(hData);
-	return TRUE;
+	return true;
 }
 
 
@@ -3217,7 +3047,7 @@ void TextView::ShowDropIndicator(const CPoint &point)
 	{
 		HideCursor();
 		m_ptSavedCaretPos = GetCursorPos();
-		m_bDropPosVisible = TRUE;
+		m_bDropPosVisible = true;
 		::CreateCaret(m_hWnd, (HBITMAP) 1, 2, GetLineHeight());
 	}
 	m_ptDropPos = ClientToText(point);
@@ -3239,7 +3069,7 @@ void TextView::HideDropIndicator()
 	{
 		SetCursorPos(m_ptSavedCaretPos);
 		ShowCursor();
-		m_bDropPosVisible = FALSE;
+		m_bDropPosVisible = false;
 	}
 }
 
@@ -3269,19 +3099,19 @@ void TextView::OnEditReplace()
 	//CEditReplaceDlg dlg(this);
 
 	////	Take search parameters from registry
-	//dlg.m_bMatchCase = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_MATCH_CASE, FALSE);
-	//dlg.m_bWholeWord = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_WHOLE_WORD, FALSE);
+	//dlg.m_bMatchCase = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_MATCH_CASE, false);
+	//dlg.m_bWholeWord = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_WHOLE_WORD, false);
 	//dlg.m_sText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_FIND_WHAT, _T(""));
 	//dlg.m_sNewText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, _T(""));
 
 	//if (HasSelection())
 	//{
 	//	GetSelection(m_ptSavedSelStart, m_ptSavedSelEnd);
-	//	m_bSelectionPushed = TRUE;
+	//	m_bSelectionPushed = true;
 
 	//	dlg.m_nScope = 0;	//	Replace in current selection
 	//	dlg.m_ptCurrentPos = m_ptSavedSelStart;
-	//	dlg.m_bEnableScopeSelection = TRUE;
+	//	dlg.m_bEnableScopeSelection = true;
 	//	dlg.m_ptBlockBegin = m_ptSavedSelStart;
 	//	dlg.m_ptBlockEnd = m_ptSavedSelEnd;
 	//}
@@ -3289,19 +3119,19 @@ void TextView::OnEditReplace()
 	//{
 	//	dlg.m_nScope = 1;	//	Replace in whole text
 	//	dlg.m_ptCurrentPos = GetCursorPos();
-	//	dlg.m_bEnableScopeSelection = FALSE;
+	//	dlg.m_bEnableScopeSelection = false;
 	//}
 
 	////	Execute Replace dialog
-	//m_bShowInactiveSelection = TRUE;
+	//m_bShowInactiveSelection = true;
 	//dlg.DoModal();
-	//m_bShowInactiveSelection = FALSE;
+	//m_bShowInactiveSelection = false;
 
 	////	Restore selection
 	//if (m_bSelectionPushed)
 	//{
 	//	SetSelection(m_ptSavedSelStart, m_ptSavedSelEnd);
-	//	m_bSelectionPushed = FALSE;
+	//	m_bSelectionPushed = false;
 	//}
 
 	////	Save search parameters to registry
@@ -3311,11 +3141,11 @@ void TextView::OnEditReplace()
 	//pApp->WriteProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, dlg.m_sNewText);
 }
 
-bool TextView::ReplaceSelection(LPCTSTR pszNewText)
+bool TextView::ReplaceSelection(const wchar_t * pszNewText)
 {
 	//assert(pszNewText != nullptr);
 	//if (! HasSelection())
-	//	return FALSE;
+	//	return false;
 
 	//DeleteCurrentSelection();
 
@@ -3327,7 +3157,7 @@ bool TextView::ReplaceSelection(LPCTSTR pszNewText)
 	//SetSelection(ptCursorPos, ptEndOfBlock);
 	//SetCursorPos(ptEndOfBlock);
 	//EnsureVisible(ptEndOfBlock);
-	return TRUE;
+	return true;
 }
 
 
@@ -3336,11 +3166,7 @@ void TextView::OnEditUndo()
 {
 	if (_buffer.CanUndo())
 	{
-		auto location = _buffer.Undo();
-		SetAnchor(location);
-		SetSelection(TextSelection(location, location));
-		SetCursorPos(location);
-		EnsureVisible(location);
+		Locate(_buffer.Undo());
 	}
 }
 
@@ -3349,11 +3175,7 @@ void TextView::OnEditRedo()
 {
 	if (_buffer.CanRedo())
 	{
-		auto location = _buffer.Redo();
-		SetAnchor(location);
-		SetSelection(TextSelection(location, location));
-		SetCursorPos(location);
-		EnsureVisible(location);
+		Locate(_buffer.Redo());
 	}
 }
 
@@ -3375,7 +3197,7 @@ void TextView::OnEditRedo()
 //			const auto len = line.size();
 //
 //			int nPos = 0;
-//			while (nPos < len && isspace(line[nPos]))
+//			while (nPos < len && iswspace(line[nPos]))
 //				nPos++;
 //
 //			if (nPos > 0)
@@ -3403,7 +3225,7 @@ bool TextView::GetOverwriteMode() const
 	return _overtype;
 }
 
-void TextView::SetOverwriteMode(bool bOvrMode /*= TRUE*/)
+void TextView::SetOverwriteMode(bool bOvrMode /*= true*/)
 {
 	_overtype = bOvrMode;
 }
@@ -3418,93 +3240,25 @@ void TextView::SetAutoIndent(bool bAutoIndent)
 	m_bAutoIndent = bAutoIndent;
 }
 
-//void TextView::OnUpdateEditUndo(CCmdUI* pCmdUI)
-//{
-//	bool bCanUndo = _buffer.CanUndo();
-//	pCmdUI->Enable(bCanUndo);
-//
-//	//	Since we need text only for menus...
-//	//if (pCmdUI->m_pMenu != nullptr)
-//	{
-//		//	Tune up 'resource handle'
-//		/*HINSTANCE hOldResHandle = AfxGetResourceHandle();
-//		AfxSetResourceHandle(GetResourceHandle());*/
-//
-//		std::wstring menu;
-//		if (bCanUndo)
-//		{
-//			//	Format menu item text using the provided item description
-//			std::wstring desc;
-//			_buffer.GetUndoDescription(desc);
-//			menu.Format(IDS_MENU_UNDO_FORMAT, desc);
-//		}
-//		else
-//		{
-//			//	Just load default menu item text
-//			menu.LoadString(IDS_MENU_UNDO_DEFAULT);
-//		}
-//
-//		//	Restore original handle
-//		//AfxSetResourceHandle(hOldResHandle);
-//
-//		//	Set menu item text
-//		pCmdUI->SetText(menu);
-//	}
-//}
-
-//void TextView::OnUpdateEditRedo(CCmdUI* pCmdUI)
-//{
-//	bool bCanRedo = _buffer.CanRedo();
-//	pCmdUI->Enable(bCanRedo);
-//
-//	//	Since we need text only for menus...
-//	//if (pCmdUI->m_pMenu != nullptr)
-//	{
-//		//	Tune up 'resource handle'
-//		//HINSTANCE hOldResHandle = AfxGetResourceHandle();
-//		//AfxSetResourceHandle(GetResourceHandle());
-//
-//		std::wstring menu;
-//		if (bCanRedo)
-//		{
-//			//	Format menu item text using the provided item description
-//			std::wstring desc;
-//			_buffer.GetRedoDescription(desc);
-//			menu.Format(IDS_MENU_REDO_FORMAT, desc);
-//		}
-//		else
-//		{
-//			//	Just load default menu item text
-//			menu.LoadString(IDS_MENU_REDO_DEFAULT);
-//		}
-//
-//		//	Restore original handle
-//		//AfxSetResourceHandle(hOldResHandle);
-//
-//		//	Set menu item text
-//		pCmdUI->SetText(menu);
-//	}
-//}
-
 void TextView::EnableMenuItems(HMENU hMenu)
 {
 	auto count = GetMenuItemCount(hMenu);
 
-	for (int i = 0; i < count; i++)
+	for (auto i = 0; i < count; i++)
 	{
 		auto id = GetMenuItemID(hMenu, i);
 		auto enable = true;
 
 		switch (id)
 		{
-		case ID_EDIT_COPY: enable = _selection._start != _selection._end; break;
-		case ID_EDIT_SELECT_ALL: enable = true; break;
-		case ID_EDIT_REPEAT: enable = m_bLastSearch; break;
-		case ID_EDIT_FIND_PREVIOUS: enable = m_bLastSearch; break;
+		case ID_EDIT_COPY: enable = HasSelection(); break;
 		case ID_EDIT_CUT: enable = HasSelection(); break;
+		case ID_EDIT_FIND_PREVIOUS: enable = m_bLastSearch; break;
 		case ID_EDIT_PASTE: enable = TextInClipboard(); break;
-		case ID_EDIT_UNDO: enable = _buffer.CanUndo(); break;
 		case ID_EDIT_REDO: enable = _buffer.CanRedo(); break;
+		case ID_EDIT_REPEAT: enable = m_bLastSearch; break;
+		case ID_EDIT_SELECT_ALL: enable = true; break;
+		case ID_EDIT_UNDO: enable = _buffer.CanUndo(); break;
 		}
 
 		EnableMenuItem(hMenu, i, MF_BYPOSITION | (enable ? MF_ENABLED : MF_DISABLED));

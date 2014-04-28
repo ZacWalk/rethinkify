@@ -1,162 +1,178 @@
 #include "pch.h"
 #include "TextView.h"
 
-static LPTSTR s_apszCppKeywordList[] =
-{
-	_T("__asm"),
-	_T("enum"),
-	_T("__multiple_inheritance"),
-	_T("template"),
-	_T("auto"),
-	_T("__except"),
-	_T("__single_inheritance"),
-	_T("this"),
-	_T("__based"),
-	_T("explicit"),
-	_T("__virtual_inheritance"),
-	_T("thread"),
-	_T("bool"),
-	_T("extern"),
-	_T("mutable"),
-	_T("throw"),
-	_T("break"),
-	_T("false"),
-	_T("naked"),
-	_T("true"),
-	_T("case"),
-	_T("__fastcall"),
-	_T("namespace"),
-	_T("try"),
-	_T("catch"),
-	_T("__finally"),
-	_T("new"),
-	_T("__try"),
-	_T("__cdecl"),
-	_T("float"),
-	_T("operator"),
-	_T("typedef"),
-	_T("char"),
-	_T("for"),
-	_T("private"),
-	_T("typeid"),
-	_T("class"),
-	_T("friend"),
-	_T("protected"),
-	_T("typename"),
-	_T("const"),
-	_T("goto"),
-	_T("public"),
-	_T("union"),
-	_T("const_cast"),
-	_T("if"),
-	_T("register"),
-	_T("unsigned"),
-	_T("continue"),
-	_T("inline"),
-	_T("reinterpret_cast"),
-	_T("using"),
-	_T("__declspec"),
-	_T("__inline"),
-	_T("return"),
-	_T("uuid"),
-	_T("default"),
-	_T("int"),
-	_T("short"),
-	_T("__uuidof"),
-	_T("delete"),
-	_T("__int8"),
-	_T("signed"),
-	_T("virtual"),
-	_T("dllexport"),
-	_T("__int16"),
-	_T("sizeof"),
-	_T("void"),
-	_T("dllimport"),
-	_T("__int32"),
-	_T("static"),
-	_T("volatile"),
-	_T("do"),
-	_T("__int64"),
-	_T("static_cast"),
-	_T("wmain"),
-	_T("double"),
-	_T("__leave"),
-	_T("__stdcall"),
-	_T("while"),
-	_T("dynamic_cast"),
-	_T("long"),
-	_T("struct"),
-	_T("xalloc"),
-	_T("else"),
-	_T("main"),
-	_T("switch"),
-	_T("interface"),
-	//	Added by a.s.
-	_T("persistent"),
-	_T("_persistent"),
-	_T("transient"),
-	_T("depend"),
-	_T("ondemand"),
-	_T("transient"),
-	_T("cset"),
-	_T("useindex"),
-	_T("indexdef"),
-	nullptr
+struct caseInsensitiveCompare : public std::binary_function < const wchar_t *, const wchar_t *, bool > {
+	bool operator()(const wchar_t *lhs, const wchar_t *rhs) const {
+		return _wcsicmp(lhs, rhs) < 0;
+	}
 };
 
-static bool IsCppKeyword(LPCTSTR pszChars, int nLength)
+static bool IsKeyword(const wchar_t * pszChars, int nLength)
 {
-	for (int L = 0; s_apszCppKeywordList[L] != nullptr; L ++)
+	static const wchar_t *raw_keywords [] =
 	{
-		if (wcsncmp(s_apszCppKeywordList[L], pszChars, nLength) == 0
-				&& s_apszCppKeywordList[L][nLength] == 0)
-			return TRUE;
+		L"__asm",
+		L"__based",
+		L"__cdecl",
+		L"__declspec",
+		L"__except",
+		L"__fastcall",
+		L"__finally",
+		L"__inline",
+		L"__int16",
+		L"__int32",
+		L"__int64",
+		L"__int8",
+		L"__leave",
+		L"__multiple_inheritance",
+		L"__single_inheritance",
+		L"__stdcall",
+		L"__try",
+		L"__uuidof",
+		L"__virtual_inheritance",
+		L"_persistent",
+		L"auto",
+		L"bool",
+		L"break",
+		L"case",
+		L"catch",
+		L"char",
+		L"class",
+		L"const",
+		L"const_cast",
+		L"continue",
+		L"cset",
+		L"default",
+		L"delete",
+		L"depend",
+		L"dllexport",
+		L"dllimport",
+		L"do",
+		L"double",
+		L"dynamic_cast",
+		L"else",
+		L"enum",
+		L"explicit",
+		L"extern",
+		L"false",
+		L"float",
+		L"for",
+		L"friend",
+		L"goto",
+		L"if",
+		L"indexdef",
+		L"inline",
+		L"int",
+		L"interface",
+		L"long",
+		L"main",
+		L"mutable",
+		L"naked",
+		L"namespace",
+		L"new",
+		L"ondemand",
+		L"operator",
+		L"persistent",
+		L"private",
+		L"protected",
+		L"public",
+		L"register",
+		L"reinterpret_cast",
+		L"return",
+		L"short",
+		L"signed",
+		L"sizeof",
+		L"static",
+		L"static_cast",
+		L"struct",
+		L"switch",
+		L"template",
+		L"this",
+		L"thread",
+		L"throw",
+		L"transient",
+		L"transient",
+		L"true",
+		L"try",
+		L"typedef",
+		L"typeid",
+		L"typename",
+		L"union",
+		L"unsigned",
+		L"useindex",
+		L"using",
+		L"uuid",
+		L"virtual",
+		L"void",
+		L"volatile",
+		L"while",
+		L"wmain",
+		L"xalloc",
+		nullptr
+	};
+
+	static std::set<const wchar_t *, caseInsensitiveCompare> keywords;
+
+	if (keywords.empty())
+	{
+		for (auto i = raw_keywords; *i != nullptr; i++)
+		{
+			keywords.insert(*i);
+		}
 	}
-	return FALSE;
+
+	const int bufferLen = 100;
+	wchar_t sz[bufferLen];
+	wcsncpy_s(sz, pszChars, min(bufferLen - 1, nLength));
+
+	return keywords.find(sz) != keywords.end();
 }
 
-static bool IsCppNumber(LPCTSTR pszChars, int nLength)
+static bool IsNumber(const wchar_t * pszChars, int nLength)
 {
 	if (nLength > 2 && pszChars[0] == '0' && pszChars[1] == 'x')
 	{
-		for (int I = 2; I < nLength; I++)
+		for (int i = 2; i < nLength; i++)
 		{
-			if (iswdigit(pszChars[I]) || (pszChars[I] >= 'A' && pszChars[I] <= 'F') ||
-										(pszChars[I] >= 'a' && pszChars[I] <= 'f'))
+			if (iswdigit(pszChars[i]) || (pszChars[i] >= 'A' && pszChars[i] <= 'F') ||
+				(pszChars[i] >= 'a' && pszChars[i] <= 'f'))
 				continue;
-			return FALSE;
+			return false;
 		}
-		return TRUE;
+		return true;
 	}
-	if (! iswdigit(pszChars[0]))
-		return FALSE;
-	for (int I = 1; I < nLength; I++)
+	if (!iswdigit(pszChars[0]))
+		return false;
+	for (int i = 1; i < nLength; i++)
 	{
-		if (! iswdigit(pszChars[I]) && pszChars[I] != '+' &&
-			pszChars[I] != '-' && pszChars[I] != '.' && pszChars[I] != 'e' &&
-			pszChars[I] != 'E')
-			return FALSE;
+		if (!iswdigit(pszChars[i]) && pszChars[i] != '+' &&
+			pszChars[i] != '-' && pszChars[i] != '.' && pszChars[i] != 'e' &&
+			pszChars[i] != 'E')
+			return false;
 	}
-	return TRUE;
+	return true;
 }
 
-#define DEFINE_BLOCK(pos, colorindex)	\
-	assert((pos) >= 0 && (pos) <= nLength);\
-	if (pBuf != nullptr)\
-	{\
-		if (nActualItems == 0 || pBuf[nActualItems - 1].m_nCharPos <= (pos)){\
-		pBuf[nActualItems].m_nCharPos = (pos);\
-		pBuf[nActualItems].m_nColorIndex = (colorindex);\
-		nActualItems ++;}\
+static const int COOKIE_COMMENT = 0x0001;
+static const int COOKIE_PREPROCESSOR = 0x0002;
+static const int COOKIE_EXT_COMMENT = 0x0004;
+static const int COOKIE_STRING = 0x0008;
+static const int COOKIE_CHAR = 0x0010;
+
+static void AddBlock(TextView::TEXTBLOCK *pBuf, int &nActualItems, int pos, int colorindex)
+{
+	if (pBuf != nullptr)
+	{
+		if (nActualItems == 0 || pBuf[nActualItems - 1].m_nCharPos <= (pos))
+		{
+			pBuf[nActualItems].m_nCharPos = (pos);
+			pBuf[nActualItems].m_nColorIndex = (colorindex);
+			nActualItems++;
+		}
 	}
+}
 
-#define COOKIE_COMMENT			0x0001
-#define COOKIE_PREPROCESSOR		0x0002
-#define COOKIE_EXT_COMMENT		0x0004
-#define COOKIE_STRING			0x0008
-#define COOKIE_CHAR				0x0010
-
-DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems)
+DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems) const
 {
 	const auto &line = _buffer[nLineIndex];
 
@@ -164,60 +180,62 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 	{
 		return dwCookie & COOKIE_EXT_COMMENT;
 	}
-	
-	auto nLength = line.size();
-	bool bFirstChar     = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
-	bool bRedefineBlock = TRUE;
-	bool bDecIndex  = FALSE;
-	int nIdentBegin = -1;
-	int I = 0;
 
-	for (I = 0; ; I++)
+	auto nLength = line.size();
+	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
+	auto bRedefineBlock = true;
+	auto bDecIndex = false;
+	auto nIdentBegin = -1;
+	auto i = 0;
+
+	for (i = 0;; i++)
 	{
 		if (bRedefineBlock)
 		{
-			int nPos = I;
+			int nPos = i;
 			if (bDecIndex)
 				nPos--;
+
 			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
 			{
-				DEFINE_BLOCK(nPos, COLORINDEX_COMMENT);
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_COMMENT);
 			}
-			else
-			if (dwCookie & (COOKIE_CHAR | COOKIE_STRING))
+			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING))
 			{
-				DEFINE_BLOCK(nPos, COLORINDEX_STRING);
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_STRING);
 			}
-			else
-			if (dwCookie & COOKIE_PREPROCESSOR)
+			else if (dwCookie & COOKIE_PREPROCESSOR)
 			{
-				DEFINE_BLOCK(nPos, COLORINDEX_PREPROCESSOR);
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_PREPROCESSOR);
 			}
 			else
 			{
-				DEFINE_BLOCK(nPos, COLORINDEX_NORMALTEXT);
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_NORMALTEXT);
 			}
-			bRedefineBlock = FALSE;
-			bDecIndex      = FALSE;
+
+			bRedefineBlock = false;
+			bDecIndex = false;
 		}
 
-		if (I == nLength)
+		if (i == nLength)
 			break;
 
 		if (dwCookie & COOKIE_COMMENT)
 		{
-			DEFINE_BLOCK(I, COLORINDEX_COMMENT);
+			AddBlock(pBuf, nActualItems, i, COLORINDEX_COMMENT);
 			dwCookie |= COOKIE_COMMENT;
 			break;
 		}
 
+		auto c = line[i];
+
 		//	String constant "...."
 		if (dwCookie & COOKIE_STRING)
 		{
-			if (line[I] == '"' && (I == 0 || line[I - 1] != '\\'))
+			if (c == '"' && (i == 0 || line[i - 1] != '\\'))
 			{
 				dwCookie &= ~COOKIE_STRING;
-				bRedefineBlock = TRUE;
+				bRedefineBlock = true;
 			}
 			continue;
 		}
@@ -225,10 +243,10 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 		//	Char constant '..'
 		if (dwCookie & COOKIE_CHAR)
 		{
-			if (line[I] == '\'' && (I == 0 || line[I - 1] != '\\'))
+			if (c == '\'' && (i == 0 || line[i - 1] != '\\'))
 			{
 				dwCookie &= ~COOKIE_CHAR;
-				bRedefineBlock = TRUE;
+				bRedefineBlock = true;
 			}
 			continue;
 		}
@@ -236,17 +254,17 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 		//	Extended comment /*....*/
 		if (dwCookie & COOKIE_EXT_COMMENT)
 		{
-			if (I > 0 && line[I] == '/' && line[I - 1] == '*')
+			if (i > 0 && c == '/' && line[i - 1] == '*')
 			{
 				dwCookie &= ~COOKIE_EXT_COMMENT;
-				bRedefineBlock = TRUE;
+				bRedefineBlock = true;
 			}
 			continue;
 		}
 
-		if (I > 0 && line[I] == '/' && line[I - 1] == '/')
+		if (i > 0 && c == '/' && line[i - 1] == '/')
 		{
-			DEFINE_BLOCK(I - 1, COLORINDEX_COMMENT);
+			AddBlock(pBuf, nActualItems, i - 1, COLORINDEX_COMMENT);
 			dwCookie |= COOKIE_COMMENT;
 			break;
 		}
@@ -254,54 +272,56 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 		//	Preprocessor directive #....
 		if (dwCookie & COOKIE_PREPROCESSOR)
 		{
-			if (I > 0 && line[I] == '*' && line[I - 1] == '/')
+			if (i > 0 && c == '*' && line[i - 1] == '/')
 			{
-				DEFINE_BLOCK(I - 1, COLORINDEX_COMMENT);
+				AddBlock(pBuf, nActualItems, i - 1, COLORINDEX_COMMENT);
 				dwCookie |= COOKIE_EXT_COMMENT;
 			}
 			continue;
 		}
 
 		//	Normal text
-		if (line[I] == '"')
+		if (c == '"')
 		{
-			DEFINE_BLOCK(I, COLORINDEX_STRING);
+			AddBlock(pBuf, nActualItems, i, COLORINDEX_STRING);
 			dwCookie |= COOKIE_STRING;
 			continue;
 		}
-		if (line[I] == '\'')
+
+		if (c == '\'')
 		{
-			DEFINE_BLOCK(I, COLORINDEX_STRING);
+			AddBlock(pBuf, nActualItems, i, COLORINDEX_STRING);
 			dwCookie |= COOKIE_CHAR;
 			continue;
 		}
-		if (I > 0 && line[I] == '*' && line[I - 1] == '/')
+
+		if (i > 0 && c == '*' && line[i - 1] == '/')
 		{
-			DEFINE_BLOCK(I - 1, COLORINDEX_COMMENT);
+			AddBlock(pBuf, nActualItems, i - 1, COLORINDEX_COMMENT);
 			dwCookie |= COOKIE_EXT_COMMENT;
 			continue;
 		}
 
 		if (bFirstChar)
 		{
-			if (line[I] == '#')
+			if (c == '#')
 			{
-				DEFINE_BLOCK(I, COLORINDEX_PREPROCESSOR);
+				AddBlock(pBuf, nActualItems, i, COLORINDEX_PREPROCESSOR);
 				dwCookie |= COOKIE_PREPROCESSOR;
 				continue;
 			}
-			if (!iswspace(line[I]))
-				bFirstChar = FALSE;
+			if (!iswspace(c))
+				bFirstChar = false;
 		}
 
 		if (pBuf == nullptr)
 			continue;	//	We don't need to extract keywords,
-						//	for faster parsing skip the rest of loop
+		//	for faster parsing skip the rest of loop
 
-		if (iswalnum(line[I]) || line[I] == '_' || line[I] == '.')
+		if (iswalnum(c) || c == '_' || c == '.')
 		{
 			if (nIdentBegin == -1)
-				nIdentBegin = I;
+				nIdentBegin = i;
 		}
 		else
 		{
@@ -309,17 +329,17 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 			{
 				auto pszChars = line.c_str();
 
-				if (IsCppKeyword(pszChars + nIdentBegin, I - nIdentBegin))
+				if (IsKeyword(pszChars + nIdentBegin, i - nIdentBegin))
 				{
-					DEFINE_BLOCK(nIdentBegin, COLORINDEX_KEYWORD);
+					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_KEYWORD);
 				}
-				else if (IsCppNumber(pszChars + nIdentBegin, I - nIdentBegin))
+				else if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
 				{
-					DEFINE_BLOCK(nIdentBegin, COLORINDEX_NUMBER);
+					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
 				}
 
-				bRedefineBlock = TRUE;
-				bDecIndex = TRUE;
+				bRedefineBlock = true;
+				bDecIndex = true;
 				nIdentBegin = -1;
 			}
 		}
@@ -329,13 +349,13 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 	{
 		auto pszChars = line.c_str();
 
-		if (IsCppKeyword(pszChars + nIdentBegin, I - nIdentBegin))
+		if (IsKeyword(pszChars + nIdentBegin, i - nIdentBegin))
 		{
-			DEFINE_BLOCK(nIdentBegin, COLORINDEX_KEYWORD);
+			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_KEYWORD);
 		}
-		else if (IsCppNumber(pszChars + nIdentBegin, I - nIdentBegin))
+		else if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
 		{
-			DEFINE_BLOCK(nIdentBegin, COLORINDEX_NUMBER);
+			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
 		}
 	}
 

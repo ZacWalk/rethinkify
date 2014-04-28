@@ -8,14 +8,12 @@
 const TCHAR crlf [] = _T("\r\n");
 const int UNDO_BUF_SIZE = 1000;
 
-TextBuffer::TextBuffer(const std::string &text, int nCrlfStyle)
+TextBuffer::TextBuffer(const std::wstring &text, int nCrlfStyle)
 {
-	_modified = FALSE;
-	m_bCreateBackupFile = FALSE;
+	_modified = false;
+	m_bCreateBackupFile = false;
 	m_nUndoPosition = 0;
 	m_nCRLFMode = nCrlfStyle;
-	_modified = FALSE;
-	m_nUndoPosition = 0;
 
 	if (text.empty())
 	{
@@ -23,8 +21,8 @@ TextBuffer::TextBuffer(const std::string &text, int nCrlfStyle)
 	}
 	else
 	{
-		std::stringstream lines(text);
-		std::string line;
+		std::wstringstream lines(text);
+		std::wstring line;
 
 		while (std::getline(lines, line))
 		{
@@ -35,11 +33,6 @@ TextBuffer::TextBuffer(const std::string &text, int nCrlfStyle)
 
 TextBuffer::~TextBuffer()
 {
-}
-
-void TextBuffer::AppendLine(const std::string &text)
-{
-	AppendLine(ToUtf16(text));
 }
 
 void TextBuffer::AppendLine(const std::wstring &text)
@@ -104,7 +97,7 @@ bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_
 {
 	clear();
 
-	bool success = false;
+	auto success = false;
 	std::ifstream ifs(path);
 	std::string line;
 
@@ -112,7 +105,7 @@ bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_
 	{
 		while (!safeGetline(ifs, line).eof())
 		{
-			AppendLine(line);
+			AppendLine(AsciiToUtf16(line));
 		}
 
 		success = true;
@@ -120,7 +113,7 @@ bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_
 
 	InvalidateView();
 
-	//bool success = false;
+	//auto success = false;
 	//auto hFile = ::CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
 
 	//if (hFile != INVALID_HANDLE_VALUE)
@@ -208,10 +201,10 @@ bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_
 
 	//		AppendLine(line);
 
-	//		_modified = FALSE;
+	//		_modified = false;
 	//		m_nUndoPosition = 0;
 
-	//		success = TRUE;
+	//		success = true;
 
 	//		InvalidateView();
 	//	}
@@ -232,10 +225,9 @@ static std::wstring TempPathName()
 	return result;
 }
 
-bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= TRUE*/) const
+bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= true*/) const
 {
-	bool success = false;
-
+	auto success = false;
 	auto tempPath = TempPathName();
 	std::ofstream fout(tempPath);
 
@@ -246,7 +238,7 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 		for (const auto &line : _lines)
 		{
 			if (!first) fout << std::endl;
-			fout << ToUtf8(line._text);
+			fout << UTF16ToAscii(line._text);
 			first = false;
 		}
 
@@ -266,7 +258,7 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 	//TCHAR szTempFileDir[_MAX_PATH + 1];
 	//TCHAR szTempFileName[_MAX_PATH + 1];
 	//TCHAR szBackupFileName[_MAX_PATH + 1];
-	//bool bSuccess = FALSE;
+	//auto success = false;
 
 	//TCHAR drive[_MAX_PATH], dir[_MAX_PATH], name[_MAX_PATH], ext[_MAX_PATH];
 	//_wsplitpath_s(pszFileName, drive, dir, name, ext);
@@ -333,7 +325,7 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 	//		}
 
 	//		//	Move temporary file to target name
-	//		bSuccess = ::MoveFile(szTempFileName, pszFileName) != 0;
+	//		success = ::MoveFile(szTempFileName, pszFileName) != 0;
 
 	//		if (bClearModifiedFlag)
 	//		{
@@ -346,33 +338,48 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 }
 
 
-std::vector<std::wstring> TextBuffer::Text(const TextSelection &selection)
+std::vector<std::wstring> TextBuffer::Text(const TextSelection &selection) const
 {
 	std::vector<std::wstring> result;
 
-	if (selection._start.y == selection._end.y)
+	if (!selection.empty())
 	{
-		result.push_back(_lines[selection._start.y]._text.substr(selection._start.x, selection._end.x - selection._start.x));
-	}
-	else
-	{
-		for (int y = selection._start.y; y <= selection._end.y; y++)
+		if (selection._start.y == selection._end.y)
 		{
-			const auto &text = _lines[y]._text;
+			result.push_back(_lines[selection._start.y]._text.substr(selection._start.x, selection._end.x - selection._start.x));
+		}
+		else
+		{
+			for (int y = selection._start.y; y <= selection._end.y; y++)
+			{
+				const auto &text = _lines[y]._text;
 
-			if (y == selection._start.y)
-			{
-				result.push_back(text.substr(selection._start.x, text.size() - selection._start.x));
-			}
-			else if (y == selection._end.y)
-			{
-				result.push_back(text.substr(0, selection._end.x));
-			}
-			else
-			{
-				result.push_back(text);
+				if (y == selection._start.y)
+				{
+					result.push_back(text.substr(selection._start.x, text.size() - selection._start.x));
+				}
+				else if (y == selection._end.y)
+				{
+					result.push_back(text.substr(0, selection._end.x));
+				}
+				else
+				{
+					result.push_back(text);
+				}
 			}
 		}
+	}
+
+	return result;
+}
+
+std::vector<std::wstring> TextBuffer::Text() const
+{
+	std::vector<std::wstring> result;
+
+	for (const auto &line : _lines)
+	{
+		result.push_back(line._text);
 	}
 
 	return result;
@@ -397,7 +404,7 @@ void TextBuffer::RemoveView(IView *pView)
 		}
 		pos++;
 	}
-	assert(FALSE);
+	assert(false);
 }
 
 void TextBuffer::InvalidateLine(int index)
@@ -492,7 +499,7 @@ TextLocation TextBuffer::InsertText(const TextLocation &location, const wchar_t 
 
 		InvalidateView();
 	}
-	else
+	else if (c != '\r')
 	{
 		auto before = li._text;
 		auto after = li._text;
@@ -537,28 +544,31 @@ TextLocation TextBuffer::DeleteText(UndoGroup &ug, const TextLocation &location)
 
 TextLocation TextBuffer::DeleteText(const TextSelection &selection)
 {
-	if (selection._start.y == selection._end.y)
+	if (!selection.empty())
 	{
-		auto &li = _lines[selection._start.y];
-		auto before = li._text;
-		auto after = li._text;
-
-		after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
-		li._text = after;
-
-		InvalidateLine(selection._start.y);
-	}
-	else
-	{
-		_lines[selection._start.y]._text.erase(_lines[selection._start.y]._text.begin() + selection._start.x, _lines[selection._start.y]._text.end());
-		_lines[selection._start.y]._text.append(_lines[selection._end.y]._text.begin() + selection._end.x, _lines[selection._end.y]._text.end());
-
-		if (selection._start.y + 1 < selection._end.y + 1)
+		if (selection._start.y == selection._end.y)
 		{
-			_lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
-		}
+			auto &li = _lines[selection._start.y];
+			auto before = li._text;
+			auto after = li._text;
 
-		InvalidateView();
+			after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
+			li._text = after;
+
+			InvalidateLine(selection._start.y);
+		}
+		else
+		{
+			_lines[selection._start.y]._text.erase(_lines[selection._start.y]._text.begin() + selection._start.x, _lines[selection._start.y]._text.end());
+			_lines[selection._start.y]._text.append(_lines[selection._end.y]._text.begin() + selection._end.x, _lines[selection._end.y]._text.end());
+
+			if (selection._start.y + 1 < selection._end.y + 1)
+			{
+				_lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
+			}
+
+			InvalidateView();
+		}
 	}
 
 	return selection._start;
@@ -638,7 +648,7 @@ static wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
 }
 
 
-static int FindStringHelper(LPCTSTR pszFindWhere, LPCTSTR pszFindWhat, bool bWholeWord)
+static int FindStringHelper(const wchar_t * pszFindWhere, const wchar_t * pszFindWhat, bool bWholeWord)
 {
 	assert(pszFindWhere != nullptr);
 	assert(pszFindWhat != nullptr);
@@ -677,7 +687,7 @@ static int FindStringHelper(LPCTSTR pszFindWhere, LPCTSTR pszFindWhat, bool bWho
 		return nCur + (pszPos - pszFindWhere);
 	}
 
-	assert(FALSE);		// Unreachable
+	assert(false);		// Unreachable
 	return -1;
 }
 
@@ -695,7 +705,7 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 	assert(ptBlockBegin.y < ptBlockEnd.y || ptBlockBegin.y == ptBlockEnd.y && ptBlockBegin.x <= ptBlockEnd.x);
 
 	if (ptBlockBegin == ptBlockEnd)
-		return FALSE;
+		return false;
 
 	if (ptCurrentPos.y < ptBlockBegin.y || ptCurrentPos.y == ptBlockBegin.y && ptCurrentPos.x < ptBlockBegin.x)
 	{
@@ -731,7 +741,7 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 				{
 					ptCurrentPos.x += nPos;
 					*pptFoundPos = ptCurrentPos;
-					return TRUE;
+					return true;
 				}
 
 				ptCurrentPos.x = 0;
@@ -740,10 +750,10 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 
 			//	Beginning of text reached
 			if (!bWrapSearch)
-				return FALSE;
+				return false;
 
 			//	Start again from the end of text
-			bWrapSearch = FALSE;
+			bWrapSearch = false;
 			ptCurrentPos = TextLocation(0, _lines.size() - 1);
 		}
 	}
@@ -773,7 +783,7 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 						break;
 
 					*pptFoundPos = ptCurrentPos;
-					return TRUE;
+					return true;
 				}
 
 				//	Go further, text was not found
@@ -783,14 +793,14 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 
 			//	End of text reached
 			if (!bWrapSearch)
-				return FALSE;
+				return false;
 
 			//	Start from the beginning
-			bWrapSearch = FALSE;
+			bWrapSearch = false;
 			ptCurrentPos = ptBlockBegin;
 		}
 	}
 
-	assert(FALSE);		// Unreachable
-	return FALSE;
+	assert(false);		// Unreachable
+	return false;
 }

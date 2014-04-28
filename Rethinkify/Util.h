@@ -1,19 +1,36 @@
 #pragma once
 
 
-inline std::string ToUtf8(const std::wstring &wstr)
+inline std::string UTF16ToUtf8(const std::wstring &wstr)
 {
-	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), NULL, 0, NULL, NULL);
+	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), nullptr, 0, nullptr, nullptr);
 	std::string result(size_needed, 0);
-	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), &result[0], size_needed, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), &result[0], size_needed, nullptr, nullptr);
 	return result;
 }
 
-inline std::wstring ToUtf16(const std::string &str)
+inline std::wstring UTF8ToUtf16(const std::string &str)
 {
-	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), NULL, 0);
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), nullptr, 0);
 	std::wstring result(size_needed, 0);
 	MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), &result[0], size_needed);
+	return result;
+}
+
+
+inline std::string UTF16ToAscii(const std::wstring &wstr)
+{
+	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), nullptr, 0, nullptr, nullptr);
+	std::string result(size_needed, 0);
+	WideCharToMultiByte(CP_ACP, 0, &wstr[0], (int) wstr.size(), &result[0], size_needed, nullptr, nullptr);
+	return result;
+}
+
+inline std::wstring AsciiToUtf16(const std::string &str)
+{
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), nullptr, 0);
+	std::wstring result(size_needed, 0);
+	MultiByteToWideChar(CP_ACP, 0, &str[0], (int) str.size(), &result[0], size_needed);
 	return result;
 }
 
@@ -38,26 +55,26 @@ inline std::wstring UnQuote(const std::wstring &text)
 	return text;
 }
 
-static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *crlf = L"\n")
+static inline std::wstring Combine(const std::vector<std::wstring> &lines)
 {
-	std::wstring result;
+	std::wstringstream result;
 	auto first = true;
+
 	for (const auto &line : lines)
 	{
 		if (first)
 		{
-			result = line;
+			result << line;
 			first = false;
 		}
 		else
 		{
-			result += crlf;
-			result += line;
+			result << std::endl << line;
 
 		}
 	}
 
-	return result;
+	return result.str();
 }
 
 class CPoint : public POINT
@@ -102,24 +119,24 @@ public:
 class String
 {
 public:
-	static int CompareNoCase(const char * left, const char * right)
+	static int CompareNoCase(const wchar_t * left, const wchar_t * right)
 	{
-		return _stricmp(left, right);
+		return _wcsicmp(left, right);
 	}
 
-	static std::string Format(const char *format, ...)
+	static std::wstring Format(const wchar_t *format, ...)
 	{
 		va_list argList;
 		va_start(argList, format);
 
-		auto length = _vscprintf(format, argList);
-		auto sz = (char*) _alloca(length + 1);
-		if (sz == nullptr) return "";
-		vsprintf_s(sz, length + 1, format, argList);
+		auto length = _vscwprintf(format, argList);
+		auto sz = (wchar_t*) _alloca((length + 1) * sizeof(wchar_t));
+		if (sz == nullptr) return L"";
+		vswprintf_s(sz, length + 1, format, argList);
 		va_end(argList);
 		sz[length] = 0;
 		return sz;
 	}
 
-	static const char *From(bool val) { return val ? "true" : "false"; };
+	static const wchar_t *From(bool val) { return val ? L"true" : L"false"; };
 };

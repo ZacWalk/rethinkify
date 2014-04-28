@@ -212,30 +212,13 @@ private:
 
 public:
 
-	void AppendLine(const std::string &text);
 	void AppendLine(const std::wstring &text);
 
-	std::string str() const
-	{
-		bool first = true;
-		std::string result;
-
-		for (const auto &line : _lines)
-		{
-			if (!first) result += '\n';
-			result.append(ToUtf8(line._text));
-			first = false;
-		}		
-
-		return result;
-	}
-
-
-	TextBuffer(const std::string &text = std::string(), int nCrlfStyle = CRLF_STYLE_DOS);
+	TextBuffer(const std::wstring &text = std::wstring(), int nCrlfStyle = CRLF_STYLE_DOS);
 	~TextBuffer();
 
 	bool LoadFromFile(const std::wstring &path, int nCrlfStyle = CRLF_STYLE_AUTOMATIC);
-	bool SaveToFile(const std::wstring &path, int nCrlfStyle = CRLF_STYLE_AUTOMATIC, bool bClearModifiedFlag = TRUE) const;
+	bool SaveToFile(const std::wstring &path, int nCrlfStyle = CRLF_STYLE_AUTOMATIC, bool bClearModifiedFlag = true) const;
 	void clear();
 
 	bool IsModified() const { return _modified; }
@@ -245,7 +228,10 @@ public:
 
 	const size_t LineCount() const { return _lines.size(); };
 	const Line &operator[](int n) const { return _lines[n];  };
-	std::vector<std::wstring> Text(const TextSelection &selection);
+
+	std::vector<std::wstring> Text(const TextSelection &selection) const;
+	std::vector<std::wstring> Text() const;
+	std::wstring str() const { return Combine(Text()); }
 
 	TextLocation InsertText(UndoGroup &ug, const TextLocation &location, const std::wstring &text);
 	TextLocation InsertText(UndoGroup &ug, const TextLocation &location, const wchar_t &c);

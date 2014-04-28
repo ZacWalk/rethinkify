@@ -19,7 +19,7 @@
 
 const wchar_t *Title = L"Rethinkify";
 
-extern std::string RunTests();
+extern std::wstring RunTests();
 
 class CAboutDlg : public CDialogImpl<CAboutDlg>
 {
@@ -79,20 +79,6 @@ public:
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
 		_view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL);
-
-		LOGFONT lf;
-		memset(&lf, 0, sizeof(lf));
-		lf.lfWeight = FW_NORMAL;
-		lf.lfCharSet = ANSI_CHARSET;
-		lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
-		lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-		lf.lfQuality = DEFAULT_QUALITY;
-		lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
-		wcscpy_s(lf.lfFaceName, L"Consolas");
-
-		_view.SetFont(lf);
-		_view.Invalidate();		
-
 		return 0;
 	}
 
@@ -153,8 +139,8 @@ public:
 	{
 		_text.clear();
 
-		std::stringstream lines(RunTests());
-		std::string line;
+		std::wstringstream lines(RunTests());
+		std::wstring line;
 
 		while (std::getline(lines, line))
 		{
@@ -311,7 +297,7 @@ public:
 	}
 };
 
-int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine, _In_ int nCmdShow)
+int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ wchar_t * lpCmdLine, _In_ int nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
@@ -321,8 +307,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	_frame.SetMenu(LoadMenu(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY)));
 
 	auto icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_RETHINKIFY));
-	_frame.SetIcon(icon, TRUE);
-	_frame.SetIcon(icon, FALSE);
+	_frame.SetIcon(icon, true);
+	_frame.SetIcon(icon, false);
 	_frame.ShowWindow(SW_SHOW);
 
 	int argCount;
