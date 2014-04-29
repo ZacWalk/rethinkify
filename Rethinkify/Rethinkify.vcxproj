@@ -98,9 +98,11 @@
     <ClInclude Include="Rethinkify.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="utf.h" />
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="utf.cpp" />
     <ClCompile Include="Tests.cpp" />
     <ClCompile Include="TextBuffer.cpp" />
     <ClCompile Include="TextView.cpp" />

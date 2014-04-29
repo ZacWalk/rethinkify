@@ -6,13 +6,13 @@ class UndoGroup;
 
 typedef int POSITION;
 
-enum CRLFSTYLE
+typedef enum CRLFSTYLE
 {
 	CRLF_STYLE_AUTOMATIC = -1,
 	CRLF_STYLE_DOS = 0,
 	CRLF_STYLE_UNIX = 1,
 	CRLF_STYLE_MAC = 2
-};
+} line_endings;
 
 enum
 {
@@ -217,7 +217,7 @@ public:
 	TextBuffer(const std::wstring &text = std::wstring(), int nCrlfStyle = CRLF_STYLE_DOS);
 	~TextBuffer();
 
-	bool LoadFromFile(const std::wstring &path, int nCrlfStyle = CRLF_STYLE_AUTOMATIC);
+	bool LoadFromFile(const std::wstring &path);
 	bool SaveToFile(const std::wstring &path, int nCrlfStyle = CRLF_STYLE_AUTOMATIC, bool bClearModifiedFlag = true) const;
 	void clear();
 

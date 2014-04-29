@@ -1,9 +1,11 @@
 
 #include "pch.h"
 #include "TextBuffer.h"
-#include "resource.h"
+#include "utf.h"
 
 #include <fstream>
+#include <clocale>
+#include <codecvt>
 
 const TCHAR crlf [] = _T("\r\n");
 const int UNDO_BUF_SIZE = 1000;
@@ -53,13 +55,6 @@ static const char *crlfs [] =
 	"\x0a"				//	Macintosh style
 };
 
-static bool EmitLine(int c1, int c2)
-{
-	if (c1 == 0x0d && c2 == 0x0a) return true;
-	if (c1 == 0x0a && c2 == 0x0d) return true;
-	return false;
-}
-
 static std::istream& safeGetline(std::istream& is, std::string& t)
 {
 	t.clear();
@@ -93,125 +88,255 @@ static std::istream& safeGetline(std::istream& is, std::string& t)
 	}
 }
 
-bool TextBuffer::LoadFromFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/)
+
+
+struct _BOM_LOOKUP
+{
+	DWORD  bom;
+	ULONG  len;
+	Encoding    type;
+};
+
+struct _BOM_LOOKUP BOMLOOK [] =
+{
+	// define longest headers first
+	{ 0x0000FEFF, 4, NCP_UTF32 },
+	{ 0xFFFE0000, 4, NCP_UTF32BE },
+	{ 0xBFBBEF, 3, NCP_UTF8 },
+	{ 0xFFFE, 2, NCP_UTF16BE },
+	{ 0xFEFF, 2, NCP_UTF16 },
+	{ 0, 0, NCP_ASCII },
+};
+
+//
+//	00 00 FE FF			UTF-32, big-endian 
+//	FF FE 00 00			UTF-32, little-endian 
+//	FE FF				UTF-16, big-endian 
+//	FF FE				UTF-16, little-endian 
+//	EF BB BF			UTF-8 
+//
+static Encoding detect_encoding(const unsigned char *header, size_t filesize, int &headerLen)
+{
+	for (int i = 0; BOMLOOK[i].len; i++)
+	{
+		if (filesize >= BOMLOOK[i].len &&
+			memcmp(header, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
+		{
+			headerLen = BOMLOOK[i].len;
+			return BOMLOOK[i].type;
+		}
+	}
+
+	headerLen = 0;
+
+	if (header[0] == 0 && header[1] != 0 && header[2] == 0 && header[3] != 0)
+	{
+		return NCP_UTF16;
+	}
+
+	if (header[0] != 0 && header[1] == 0 && header[2] != 0 && header[3] == 0)
+	{
+		return NCP_UTF16BE;
+	}
+	
+	return NCP_ASCII;
+}
+
+static line_endings detect_line_endings(const char *buffer, const int len)
+{
+	int I = 0;
+
+	for (I = 0; I < len; I++)
+	{
+		if (buffer[I] == 0x0a)
+			break;
+	}
+	if (I < len)
+	{
+		if (I > 0 && buffer[I - 1] == 0x0d)
+		{
+			return CRLF_STYLE_DOS;
+		}
+		else
+		{
+			if (I < len - 1 && buffer[I + 1] == 0x0d)
+				return CRLF_STYLE_UNIX;
+			else
+				return CRLF_STYLE_MAC;
+		}
+	}
+
+	return CRLF_STYLE_DOS; // guess
+}
+
+bool TextBuffer::LoadFromFile(const std::wstring &path)
 {
 	clear();
 
 	auto success = false;
-	std::ifstream ifs(path);
-	std::string line;
+	//std::wifstream f(path);
 
-	if (ifs)
-	{
-		while (!safeGetline(ifs, line).eof())
-		{
-			AppendLine(AsciiToUtf16(line));
-		}
+	//size_t bom = 0;
+	//bom = f.get() + (bom << 8);
+	//bom = f.get() + (bom << 8);
+	//bom = f.get() + (bom << 8);
 
-		success = true;
-	}
+	////f.read((char*) &bom, 3);
+	////bom &= 0xFFFFFF;
 
-	InvalidateView();
-
-	//auto success = false;
-	//auto hFile = ::CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-
-	//if (hFile != INVALID_HANDLE_VALUE)
+	//if (bom == 0xEFBBBF) //UTF8
 	//{
-	//	const DWORD dwBufSize = 1024;
-	//	char buffer[dwBufSize];
+	//	f.imbue(std::locale(f.getloc(), new std::codecvt_utf8<wchar_t, 1114111UL>));
+	//}
+	//else
+	//{	
+	//	bom &= 0xFFFF;
 
-	//	DWORD dwCurSize;
-	//	if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
+	//	if (bom == 0xFEFF) //UTF16LE
 	//	{
+	//		f.imbue(std::locale(f.getloc(), new std::codecvt_utf16<wchar_t, 1114111UL, std::little_endian>));
+	//		f.seekg(2, std::ios::beg);
+	//	}
+	//	else if (bom == 0xFFFE) //UTF16BE
+	//	{
+	//		f.imbue(std::locale(f.getloc(), new std::codecvt_utf16<wchar_t, 1114111UL>));
+	//		f.seekg(2, std::ios::beg);
+	//	}
+	//	else //ANSI
+	//	{
+	//		bom = 0;
+	//		//f.imbue(std::locale(f.getloc()));
+	//		f.seekg(std::ios::beg);
+	//	}
+	//}
 
-	//		if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
-	//		{
-	//			//	Try to determine current CRLF mode
-	//			DWORD I = 0;
+	//std::u16string line;
 
-	//			for (I = 0; I < dwCurSize; I++)
-	//			{
-	//				if (buffer[I] == _T('\x0a'))
-	//					break;
-	//			}
-	//			if (I == dwCurSize)
-	//			{
-	//				//	By default (or in the case of empty file), set DOS style
-	//				nCrlfStyle = CRLF_STYLE_DOS;
-	//			}
-	//			else
-	//			{
-	//				//	Otherwise, analyse the first occurance of line-feed character
-	//				if (I > 0 && buffer[I - 1] == _T('\x0d'))
-	//				{
-	//					nCrlfStyle = CRLF_STYLE_DOS;
-	//				}
-	//				else
-	//				{
-	//					if (I < dwCurSize - 1 && buffer[I + 1] == _T('\x0d'))
-	//						nCrlfStyle = CRLF_STYLE_UNIX;
-	//					else
-	//						nCrlfStyle = CRLF_STYLE_MAC;
-	//				}
-	//			}
-	//		}
-
-	//		assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
-	//		m_nCRLFMode = nCrlfStyle;
-	//		const char *crlf = crlfs[nCrlfStyle];
-
-	//		DWORD dwBufPtr = 0;
-	//		int nCrlfPtr = 0;
-	//		int last = 0;
-
-	//		std::string line;
-
-	//		while (dwCurSize > 0)
-	//		{
-	//			int c = buffer[dwBufPtr];
-
-	//			if (c != 0x0A && c != 0x0D)
-	//			{
-	//				line += (char) c;
-	//			}
-
-	//			if (EmitLine(last, c))
-	//			{
-	//				AppendLine(line);
-	//				line.clear();
-	//			}
-
-	//			dwBufPtr++;
-
-	//			if (dwBufPtr == dwCurSize)
-	//			{
-	//				if (::ReadFile(hFile, buffer, dwBufSize, &dwCurSize, nullptr))
-	//				{
-	//					dwBufPtr = 0;
-	//				}
-	//				else
-	//				{
-	//					dwCurSize = 0;
-	//				}
-	//			}
-
-	//			last = c;
-	//		}
-
+	//if (f)
+	//{
+	//	while (f.good())
+	//	{
+	//		std::getline(f, line);
 	//		AppendLine(line);
-
-	//		_modified = false;
-	//		m_nUndoPosition = 0;
-
-	//		success = true;
-
-	//		InvalidateView();
 	//	}
 
-	//	if (hFile != nullptr)
-	//		::CloseHandle(hFile);
+	//	success = true;
 	//}
+
+	
+
+	auto hFile = ::CreateFile(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+
+	if (hFile != INVALID_HANDLE_VALUE)
+	{
+		const int bufferLen = 1024 * 64;
+		char buffer[bufferLen];
+
+		DWORD readLen;
+		if (::ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
+		{
+			auto headerLen = 0;
+			auto size = GetFileSize(hFile, nullptr);
+			auto encoding = detect_encoding((const unsigned char *)buffer, size, headerLen);
+
+			m_nCRLFMode = detect_line_endings(buffer, readLen);
+			const char *crlf = crlfs[m_nCRLFMode];
+
+			auto bufferPos = headerLen;
+
+			if (encoding == NCP_UTF8 || encoding == NCP_ASCII)
+			{
+				std::string line;
+
+				while (readLen > 0)
+				{
+					int c = buffer[bufferPos];
+
+					if (c != 0x0A && c != 0x0D)
+					{
+						line += (char) c;
+					}
+
+					if (c == 0x0D)
+					{
+						AppendLine((encoding == NCP_ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
+						line.clear();
+					}
+
+					bufferPos++;
+
+					if (bufferPos == readLen)
+					{
+						if (::ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
+						{
+							bufferPos = 0;
+						}
+						else
+						{
+							readLen = 0;
+						}
+					}
+				}
+
+				AppendLine((encoding == NCP_ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
+			}
+			else if (encoding == NCP_UTF16BE || encoding == NCP_UTF16)
+			{
+				auto buffer16 = (const wchar_t *) buffer;
+				readLen /= 2;
+
+				std::wstring line;
+
+				while (readLen > 0)
+				{
+					wchar_t c = buffer16[bufferPos];
+
+					if (encoding == NCP_UTF16)
+					{
+						c = _byteswap_ushort(c);
+					}
+
+					if (c != 0x0A && c != 0x0D)
+					{
+						line += c;
+					}
+
+					if (c == 0x0D)
+					{
+						AppendLine(line);
+						line.clear();
+					}
+
+					bufferPos++;
+
+					if (bufferPos == readLen)
+					{
+						if (::ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
+						{
+							bufferPos = 0;
+							readLen /= 2;
+						}
+						else
+						{
+							readLen = 0;
+						}
+					}
+				}
+
+				AppendLine(line);
+			}
+
+			_modified = false;
+			m_nUndoPosition = 0;
+
+			success = true;
+
+			InvalidateView();
+		}
+
+		if (hFile != nullptr)
+			::CloseHandle(hFile);
+	}
 
 	return success;
 }
