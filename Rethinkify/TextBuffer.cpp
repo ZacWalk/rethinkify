@@ -350,6 +350,34 @@ static std::wstring TempPathName()
 	return result;
 }
 
+// Create a string with last error message
+static std::wstring GetLastErrorMessage()
+{
+	std::wstring result;
+	auto error = GetLastError();
+
+	if (error)
+	{
+		LPVOID lpMsgBuf;
+		DWORD bufLen = FormatMessageW(
+			FORMAT_MESSAGE_ALLOCATE_BUFFER |
+			FORMAT_MESSAGE_FROM_SYSTEM |
+			FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL,
+			error,
+			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+			(LPWSTR) &lpMsgBuf,
+			0, NULL);
+
+		if (bufLen)
+		{
+			result = (LPCWSTR) lpMsgBuf;
+			LocalFree(lpMsgBuf);
+		}
+	}
+	return result;
+}
+
 bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/, bool bClearModifiedFlag /*= true*/) const
 {
 	auto success = false;
@@ -369,11 +397,16 @@ bool TextBuffer::SaveToFile(const std::wstring &path, int nCrlfStyle /*= CRLF_ST
 
 		fout.close();
 
-		success = ::MoveFile(tempPath.c_str(), path.c_str()) != 0;
+		success = ::MoveFileEx(tempPath.c_str(), path.c_str(), MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 
 		if (success && bClearModifiedFlag)
 		{
 			_modified = false;
+		}
+
+		if (!success)
+		{
+			MessageBox(GetActiveWindow(), GetLastErrorMessage().c_str(), L"Diffractor", MB_OK);
 		}
 	}
 
