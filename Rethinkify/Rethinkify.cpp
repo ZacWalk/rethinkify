@@ -11,11 +11,15 @@
 //
 // Ideas 
 //
-// could open spreadsheets using http://libxls.sourceforge.net/ or http://www.codeproject.com/Articles/42504/ExcelFormat-Library
+// Support editing CSV tables
+// open spreadsheets using http://libxls.sourceforge.net/ or http://www.codeproject.com/Articles/42504/ExcelFormat-Library
 
 
 //#pragma comment(lib, "Comdlg32")
-//#pragma comment(lib, "Comctl32")
+#pragma comment(lib, "Comctl32")
+
+#pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
 
 const wchar_t *g_szAppName = L"Rethinkify";
 
@@ -45,15 +49,153 @@ public:
 	}
 };
 
+class FindWnd : public CWindowImpl<FindWnd>
+{
+public:
+
+	const int editId = 101;
+	const int tbId = 102;
+	const int nextId = 103;
+	const int lastId = 104;
+
+	TextView &_view;
+	CWindow _findText;
+	CWindow _findNext;
+
+	FindWnd(TextView &v) : _view(v)
+	{
+	}
+
+	BEGIN_MSG_MAP(FindWnd)
+		MESSAGE_HANDLER(WM_CREATE, OnCreate)
+		MESSAGE_HANDLER(WM_SIZE, OnSize)
+		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
+		//MESSAGE_HANDLER(WM_PAINT, OnPaint)
+
+		COMMAND_ID_HANDLER(nextId, OnNext)
+		COMMAND_ID_HANDLER(lastId, OnLast)
+
+		COMMAND_HANDLER(editId, EN_CHANGE, OnEditChange)
+
+	END_MSG_MAP()
+
+	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		auto font = CreateFont(20, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
+
+		_findText.Create(L"EDIT", m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, editId);
+		_findText.SetFont(font);
+
+		auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN | CCS_NODIVIDER | CCS_ADJUSTABLE;
+		
+		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, nextId);
+		_findNext.SetFont(font);
+
+		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
+		//	CCS_ADJUSTABLE | CCS_NODIVIDER | WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS,
+		//	0, 0, 0, 0, m_hwnd, (HMENU) IDR_TOOLBAR1, GetModuleHandle(NULL), 0);
+
+		_findNext.SendMessage(TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+
+		const int numButtons = 2;
+
+		HIMAGELIST hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
+		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));		
+		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
+		_findNext.SendMessage(TB_SETIMAGELIST, (WPARAM) 0, (LPARAM) hImageList);
+
+		TBBUTTON tbButtons[numButtons] =
+		{
+			{ 0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
+			{ 1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
+		};
+		_findNext.SendMessage(TB_ADDBUTTONS, numButtons, (LPARAM) tbButtons);
+		_findNext.SendMessage(TB_AUTOSIZE, 0, 0);
+
+		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_RETHINKIFY), IMAGE_ICON, 32, 32, NULL);
+		//_findNext.SendMessage(BM_SETIMAGE, (WPARAM) IMAGE_ICON, (LPARAM) nextIcon);
+
+		return 0;
+	}
+
+	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	{
+		CRect r;
+		GetClientRect(r);
+
+		r.left += 4;
+		r.right -= 54;
+		r.top += 4;
+		r.bottom -= 4;
+
+		_findText.MoveWindow(r);
+		
+		r.left = r.right + 4;
+		r.right += 50;
+
+		_findNext.MoveWindow(r);
+
+		return 0;
+	}
+
+	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		CRect r;
+		GetClientRect(r);
+		FillSolidRect((HDC)wParam, r, RGB(100, 100, 100));
+		return 1;
+	}
+
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		CRect r;
+		GetClientRect(r);
+
+		PAINTSTRUCT ps = { 0 };
+		auto hdc = BeginPaint(&ps);
+		FillSolidRect(hdc, r, RGB(100, 100, 100));
+		EndPaint(&ps);
+		return 0;
+	}
+
+	std::wstring Text()
+	{
+		const int bufferSize = 200;
+		wchar_t text[bufferSize];
+		_findText.GetWindowText(text, bufferSize);
+		return text;
+	}
+
+	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	{
+		_view.Find(Text(), 0);
+		return 0;
+	}
+
+	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		_view.Find(Text(), FIND_DIRECTION_UP);
+		return 0;
+	}
+
+	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		_view.Find(Text(), 0);
+		return 0;
+	}
+};
+
 class CMainFrame : public CWindowImpl<CMainFrame>
 {
 public:
 
 	TextBuffer _text;
 	TextView _view;
+	FindWnd _find;
+
 	std::wstring _path;
 
-	CMainFrame() : _view(_text)
+	CMainFrame() : _view(_text), _find(_view)
 	{
 	}
 
@@ -78,7 +220,8 @@ public:
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
-		_view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL);
+		_view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
+		_find.Create(_view, nullptr, nullptr, WS_CHILD);
 		return 0;
 	}
 
@@ -87,6 +230,12 @@ public:
 		RECT rc;
 		GetClientRect(&rc);
 		_view.MoveWindow(&rc);
+
+		rc.right -= 32;
+		rc.left = rc.right - 160;
+		rc.bottom = rc.top + 32;
+		_find.MoveWindow(&rc);
+
 		return 0;
 	}
 
@@ -200,6 +349,9 @@ public:
 
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
+		bool isVisible = _find.IsWindowVisible() != 0;
+		_find.ShowWindow(isVisible ? SW_HIDE : SW_SHOW);
+		if (!isVisible) _find._findText.SetFocus();
 		return 0;
 	}
 	
@@ -299,6 +451,34 @@ public:
 	}
 };
 
+static bool IsNeededByDialog(const MSG &msg)
+{
+	static std::set<int> keys;
+
+	if (keys.empty())
+	{
+		keys.insert(VK_BACK);
+		keys.insert(VK_DELETE);
+		keys.insert(VK_DOWN);
+		keys.insert(VK_END);
+		keys.insert(VK_HOME);
+		keys.insert(VK_INSERT);
+		keys.insert(VK_LEFT);
+		keys.insert(VK_NEXT);
+		keys.insert(VK_PRIOR);
+		keys.insert(VK_RIGHT);
+		keys.insert(VK_TAB);
+		keys.insert(VK_UP);
+	}
+
+	if (msg.message == WM_KEYDOWN)
+	{
+		return keys.find(msg.wParam) != keys.end();
+	}
+
+	return false;
+}
+
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ wchar_t * lpCmdLine, _In_ int nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
@@ -324,13 +504,23 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	auto hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY));
 	MSG msg;
 
-	// Main message loop:
 	while (GetMessage(&msg, nullptr, 0, 0))
 	{
-		if (!TranslateAccelerator(_frame, hAccelTable, &msg))
+		auto findFocused = _frame._find.IsChild(GetFocus());
+
+		if (findFocused && msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE)
 		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+			_frame._find.ShowWindow(SW_HIDE);
+		}
+		else
+		{
+			auto dontTranslate = findFocused && IsNeededByDialog(msg);
+
+			if (dontTranslate || !TranslateAccelerator(_frame, hAccelTable, &msg))
+			{
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
 		}
 	}
 

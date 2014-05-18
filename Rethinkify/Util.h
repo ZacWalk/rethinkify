@@ -163,3 +163,22 @@ public:
 
 	static const wchar_t *From(bool val) { return val ? L"true" : L"false"; };
 };
+
+
+static inline void FillSolidRect(HDC hdc, const CRect &rc, COLORREF clr)
+{
+	auto r = rc;
+	auto clrOld = ::SetBkColor(hdc, clr);
+
+	if (clrOld != CLR_INVALID)
+	{
+		::ExtTextOut(hdc, 0, 0, ETO_OPAQUE, r, nullptr, 0, nullptr);
+		::SetBkColor(hdc, clrOld);
+	}
+}
+
+static inline void FillSolidRect(HDC hdc, int l, int t, int w, int h, COLORREF clr)
+{
+	CRect rc(l, t, l + w, t + h);
+	FillSolidRect(hdc, rc, clr);
+}

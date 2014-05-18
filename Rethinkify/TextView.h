@@ -271,7 +271,7 @@ public:
 		MESSAGE_HANDLER(WM_PAINT, OnPaint)
 		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
 		MESSAGE_HANDLER(WM_VSCROLL, OnVScroll)
-		MESSAGE_HANDLER(WM_VSCROLL, OnHScroll)
+		MESSAGE_HANDLER(WM_HSCROLL, OnHScroll)
 		MESSAGE_HANDLER(WM_TIMER, OnTimer)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDblClk)
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
@@ -322,15 +322,13 @@ public:
 
 	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
-		CWindow w = (HWND) wParam;
-		OnSetFocus(&w);
+		OnSetFocus((HWND) wParam);
 		return 0;
 	}
 
 	LRESULT OnKillFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
-		CWindow w = (HWND) wParam;
-		OnKillFocus(&w);
+		OnKillFocus((HWND) wParam);
 		return 0;
 	}
 
@@ -407,7 +405,7 @@ public:
 		{
 		case ID_EDIT_COPY: Copy(); break;
 		case ID_EDIT_SELECT_ALL: SelectAll(); break;
-		case ID_EDIT_FIND: OnEditFind(); break;
+		//case ID_EDIT_FIND: OnEditFind(); break;
 		case ID_EDIT_REPEAT: OnEditRepeat(); break;
 		case ID_EDIT_FIND_PREVIOUS: OnEditFindPrevious(); break;
 		case ID_EDIT_CHAR_LEFT: MoveLeft(false); break;
@@ -456,7 +454,7 @@ public:
 	bool GetAutoIndent() const;
 	bool GetOverwriteMode() const;
 	bool OnEraseBkgnd(HDC pDC);
-	bool OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message);
+	bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message);
 	bool QueryEditable();
 	bool ReplaceSelection(const wchar_t * pszNewText);
 	int OnCreate();
@@ -468,7 +466,8 @@ public:
 	void OnDestroy();
 	void OnEditDelete();
 	void OnEditDeleteBack();
-	void OnEditFind();
+	//void OnEditFind() { Find(_lastFindWhat); };
+	void Find(const std::wstring &text, DWORD flags);
 	void OnEditFindPrevious();
 	void OnEditRedo();
 	void OnEditRepeat();
@@ -478,7 +477,7 @@ public:
 	void OnEditUntab();
 	void OnFilePageSetup();
 	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
-	void OnKillFocus(CWindow* pNewWnd);
+	void OnKillFocus(CWindow newWnd);
 	void OnContextMenu(const CPoint &point, UINT nFlags);
 	void OnLButtonDblClk(const CPoint &point, UINT nFlags);
 	void OnLButtonDown(const CPoint &point, UINT nFlags);
@@ -486,7 +485,7 @@ public:
 	void OnMouseMove(const CPoint &point, UINT nFlags);
 	void OnMouseWheel(const CPoint &point, int zDelta);
 	void OnRButtonDown(const CPoint &point, UINT nFlags);
-	void OnSetFocus(CWindow* pOldWnd);
+	void OnSetFocus(CWindow oldWnd);
 	void OnSize(UINT nType, int cx, int cy);
 	void OnSysColorChange();
 	void OnTimer(UINT nIDEvent);

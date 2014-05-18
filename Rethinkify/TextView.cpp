@@ -29,11 +29,11 @@ private:
 public:
 	CEditDropTargetImpl(TextView *pOwner) { m_pOwner = pOwner; };
 
-	DROPEFFECT OnDragEnter(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
-	void OnDragLeave(CWindow* pWnd);
-	DROPEFFECT OnDragOver(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
-	bool OnDrop(CWindow* pWnd, COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point);
-	DROPEFFECT OnDragScroll(CWindow* pWnd, DWORD dwKeyState, CPoint point);
+	DROPEFFECT OnDragEnter(CWindow wnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
+	void OnDragLeave(CWindow wnd);
+	DROPEFFECT OnDragOver(CWindow wnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
+	bool OnDrop(CWindow wnd, COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point);
+	DROPEFFECT OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point);
 };
 
 static auto s_textHighlighter = std::make_shared<TextHighight>();
@@ -113,7 +113,7 @@ void TextView::ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar)
 		CRect rcScroll;
 		GetClientRect(&rcScroll);
 		rcScroll.left += GetMarginWidth();
-		ScrollWindow(nScrollChars * GetCharWidth(), 0, &rcScroll, &rcScroll);
+		ScrollWindowEx(nScrollChars * GetCharWidth(), 0, &rcScroll, &rcScroll, nullptr, nullptr, SW_INVALIDATE);
 		UpdateWindow();
 		if (bTrackScrollBar)
 			RecalcHorzScrollBar(true);
@@ -126,7 +126,7 @@ void TextView::ScrollToLine(int nNewTopLine, bool bTrackScrollBar)
 	{
 		int nScrollLines = m_nTopLine - nNewTopLine;
 		m_nTopLine = nNewTopLine;
-		ScrollWindow(0, nScrollLines * GetLineHeight());
+		ScrollWindowEx(0, nScrollLines * GetLineHeight(), nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
 		UpdateWindow();
 		if (bTrackScrollBar)
 			RecalcVertScrollBar(true);
@@ -340,23 +340,7 @@ DWORD TextView::GetParseCookie(int lineIndex) const
 	return _parseCookies[lineIndex];
 }
 
-static void FillSolidRect(HDC hdc, const CRect &rc, COLORREF clr)
-{
-	auto r = rc;
-	auto clrOld = ::SetBkColor(hdc, clr);
 
-	if (clrOld != CLR_INVALID)
-	{
-		::ExtTextOut(hdc, 0, 0, ETO_OPAQUE, r, nullptr, 0, nullptr);
-		::SetBkColor(hdc, clrOld);
-	}
-}
-
-static void FillSolidRect(HDC hdc, int l, int t, int w, int h, COLORREF clr)
-{
-	CRect rc(l, t, l + w, t + h);
-	FillSolidRect(hdc, rc, clr);
-}
 
 void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int lineIndex) const
 {
@@ -1189,7 +1173,7 @@ void TextView::OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
 	UpdateCaret();
 }
 
-bool TextView::OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message)
+bool TextView::OnSetCursor(CWindow wnd, UINT nHitTest, UINT message)
 {
 	static auto arrow = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_ARROW));
 	static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
@@ -1333,7 +1317,7 @@ void TextView::SetSelection(const TextSelection &sel)
 	_selection = sel;
 }
 
-void TextView::OnSetFocus(CWindow* pOldWnd)
+void TextView::OnSetFocus(CWindow oldWnd)
 {
 	m_bFocused = true;
 	if (_selection._start != _selection._end)
@@ -1439,7 +1423,7 @@ void TextView::EnsureVisible(TextLocation pt)
 	}
 }
 
-void TextView::OnKillFocus(CWindow* pNewWnd)
+void TextView::OnKillFocus(CWindow newWnd)
 {
 	m_bFocused = false;
 	UpdateCaret();
@@ -1592,8 +1576,22 @@ bool TextView::HighlightText(const TextLocation &ptStartPos, int nLength)
 }
 
 
-void TextView::OnEditFind()
+void TextView::Find(const std::wstring &text, DWORD flags)
 {
+	TextLocation loc;
+
+	if (_buffer.Find(text, m_ptCursorPos, flags, true, &loc))
+	{
+		auto end = loc;
+		end.x += text.size();
+		Select(TextSelection(loc, end));
+		m_ptCursorPos = loc;
+		UpdateCaret();
+
+		_lastFindWhat = text;
+		m_dwLastSearchFlags = flags;
+		m_bShowInactiveSelection = true;
+	}
 	//	CWinApp *pApp = AfxGetApp();
 	//	assert(pApp != nullptr);
 	//
@@ -2255,6 +2253,8 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 {
 	bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 	bool bControl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+	SetFocus();
 
 	if (point.x < GetMarginWidth())
 	{
@@ -2949,7 +2949,7 @@ void TextView::OnEditUntab()
 	}
 }
 
-DROPEFFECT CEditDropTargetImpl::OnDragEnter(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
+DROPEFFECT CEditDropTargetImpl::OnDragEnter(CWindow wnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
 {
 	/*if (! pDataObject->IsDataAvailable(CF_UNICODETEXT))
 	{
@@ -2962,12 +2962,12 @@ DROPEFFECT CEditDropTargetImpl::OnDragEnter(CWindow* pWnd, COleDataObject* pData
 	return DROPEFFECT_MOVE;
 }
 
-void CEditDropTargetImpl::OnDragLeave(CWindow* pWnd)
+void CEditDropTargetImpl::OnDragLeave(CWindow wnd)
 {
 	m_pOwner->HideDropIndicator();
 }
 
-DROPEFFECT CEditDropTargetImpl::OnDragOver(CWindow* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
+DROPEFFECT CEditDropTargetImpl::OnDragOver(CWindow wnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
 {
 	///*
 	//	if (! pDataObject->IsDataAvailable(CF_UNICODETEXT))
@@ -3006,7 +3006,7 @@ DROPEFFECT CEditDropTargetImpl::OnDragOver(CWindow* pWnd, COleDataObject* pDataO
 	return DROPEFFECT_MOVE;
 }
 
-bool CEditDropTargetImpl::OnDrop(CWindow* pWnd, COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point)
+bool CEditDropTargetImpl::OnDrop(CWindow wnd, COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point)
 {
 	//	//
 	//	 			( m_pOwner -> GetDisableDragAndDrop() ) )		// Or Drag And Drop Disabled
@@ -3035,9 +3035,10 @@ bool CEditDropTargetImpl::OnDrop(CWindow* pWnd, COleDataObject* pDataObject, DRO
 	return 0;
 }
 
-DROPEFFECT CEditDropTargetImpl::OnDragScroll(CWindow* pWnd, DWORD dwKeyState, CPoint point)
+DROPEFFECT CEditDropTargetImpl::OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point)
 {
-	assert(m_pOwner == pWnd);
+	assert(m_pOwner->m_hWnd == wnd.m_hWnd);
+
 	m_pOwner->DoDragScroll(point);
 
 	if (dwKeyState & MK_CONTROL)

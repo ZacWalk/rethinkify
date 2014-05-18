@@ -849,23 +849,23 @@ static int FindStringHelper(const wchar_t * pszFindWhere, const wchar_t * pszFin
 	return -1;
 }
 
-bool TextBuffer::FindText(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
+bool TextBuffer::Find(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
 {
 	int nLineCount = _lines.size();
 
-	return FindTextInBlock(text, ptStartPos, TextLocation(0, 0), TextLocation(_lines[nLineCount - 1]._text.size(), nLineCount - 1), dwFlags, bWrapSearch, pptFoundPos);
+	return FindInBlock(text, ptStartPos, TextLocation(0, 0), TextLocation(_lines[nLineCount - 1]._text.size(), nLineCount - 1), dwFlags, bWrapSearch, pptFoundPos);
 }
 
-bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &ptStartPosition, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
+bool TextBuffer::FindInBlock(const std::wstring &what, const TextLocation &ptStartPosition, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos)
 {
 	TextLocation ptCurrentPos = ptStartPosition;
 
-	assert(ptBlockBegin.y < ptBlockEnd.y || ptBlockBegin.y == ptBlockEnd.y && ptBlockBegin.x <= ptBlockEnd.x);
+	assert(ptBlockBegin.y < ptBlockEnd.y || (ptBlockBegin.y == ptBlockEnd.y && ptBlockBegin.x <= ptBlockEnd.x));
 
 	if (ptBlockBegin == ptBlockEnd)
 		return false;
 
-	if (ptCurrentPos.y < ptBlockBegin.y || ptCurrentPos.y == ptBlockBegin.y && ptCurrentPos.x < ptBlockBegin.x)
+	if (ptCurrentPos.y < ptBlockBegin.y || (ptCurrentPos.y == ptBlockBegin.y && ptCurrentPos.x < ptBlockBegin.x))
 	{
 		ptCurrentPos = ptBlockBegin;
 	}
@@ -881,25 +881,26 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 
 		for (;;)
 		{
+			if (ptCurrentPos.x == 0)
+			{
+				ptCurrentPos.y--;
+			}
+
 			while (ptCurrentPos.y >= 0)
 			{
 				const auto &line = _lines[ptCurrentPos.y];
 				const auto nLineLength = line._text.size() - ptCurrentPos.x;
 
-				if (nLineLength <= 0)
+				if (nLineLength > 0)
 				{
-					ptCurrentPos.x = 0;
-					ptCurrentPos.y--;
-					continue;
-				}
+					auto nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
 
-				auto nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
-
-				if (nPos >= 0)		//	Found text!
-				{
-					ptCurrentPos.x += nPos;
-					*pptFoundPos = ptCurrentPos;
-					return true;
+					if (nPos >= 0)		//	Found text!
+					{
+						ptCurrentPos.x += nPos;
+						*pptFoundPos = ptCurrentPos;
+						return true;
+					}
 				}
 
 				ptCurrentPos.x = 0;
@@ -924,24 +925,20 @@ bool TextBuffer::FindTextInBlock(const std::wstring &what, const TextLocation &p
 				const auto &line = _lines[ptCurrentPos.y];
 				const auto nLineLength = line._text.size() - ptCurrentPos.x;
 
-				if (nLineLength <= 0)
+				if (nLineLength > 0)
 				{
-					ptCurrentPos.x = 0;
-					ptCurrentPos.y++;
-					continue;
-				}
+					int nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
 
-				//	Perform search in the line
-				int nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
-				if (nPos >= 0)
-				{
-					ptCurrentPos.x += nPos;
-					//	Check of the text found is outside the block.
-					if (ptCurrentPos.y == ptBlockEnd.y && ptCurrentPos.x >= ptBlockEnd.x)
-						break;
+					if (nPos >= 0)
+					{
+						ptCurrentPos.x += nPos;
+						//	Check of the text found is outside the block.
+						if (ptCurrentPos.y == ptBlockEnd.y && ptCurrentPos.x >= ptBlockEnd.x)
+							break;
 
-					*pptFoundPos = ptCurrentPos;
-					return true;
+						*pptFoundPos = ptCurrentPos;
+						return true;
+					}
 				}
 
 				//	Go further, text was not found

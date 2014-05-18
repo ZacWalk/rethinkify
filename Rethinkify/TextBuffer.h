@@ -250,8 +250,8 @@ public:
 	TextLocation Undo();
 	TextLocation Redo();
 
-	bool FindText(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
-	bool FindTextInBlock(const std::wstring &text, const TextLocation &ptStartPos, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
+	bool Find(const std::wstring &text, const TextLocation &ptStartPos, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
+	bool FindInBlock(const std::wstring &text, const TextLocation &ptStartPos, const TextLocation &ptBlockBegin, const TextLocation &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, TextLocation *pptFoundPos);
 
 	void InvalidateLine(int index);
 	void InvalidateView();
