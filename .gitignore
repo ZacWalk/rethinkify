@@ -1,32 +1,22 @@
-# Compiled Object files
-*.slo
+*.a
+*.app
+*.aps
+*.dll
+*.dylib
+*.exe
+*.ipch
+*.la
+*.lai
+*.lib
 *.lo
 *.o
 *.obj
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
+*.opensdf
 *.out
-*.app
-/Exe/*
+*.slo
+*.so
+*.suo
+*.user
 /intermediate/*
-/Rethinkify.opensdf
-/Rethinkify.sdf
-/Rethinkify.v12.suo
-/Rethinkify/Rethinkify.vcxproj.user
-
-/ipch/rethinkify-1bd87622/*.ipch
-/ipch/rethinkify-59a01361/*.ipch
-/Rethinkify/*.aps
-/*.suo
+*.pdb
+*.sdf

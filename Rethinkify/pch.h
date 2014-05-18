@@ -33,10 +33,14 @@
 #include <chrono>
 #include <memory>
 #include <functional>
+#include <fstream>
 
 #include <Commdlg.h>
 #include <OleIdl.h>
+#include <Shlobj.h>
 
 #include <atlbase.h>
 #include <atlwin.h>
+
+extern const wchar_t *g_szAppName;
 

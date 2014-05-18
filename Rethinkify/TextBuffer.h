@@ -61,7 +61,7 @@ struct IView
 class TextBuffer
 {
 
-private:
+public:
 
 	struct Line
 	{
@@ -84,6 +84,8 @@ private:
 		const wchar_t *c_str() const { return _text.c_str(); };
 		const wchar_t &operator[](int n) const { return _text[n]; };
 	};
+
+private:
 
 	struct UndoStep
 	{

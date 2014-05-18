@@ -36,8 +36,9 @@ public:
 	DROPEFFECT OnDragScroll(CWindow* pWnd, DWORD dwKeyState, CPoint point);
 };
 
+static auto s_textHighlighter = std::make_shared<TextHighight>();
 
-TextView::TextView(TextBuffer &buffer) : _buffer(buffer)
+TextView::TextView(TextBuffer &buffer) : _buffer(buffer), _highlight(s_textHighlighter)
 {
 	_dropTarget = nullptr;
 	_backBuffer = nullptr;
@@ -62,7 +63,7 @@ const TextSelection &TextView::GetSelection() const
 	return m_ptDrawSel;
 }
 
-int TextView::GetLineActualLength(int nLineIndex) const
+int TextView::GetLineActualLength(int lineIndex) const
 {
 	if (_actualLineLengths.size() != _buffer.LineCount())
 	{
@@ -70,10 +71,10 @@ int TextView::GetLineActualLength(int nLineIndex) const
 		_actualLineLengths.insert(_actualLineLengths.begin(), _buffer.LineCount(), 0);
 	}
 
-	if (_actualLineLengths[nLineIndex] == 0)
+	if (_actualLineLengths[lineIndex] == 0)
 	{
 		auto nActualLength = 0;
-		const auto &line = _buffer[nLineIndex];
+		const auto &line = _buffer[lineIndex];
 
 		if (!line.empty())
 		{
@@ -97,10 +98,10 @@ int TextView::GetLineActualLength(int nLineIndex) const
 			}
 		}
 
-		_actualLineLengths[nLineIndex] = nActualLength;
+		_actualLineLengths[lineIndex] = nActualLength;
 	}
 
-	return _actualLineLengths[nLineIndex];
+	return _actualLineLengths[lineIndex];
 }
 
 void TextView::ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar)
@@ -274,8 +275,8 @@ void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcCl
 			}
 			if (nSelBegin < nSelEnd)
 			{
-				COLORREF crOldBk = SetBkColor(pdc, GetColor(COLORINDEX_SELBKGND));
-				COLORREF crOldText = SetTextColor(pdc, GetColor(COLORINDEX_SELTEXT));
+				COLORREF crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
+				COLORREF crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
 				DrawLineHelperImpl(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
 				SetBkColor(pdc, crOldBk);
 				SetTextColor(pdc, crOldText);
@@ -292,7 +293,7 @@ void TextView::DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcCl
 	}
 }
 
-void TextView::GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const
+void TextView::GetLineColors(int lineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const
 {
 	bDrawWhitespace = true;
 	crText = RGB(255, 255, 255);
@@ -301,7 +302,7 @@ void TextView::GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText
 	bDrawWhitespace = false;
 }
 
-DWORD TextView::GetParseCookie(int nLineIndex) const
+DWORD TextView::GetParseCookie(int lineIndex) const
 {
 	const auto invalid = (DWORD) -1;
 	int nLineCount = _buffer.LineCount();
@@ -311,30 +312,32 @@ DWORD TextView::GetParseCookie(int nLineIndex) const
 		_parseCookies.insert(_parseCookies.begin(), nLineCount, invalid);
 	}
 
-	if (nLineIndex < 0)
+	if (lineIndex < 0)
 		return 0;
 
-	if (_parseCookies[nLineIndex] != invalid)
-		return _parseCookies[nLineIndex];
+	if (_parseCookies[lineIndex] != invalid)
+		return _parseCookies[lineIndex];
 
-	int i = nLineIndex;
+	int i = lineIndex;
 	while (i >= 0 && _parseCookies[i] == invalid)
 		i--;
 	i++;
 
 	int nBlocks;
-	while (i <= nLineIndex)
+	while (i <= lineIndex)
 	{
 		DWORD dwCookie = 0;
 		if (i > 0)
 			dwCookie = _parseCookies[i - 1];
 		assert(dwCookie != (DWORD) -1);
-		_parseCookies[i] = ParseLine(dwCookie, i, nullptr, nBlocks);
+
+		const auto &line = _buffer[i];
+		_parseCookies[i] = _highlight->ParseLine(dwCookie, line, nullptr, nBlocks);
 		assert(_parseCookies[i] != (DWORD) -1);
 		i++;
 	}
 
-	return _parseCookies[nLineIndex];
+	return _parseCookies[lineIndex];
 }
 
 static void FillSolidRect(HDC hdc, const CRect &rc, COLORREF clr)
@@ -355,46 +358,45 @@ static void FillSolidRect(HDC hdc, int l, int t, int w, int h, COLORREF clr)
 	FillSolidRect(hdc, rc, clr);
 }
 
-void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
+void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int lineIndex) const
 {
-	if (nLineIndex == -1)
+	if (lineIndex == -1)
 	{
 		//	Draw line beyond the text
-		FillSolidRect(pdc, rc, GetColor(COLORINDEX_WHITESPACE));
+		FillSolidRect(pdc, rc, GetColor(IHighlight::COLORINDEX_WHITESPACE));
 	}
 	else
 	{
 		//	Acquire the background color for the current line
 		auto bDrawWhitespace = false;
 		COLORREF crBkgnd, crText;
-		GetLineColors(nLineIndex, crBkgnd, crText, bDrawWhitespace);
+		GetLineColors(lineIndex, crBkgnd, crText, bDrawWhitespace);
 
 		if (crBkgnd == CLR_NONE)
-			crBkgnd = GetColor(COLORINDEX_BKGND);
+			crBkgnd = GetColor(IHighlight::COLORINDEX_BKGND);
 
-		const auto &line = _buffer[nLineIndex];
+		const auto &line = _buffer[lineIndex];
 
 		if (line.empty())
 		{
 			//	Draw the empty line
 			CRect rect = rc;
-			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(0, nLineIndex)))
+			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(0, lineIndex)))
 			{
-				FillSolidRect(pdc, rect.left, rect.top, GetCharWidth(), rect.Height(), GetColor(COLORINDEX_SELBKGND));
+				FillSolidRect(pdc, rect.left, rect.top, GetCharWidth(), rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
 				rect.left += GetCharWidth();
 			}
-			FillSolidRect(pdc, rect, bDrawWhitespace ? crBkgnd : GetColor(COLORINDEX_WHITESPACE));
+			FillSolidRect(pdc, rect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
 			return;
 		}
 
 		//	Parse the line
 		auto nLength = line.size();
-		auto dwCookie = GetParseCookie(nLineIndex - 1);
-		auto pBuf = (TEXTBLOCK *) _alloca(sizeof(TEXTBLOCK) * nLength * 3);
+		auto pBuf = (IHighlight::TEXTBLOCK *) _alloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
 		auto nBlocks = 0;
+		auto cookie = GetParseCookie(lineIndex - 1);
 
-		_parseCookies[nLineIndex] = ParseLine(dwCookie, nLineIndex, pBuf, nBlocks);
-		assert(_parseCookies[nLineIndex] != (DWORD) -1);
+		_parseCookies[lineIndex] = _highlight->ParseLine(cookie, line, pBuf, nBlocks);
 
 		//	Draw the line text
 		TextLocation origin(rc.left - m_nOffsetChar * GetCharWidth(), rc.top);
@@ -409,9 +411,9 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
 		{
 			assert(pBuf[0].m_nCharPos >= 0 && pBuf[0].m_nCharPos <= nLength);
 			if (crText == CLR_NONE)
-				SetTextColor(pdc, GetColor(COLORINDEX_NORMALTEXT));
-			SelectObject(pdc, GetFont(GetItalic(COLORINDEX_NORMALTEXT), GetBold(COLORINDEX_NORMALTEXT)));
-			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, TextLocation(0, nLineIndex));
+				SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
+			SelectObject(pdc, GetFont(GetItalic(IHighlight::COLORINDEX_NORMALTEXT), GetBold(IHighlight::COLORINDEX_NORMALTEXT)));
+			DrawLineHelper(pdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, TextLocation(0, lineIndex));
 			for (int i = 0; i < nBlocks - 1; i++)
 			{
 				assert(pBuf[i].m_nCharPos >= 0 && pBuf[i].m_nCharPos <= nLength);
@@ -420,7 +422,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
 				SelectObject(pdc, GetFont(GetItalic(pBuf[i].m_nColorIndex), GetBold(pBuf[i].m_nColorIndex)));
 				DrawLineHelper(pdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
 					pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
-					TextLocation(pBuf[i].m_nCharPos, nLineIndex));
+					TextLocation(pBuf[i].m_nCharPos, lineIndex));
 			}
 			assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
 			if (crText == CLR_NONE)
@@ -429,14 +431,14 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
 				GetBold(pBuf[nBlocks - 1].m_nColorIndex)));
 			DrawLineHelper(pdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
 				pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
-				TextLocation(pBuf[nBlocks - 1].m_nCharPos, nLineIndex));
+				TextLocation(pBuf[nBlocks - 1].m_nCharPos, lineIndex));
 		}
 		else
 		{
 			if (crText == CLR_NONE)
-				SetTextColor(pdc, GetColor(COLORINDEX_NORMALTEXT));
-			SelectObject(pdc, GetFont(GetItalic(COLORINDEX_NORMALTEXT), GetBold(COLORINDEX_NORMALTEXT)));
-			DrawLineHelper(pdc, origin, rc, COLORINDEX_NORMALTEXT, pszChars, 0, nLength, TextLocation(0, nLineIndex));
+				SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
+			SelectObject(pdc, GetFont(GetItalic(IHighlight::COLORINDEX_NORMALTEXT), GetBold(IHighlight::COLORINDEX_NORMALTEXT)));
+			DrawLineHelper(pdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, TextLocation(0, lineIndex));
 		}
 
 		//	Draw whitespaces to the left of the text
@@ -445,13 +447,13 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int nLineIndex) const
 			frect.left = origin.x;
 		if (frect.right > frect.left)
 		{
-			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(nLength, nLineIndex)))
+			if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(TextLocation(nLength, lineIndex)))
 			{
-				FillSolidRect(pdc, frect.left, frect.top, GetCharWidth(), frect.Height(), GetColor(COLORINDEX_SELBKGND));
+				FillSolidRect(pdc, frect.left, frect.top, GetCharWidth(), frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
 				frect.left += GetCharWidth();
 			}
 			if (frect.right > frect.left)
-				FillSolidRect(pdc, frect, bDrawWhitespace ? crBkgnd : GetColor(COLORINDEX_WHITESPACE));
+				FillSolidRect(pdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
 		}
 	}
 }
@@ -460,26 +462,26 @@ COLORREF TextView::GetColor(int nColorIndex) const
 {
 	switch (nColorIndex)
 	{
-	case COLORINDEX_WHITESPACE:
-	case COLORINDEX_BKGND:
+	case IHighlight::COLORINDEX_WHITESPACE:
+	case IHighlight::COLORINDEX_BKGND:
 		return RGB(30, 30, 30);
-	case COLORINDEX_NORMALTEXT:
+	case IHighlight::COLORINDEX_NORMALTEXT:
 		return RGB(240, 240, 240);
-	case COLORINDEX_SELMARGIN:
+	case IHighlight::COLORINDEX_SELMARGIN:
 		return RGB(44, 44, 44);
-	case COLORINDEX_PREPROCESSOR:
+	case IHighlight::COLORINDEX_PREPROCESSOR:
 		return RGB(128, 128, 192);
-	case COLORINDEX_COMMENT:
+	case IHighlight::COLORINDEX_COMMENT:
 		return RGB(128, 128, 128);
-	case COLORINDEX_NUMBER:
+	case IHighlight::COLORINDEX_NUMBER:
 		return RGB(255, 128, 128);
-	case COLORINDEX_OPERATOR:
+	case IHighlight::COLORINDEX_OPERATOR:
 		return RGB(128, 255, 128);
-	case COLORINDEX_KEYWORD:
+	case IHighlight::COLORINDEX_KEYWORD:
 		return RGB(128, 128, 255);
-	case COLORINDEX_SELBKGND:
+	case IHighlight::COLORINDEX_SELBKGND:
 		return RGB(88, 88, 88);
-	case COLORINDEX_SELTEXT:
+	case IHighlight::COLORINDEX_SELTEXT:
 		return RGB(255, 255, 255);
 	}
 	return RGB(255, 0, 0);
@@ -489,42 +491,42 @@ COLORREF TextView::GetColor(int nColorIndex) const
 //{
 //	switch (nColorIndex)
 //	{
-//	case COLORINDEX_WHITESPACE:
-//	case COLORINDEX_BKGND:
+//	case IHighlight::COLORINDEX_WHITESPACE:
+//	case IHighlight::COLORINDEX_BKGND:
 //		return ::GetSysColor(COLOR_WINDOW);
-//	case COLORINDEX_NORMALTEXT:
+//	case IHighlight::COLORINDEX_NORMALTEXT:
 //		return ::GetSysColor(COLOR_WINDOWTEXT);
-//	case COLORINDEX_SELMARGIN:
+//	case IHighlight::COLORINDEX_SELMARGIN:
 //		return ::GetSysColor(COLOR_SCROLLBAR);
-//	case COLORINDEX_PREPROCESSOR:
+//	case IHighlight::COLORINDEX_PREPROCESSOR:
 //		return RGB(0, 128, 192);
-//	case COLORINDEX_COMMENT:
+//	case IHighlight::COLORINDEX_COMMENT:
 //		return RGB(128, 128, 128);
 //		//	[JRT]: Enabled Support For Numbers...
-//	case COLORINDEX_NUMBER:
+//	case IHighlight::COLORINDEX_NUMBER:
 //		return RGB(0x80, 0x00, 0x00);
-//	case COLORINDEX_OPERATOR:
+//	case IHighlight::COLORINDEX_OPERATOR:
 //		return RGB(0x00, 0x00, 0x00);
-//	case COLORINDEX_KEYWORD:
+//	case IHighlight::COLORINDEX_KEYWORD:
 //		return RGB(0, 0, 255);
-//	case COLORINDEX_SELBKGND:
+//	case IHighlight::COLORINDEX_SELBKGND:
 //		return RGB(0, 0, 0);
-//	case COLORINDEX_SELTEXT:
+//	case IHighlight::COLORINDEX_SELTEXT:
 //		return RGB(255, 255, 255);
 //	}
 //	return RGB(255, 0, 0);
 //}
 
 
-void TextView::DrawMargin(HDC pdc, const CRect &rect, int nLineIndex) const
+void TextView::DrawMargin(HDC pdc, const CRect &rect, int lineIndex) const
 {
 	if (!m_bSelMargin)
 	{
-		FillSolidRect(pdc, rect, GetColor(COLORINDEX_BKGND));
+		FillSolidRect(pdc, rect, GetColor(IHighlight::COLORINDEX_BKGND));
 	}
 	else
 	{
-		FillSolidRect(pdc, rect, GetColor(COLORINDEX_SELMARGIN));
+		FillSolidRect(pdc, rect, GetColor(IHighlight::COLORINDEX_SELMARGIN));
 	}
 }
 
@@ -1204,7 +1206,7 @@ bool TextView::OnSetCursor(CWindow* pWnd, UINT nHitTest, UINT message)
 		}
 		else
 		{
-			TextLocation ptText = ClientToText(pt);
+			auto ptText = ClientToText(pt);
 			PrepareSelBounds();
 
 			if (IsInsideSelBlock(ptText))
@@ -1340,9 +1342,9 @@ void TextView::OnSetFocus(CWindow* pOldWnd)
 }
 
 
-int TextView::CalculateActualOffset(int nLineIndex, int nCharIndex)
+int TextView::CalculateActualOffset(int lineIndex, int nCharIndex)
 {
-	const auto &line = _buffer[nLineIndex];
+	const auto &line = _buffer[lineIndex];
 
 	int nOffset = 0;
 	int tabSize = GetTabSize();
@@ -1357,12 +1359,12 @@ int TextView::CalculateActualOffset(int nLineIndex, int nCharIndex)
 	return nOffset;
 }
 
-int TextView::ApproxActualOffset(int nLineIndex, int nOffset)
+int TextView::ApproxActualOffset(int lineIndex, int nOffset)
 {
 	if (nOffset == 0)
 		return 0;
 
-	const auto &line = _buffer[nLineIndex];
+	const auto &line = _buffer[lineIndex];
 	const auto nLength = line.size();
 
 	int nCurrentOffset = 0;
@@ -2128,6 +2130,127 @@ void TextView::SelectAll()
 	UpdateCaret();
 }
 
+//struct SpError
+//{
+//	Crect rcArea;
+//	string::wstring word;
+//	int posn;
+//
+//	SpError() {};
+//	SpError(const SpError &other) : rcArea(other.rcArea), word(other.word), posn(other.posn) {};
+//	SpError &operator=(const SpError &other) { rcArea = other.rcArea; word = other.word; posn = other.posn; return *this; };
+//};
+
+void TextView::OnContextMenu(const CPoint &point, UINT nFlags)
+{
+	CPoint clientLocation(point);
+	ScreenToClient(&clientLocation);
+
+	// Find out if we're over any errors
+	/*SpError thisError;
+	bool bFound = false;
+
+	for (auto split = _errors.begin(); !bFound && split != _errors.end(); ++split)
+	{
+		if (split->rcArea.Contains(clientPt))
+		{
+			thisError = *split;
+			bFound = true;
+		}
+	}
+
+	if (!bFound)
+	{
+		bHandled = FALSE;
+		return 0;
+	}*/
+
+
+	auto menu = CreatePopupMenu();
+
+	if (menu)
+	{
+		m_ptAnchor = m_ptCursorPos = ClientToText(clientLocation);
+
+		auto selection = WordSelection();
+		Select(selection);
+		
+		auto text = Combine(Text(selection));
+
+		std::map<UINT, std::wstring> replacements;
+		
+		if (!selection.empty())
+		{
+			auto id = 1000U;			
+			
+
+			for (auto option : _highlight->Suggest(text))
+			{
+				auto word = Replace(option, L"&", L"&&");
+				AppendMenu(menu, MF_ENABLED, id, word.c_str());
+				replacements[id] = option;
+				id++;
+			}
+
+			if (replacements.size() > 0)
+			{
+				AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
+			}
+
+			if (_highlight->CanAdd(text))
+			{
+				AppendMenu(menu, MF_ENABLED, ID_FILE_NEW, String::Format(L"Add '%s'", text.c_str()).c_str());
+				AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
+			}
+		}		
+
+		if (_buffer.CanUndo())
+		{
+			AppendMenu(menu, MF_ENABLED, ID_EDIT_UNDO, L"Undo");
+			AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
+		}
+
+		AppendMenu(menu, MF_ENABLED, ID_EDIT_CUT, L"Cut");
+		AppendMenu(menu, MF_ENABLED, ID_EDIT_COPY, L"Copy");
+		AppendMenu(menu, MF_ENABLED, ID_EDIT_PASTE, L"Paste");
+		AppendMenu(menu, MF_ENABLED, ID_EDIT_DELETE, L"Delete");
+		AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
+		AppendMenu(menu, MF_ENABLED, ID_EDIT_SELECT_ALL, L"Select All");
+
+		auto result = TrackPopupMenu(menu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_NONOTIFY | TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_VERNEGANIMATION, point.x, point.y, 0, m_hWnd, NULL);
+		DestroyMenu(menu);
+
+		switch (result)
+		{
+		case ID_EDIT_UNDO:
+		case ID_EDIT_CUT:
+		case ID_EDIT_COPY:
+		case ID_EDIT_PASTE:
+		case ID_EDIT_DELETE:
+		case ID_EDIT_SELECT_ALL:
+			OnCommand(result);
+			break;
+
+		case ID_FILE_NEW:
+			_highlight->AddWord(text);
+			InvalidateLine(selection._start.y);
+			break;
+
+		default:
+
+			if (replacements.find(result) != replacements.end())
+			{
+				_buffer.DeleteText(selection);
+				_buffer.InsertText(selection._start, replacements[result]);
+
+				auto selection = WordSelection();
+				Select(WordSelection());
+			}
+			break;
+		}
+	}
+}
+
 void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 {
 	bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -2188,31 +2311,12 @@ void TextView::OnLButtonDown(const CPoint &point, UINT nFlags)
 			if (!bShift)
 				m_ptAnchor = m_ptCursorPos;
 
-			TextLocation ptStart, ptEnd;
-			if (bControl)
-			{
-				if (m_ptCursorPos.y < m_ptAnchor.y ||
-					m_ptCursorPos.y == m_ptAnchor.y && m_ptCursorPos.x < m_ptAnchor.x)
-				{
-					ptStart = WordToLeft(m_ptCursorPos);
-					ptEnd = WordToRight(m_ptAnchor);
-				}
-				else
-				{
-					ptStart = WordToLeft(m_ptAnchor);
-					ptEnd = WordToRight(m_ptCursorPos);
-				}
-			}
-			else
-			{
-				ptStart = m_ptAnchor;
-				ptEnd = m_ptCursorPos;
-			}
+			auto selection = bControl ? WordSelection() : TextSelection(m_ptAnchor, m_ptCursorPos);
 
-			m_ptCursorPos = ptEnd;
+			m_ptCursorPos = selection._end;
 			UpdateCaret();
 			EnsureVisible(m_ptCursorPos);
-			SetSelection(TextSelection(ptStart, ptEnd));
+			SetSelection(selection);
 
 			SetCapture();
 			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -2284,6 +2388,7 @@ void TextView::OnMouseMove(const CPoint &point, UINT nFlags)
 			::SetCursor(::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM)));
 			m_bLineSelection = m_bWordSelection = false;
 		}
+		
 
 		if (m_bWordSelection)
 		{
@@ -2339,10 +2444,10 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 	{
 		TextLocation ptNewCursorPos = ClientToText(point);
 
-		TextLocation ptStart, ptEnd;
 		if (m_bLineSelection)
 		{
-			TextLocation ptEnd;
+			TextLocation ptStart, ptEnd;
+
 			if (ptNewCursorPos.y < m_ptAnchor.y ||
 				ptNewCursorPos.y == m_ptAnchor.y && ptNewCursorPos.x < m_ptAnchor.x)
 			{
@@ -2374,36 +2479,18 @@ void TextView::OnLButtonUp(const CPoint &point, UINT nFlags)
 				}
 				m_ptCursorPos = ptNewCursorPos;
 			}
+
 			EnsureVisible(m_ptCursorPos);
 			UpdateCaret();
 			SetSelection(TextSelection(ptNewCursorPos, ptEnd));
 		}
 		else
 		{
-			if (m_bWordSelection)
-			{
-				if (ptNewCursorPos.y < m_ptAnchor.y ||
-					ptNewCursorPos.y == m_ptAnchor.y && ptNewCursorPos.x < m_ptAnchor.x)
-				{
-					ptStart = WordToLeft(ptNewCursorPos);
-					ptEnd = WordToRight(m_ptAnchor);
-				}
-				else
-				{
-					ptStart = WordToLeft(m_ptAnchor);
-					ptEnd = WordToRight(ptNewCursorPos);
-				}
-			}
-			else
-			{
-				ptStart = m_ptAnchor;
-				ptEnd = m_ptCursorPos;
-			}
-
-			m_ptCursorPos = ptEnd;
+			auto selection = m_bWordSelection ? WordSelection() : TextSelection(m_ptAnchor, m_ptCursorPos);
+			m_ptCursorPos = selection._end;
 			EnsureVisible(m_ptCursorPos);
 			UpdateCaret();
-			SetSelection(TextSelection(ptStart, ptEnd));
+			SetSelection(selection);
 		}
 
 		ReleaseCapture();
@@ -2502,26 +2589,14 @@ void TextView::OnLButtonDblClk(const CPoint &point, UINT nFlags)
 {
 	if (!m_bDragSelection)
 	{
-		m_ptCursorPos = ClientToText(point);
-		m_ptAnchor = m_ptCursorPos;
+		m_ptAnchor = m_ptCursorPos = ClientToText(point);
 
-		TextLocation ptStart, ptEnd;
-		if (m_ptCursorPos.y < m_ptAnchor.y ||
-			m_ptCursorPos.y == m_ptAnchor.y && m_ptCursorPos.x < m_ptAnchor.x)
-		{
-			ptStart = WordToLeft(m_ptCursorPos);
-			ptEnd = WordToRight(m_ptAnchor);
-		}
-		else
-		{
-			ptStart = WordToLeft(m_ptAnchor);
-			ptEnd = WordToRight(m_ptCursorPos);
-		}
+		auto selection = WordSelection();
 
-		m_ptCursorPos = ptEnd;
+		m_ptCursorPos = selection._end;
 		UpdateCaret();
 		EnsureVisible(m_ptCursorPos);
-		SetSelection(TextSelection(ptStart, ptEnd));
+		SetSelection(selection);
 
 		SetCapture();
 		m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -3262,5 +3337,41 @@ void TextView::EnableMenuItems(HMENU hMenu)
 		}
 
 		EnableMenuItem(hMenu, i, MF_BYPOSITION | (enable ? MF_ENABLED : MF_DISABLED));
+	}
+}
+
+static bool IsCppExtension(const wchar_t *ext)
+{
+	static auto comp = [](const wchar_t *l, const wchar_t *r) { return _wcsicmp(l, r) < 0; };
+	static std::set<const wchar_t*, std::function<bool(const wchar_t *, const wchar_t *)>> extensions(comp);	
+
+	if (extensions.empty())
+	{
+		extensions.insert(L"c");
+		extensions.insert(L"cpp");
+		extensions.insert(L"cxx");
+		extensions.insert(L"cc");
+		extensions.insert(L"h");
+		extensions.insert(L"hh");
+		extensions.insert(L"hpp");
+		extensions.insert(L"hxx");
+		extensions.insert(L"inl");
+	}
+
+	return extensions.find(ext) != extensions.end();
+};
+
+void TextView::HighlightFromExtension(const wchar_t *ext)
+{
+	if (*ext == L'.') ext++;
+
+	if (IsCppExtension(ext))
+	{
+		static auto highlighter = std::make_shared<CppSyntax>();
+		_highlight = highlighter;
+	}
+	else
+	{
+		_highlight = s_textHighlighter;
 	}
 }

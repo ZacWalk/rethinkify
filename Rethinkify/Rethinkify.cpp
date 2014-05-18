@@ -17,7 +17,7 @@
 //#pragma comment(lib, "Comdlg32")
 //#pragma comment(lib, "Comctl32")
 
-const wchar_t *Title = L"Rethinkify";
+const wchar_t *g_szAppName = L"Rethinkify";
 
 extern std::wstring RunTests();
 
@@ -102,7 +102,7 @@ public:
 
 		if (_text.IsModified())
 		{
-			auto id = MessageBox(L"Do you want to save?", Title, MB_YESNOCANCEL | MB_ICONQUESTION);
+			auto id = MessageBox(L"Do you want to save?", g_szAppName, MB_YESNOCANCEL | MB_ICONQUESTION);
 
 			if (id == IDYES)
 			{
@@ -178,7 +178,7 @@ public:
 
 		if (_text.IsModified())
 		{
-			auto id = MessageBox(L"Do you want to save?", Title, MB_YESNOCANCEL | MB_ICONQUESTION);
+			auto id = MessageBox(L"Do you want to save?", g_szAppName, MB_YESNOCANCEL | MB_ICONQUESTION);
 
 			if (id == IDYES)
 			{
@@ -220,8 +220,10 @@ public:
 		wchar_t title[_MAX_PATH + 10];
 		wcscpy_s(title, name);
 		wcscat_s(title, L" - ");
-		wcscat_s(title, Title);
+		wcscat_s(title, g_szAppName);
 		SetWindowText(title);
+
+		_view.HighlightFromExtension(PathFindExtension(name));
 	}
 
 	void Load()
@@ -303,7 +305,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
 	CMainFrame _frame;
-	_frame.Create(nullptr, nullptr, Title, WS_OVERLAPPEDWINDOW);
+	_frame.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW);
 	_frame.SetMenu(LoadMenu(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY)));
 
 	auto icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_RETHINKIFY));

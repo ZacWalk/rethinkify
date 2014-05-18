@@ -31,17 +31,29 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 		L"__uuidof",
 		L"__virtual_inheritance",
 		L"_persistent",
+		L"alignas",
+		L"alignof",
+		L"and",
+		L"and_eq",
+		L"asm",
 		L"auto",
+		L"bitand",
+		L"bitor",
 		L"bool",
 		L"break",
 		L"case",
 		L"catch",
 		L"char",
+		L"char16_t",
+		L"char32_t",
 		L"class",
+		L"compl",
 		L"const",
 		L"const_cast",
+		L"constexpr",
 		L"continue",
 		L"cset",
+		L"decltype",
 		L"default",
 		L"delete",
 		L"depend",
@@ -53,6 +65,7 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 		L"else",
 		L"enum",
 		L"explicit",
+		L"export",
 		L"extern",
 		L"false",
 		L"float",
@@ -70,8 +83,14 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 		L"naked",
 		L"namespace",
 		L"new",
+		L"noexcept",
+		L"not",
+		L"not_eq",
+		L"nullptr",
 		L"ondemand",
 		L"operator",
+		L"or",
+		L"or_eq",
 		L"persistent",
 		L"private",
 		L"protected",
@@ -83,14 +102,15 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 		L"signed",
 		L"sizeof",
 		L"static",
+		L"static_assert",
 		L"static_cast",
 		L"struct",
 		L"switch",
 		L"template",
 		L"this",
 		L"thread",
+		L"thread_local",
 		L"throw",
-		L"transient",
 		L"transient",
 		L"true",
 		L"try",
@@ -105,9 +125,12 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 		L"virtual",
 		L"void",
 		L"volatile",
+		L"wchar_t",
 		L"while",
 		L"wmain",
 		L"xalloc",
+		L"xor",
+		L"xor_eq",
 		nullptr
 	};
 
@@ -159,7 +182,7 @@ static const int COOKIE_EXT_COMMENT = 0x0004;
 static const int COOKIE_STRING = 0x0008;
 static const int COOKIE_CHAR = 0x0010;
 
-static void AddBlock(TextView::TEXTBLOCK *pBuf, int &nActualItems, int pos, int colorindex)
+static void AddBlock(IHighlight::TEXTBLOCK *pBuf, int &nActualItems, int pos, int colorindex)
 {
 	if (pBuf != nullptr)
 	{
@@ -172,10 +195,8 @@ static void AddBlock(TextView::TEXTBLOCK *pBuf, int &nActualItems, int pos, int 
 	}
 }
 
-DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems) const
+DWORD CppSyntax::ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
-	const auto &line = _buffer[nLineIndex];
-
 	if (line.empty())
 	{
 		return dwCookie & COOKIE_EXT_COMMENT;
@@ -362,4 +383,114 @@ DWORD TextView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &
 	if (line[nLength - 1] != '\\')
 		dwCookie &= COOKIE_EXT_COMMENT;
 	return dwCookie;
+}
+
+DWORD TextHighight::ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
+{
+	if (line.empty())
+	{
+		return dwCookie & COOKIE_EXT_COMMENT;
+	}
+
+	auto nLength = line.size();
+	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
+	auto bRedefineBlock = true;
+	auto bDecIndex = false;
+	auto nIdentBegin = -1;
+	auto i = 0;
+
+	for (i = 0;; i++)
+	{
+		if (bRedefineBlock)
+		{
+			int nPos = i;
+			if (bDecIndex)
+				nPos--;
+
+			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
+			{
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_COMMENT);
+			}
+			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING))
+			{
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_STRING);
+			}
+			else if (dwCookie & COOKIE_PREPROCESSOR)
+			{
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_PREPROCESSOR);
+			}
+			else
+			{
+				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_NORMALTEXT);
+			}
+
+			bRedefineBlock = false;
+			bDecIndex = false;
+		}
+
+		if (i == nLength)
+			break;
+
+		if (dwCookie & COOKIE_COMMENT)
+		{
+			AddBlock(pBuf, nActualItems, i, COLORINDEX_COMMENT);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+
+		auto c = line[i];		
+
+		if (pBuf == nullptr)
+			continue;
+
+		//	We don't need to extract words,
+		//	for faster parsing skip the rest of loop
+
+		if (iswalnum(c) || c == '_' || c == '\'')
+		{
+			if (nIdentBegin == -1)
+				nIdentBegin = i;
+		}
+		else
+		{
+			if (nIdentBegin >= 0)
+			{
+				auto pszChars = line.c_str();
+
+				if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
+				{
+					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
+				}
+				else if (!_check.WordValid(pszChars + nIdentBegin, i - nIdentBegin))
+				{
+					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
+				}
+
+				bRedefineBlock = true;
+				bDecIndex = true;
+				nIdentBegin = -1;
+			}
+		}
+	}
+
+	if (nIdentBegin >= 0)
+	{
+		auto pszChars = line.c_str();
+
+		if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
+		{
+			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
+		}
+		else if (!_check.WordValid(pszChars + nIdentBegin, i - nIdentBegin))
+		{
+			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
+		}
+	}
+
+	return dwCookie;
+}
+
+std::vector<std::wstring> TextHighight::Suggest(const std::wstring &wword) const
+{
+	return _check.Suggest(wword);
 }

@@ -2,6 +2,7 @@
 
 #include "resource.h"
 #include "TextBuffer.h"
+#include "SpellCheck.h"
 
 struct CPrintInfo
 {
@@ -17,21 +18,9 @@ const int RETHINKIFY_TIMER_DRAGSEL = 1001;
 
 class TextBuffer;
 
-class TextView : public CWindowImpl<TextView>, public IView
+class IHighlight
 {
-
 public:
-
-
-
-	//	Syntax coloring overrides
-	struct TEXTBLOCK
-	{
-		size_t	m_nCharPos;
-		int m_nColorIndex;
-	};
-
-
 
 	enum
 	{
@@ -59,6 +48,38 @@ public:
 		//	...
 		//	Expandable: custom elements are allowed.
 	};
+
+	struct TEXTBLOCK
+	{
+		size_t	m_nCharPos;
+		int m_nColorIndex;
+	};
+
+	virtual DWORD ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const = 0;
+	virtual std::vector<std::wstring> Suggest(const std::wstring &wword) const = 0;
+	virtual bool CanAdd(const std::wstring &word) const { return false; };
+	virtual void AddWord(const std::wstring &word) const { };	
+};
+
+class CppSyntax : public IHighlight
+{
+	DWORD ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const;
+	std::vector<std::wstring> Suggest(const std::wstring &wword) const { return std::vector<std::wstring>();  };
+};
+
+class TextHighight : public IHighlight
+{
+	mutable SpellCheck _check;
+
+	DWORD ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const;
+	std::vector<std::wstring> Suggest(const std::wstring &wword) const;
+	bool CanAdd(const std::wstring &word) const { return !_check.WordValid(word.c_str(), word.size()); };
+	void AddWord(const std::wstring &word) const { _check.AddWord(word); };
+};
+
+class TextView : public CWindowImpl<TextView>, public IView
+{
+
 
 private:
 
@@ -106,6 +127,7 @@ private:
 	mutable std::vector<DWORD> _parseCookies;
 	std::vector<int> _pages;
 	std::wstring _lastFindWhat;
+	std::shared_ptr<IHighlight> _highlight;
 
 	int GetMarginWidth() const;
 	COLORREF GetColor(int nColorIndex) const;
@@ -115,8 +137,7 @@ private:
 	TextLocation WordToLeft(TextLocation pt) const;
 	TextLocation WordToRight(TextLocation pt) const;
 	DROPEFFECT GetDropEffect();
-	DWORD GetParseCookie(int nLineIndex) const;
-	DWORD ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems) const;
+	DWORD GetParseCookie(int lineIndex) const;	
 	HFONT GetFont(bool bItalic = false, bool bBold = false) const;
 	HGLOBAL PrepareDragData();
 	HINSTANCE GetResourceHandle();
@@ -133,10 +154,10 @@ private:
 	bool OnPreparePrinting(CPrintInfo* pInfo);
 	bool PutToClipboard(const std::wstring &text);
 	bool TextInClipboard();
-	int ApproxActualOffset(int nLineIndex, int nOffset);
-	int CalculateActualOffset(int nLineIndex, int nCharIndex);
+	int ApproxActualOffset(int lineIndex, int nOffset);
+	int CalculateActualOffset(int lineIndex, int nCharIndex);
 	int GetCharWidth() const;
-	int GetLineActualLength(int nLineIndex) const;
+	int GetLineActualLength(int lineIndex) const;
 	int GetLineHeight() const;
 	int GetMaxLineLength() const;
 	int GetScreenChars() const;
@@ -149,10 +170,10 @@ private:
 	void Copy();
 	void DrawLineHelper(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, int nColorIndex, const wchar_t * pszChars, int nOffset, int nCount, TextLocation ptTextPos) const;
 	void DrawLineHelperImpl(HDC pdc, TextLocation &ptOrigin, const CRect &rcClip, const wchar_t * pszChars, int nOffset, int nCount) const;
-	void DrawMargin(HDC pdc, const CRect &rect, int nLineIndex) const;
-	void DrawSingleLine(HDC pdc, const CRect &rect, int nLineIndex) const;
+	void DrawMargin(HDC pdc, const CRect &rect, int lineIndex) const;
+	void DrawSingleLine(HDC pdc, const CRect &rect, int lineIndex) const;
 	void EnsureVisible(TextLocation pt);
-	void GetLineColors(int nLineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const;
+	void GetLineColors(int lineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const;
 	std::wstring GetPrintFooterText(int nPageNum) const;
 	std::wstring GetPrintHeaderText(int nPageNum) const;
 	const TextSelection &GetSelection() const;
@@ -196,6 +217,34 @@ private:
 	void SetViewTabs(bool bViewTabs);
 	void ShowCursor();
 	void UpdateCaret();
+	
+	TextSelection WordSelection() const
+	{
+		TextLocation ptStart, ptEnd;
+
+		if (m_ptCursorPos.y < m_ptAnchor.y ||
+			m_ptCursorPos.y == m_ptAnchor.y && m_ptCursorPos.x < m_ptAnchor.x)
+		{
+			ptStart = WordToLeft(m_ptCursorPos);
+			ptEnd = WordToRight(m_ptAnchor);
+		}
+		else
+		{
+			ptStart = WordToLeft(m_ptAnchor);
+			ptEnd = WordToRight(m_ptCursorPos);
+		}
+
+		return TextSelection(ptStart, ptEnd);
+	}
+
+	void Select(const TextSelection &selection)
+	{
+		SetSelection(selection);
+		SetAnchor(selection._start);
+		SetCursorPos(selection._end);
+		EnsureVisible(selection._end);
+		UpdateCaret();
+	}
 
 	void Locate(const TextLocation &pos)
 	{
@@ -211,6 +260,7 @@ public:
 	~TextView();
 
 	void InvalidateView();
+	void HighlightFromExtension(const wchar_t *ext);
 
 	BEGIN_MSG_MAP(TextView)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
@@ -223,11 +273,13 @@ public:
 		MESSAGE_HANDLER(WM_VSCROLL, OnVScroll)
 		MESSAGE_HANDLER(WM_VSCROLL, OnHScroll)
 		MESSAGE_HANDLER(WM_TIMER, OnTimer)
+		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDblClk)
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
 		MESSAGE_HANDLER(WM_LBUTTONUP, OnLButtonUp)
 		MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
 		MESSAGE_HANDLER(WM_CHAR, OnChar)
+		MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)
 	END_MSG_MAP()
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
@@ -300,6 +352,12 @@ public:
 		return 0;
 	}
 
+	LRESULT OnLButtonDblClk(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		OnLButtonDblClk(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
+		return 0;
+	}
+
 	LRESULT OnLButtonDown(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
 		OnLButtonDown(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
@@ -332,8 +390,14 @@ public:
 	}
 
 	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
-	{
+	{		
 		OnCommand(LOWORD(wParam));
+		return 0;
+	}
+
+	LRESULT OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+	{
+		OnContextMenu(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
@@ -415,6 +479,7 @@ public:
 	void OnFilePageSetup();
 	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar);
 	void OnKillFocus(CWindow* pNewWnd);
+	void OnContextMenu(const CPoint &point, UINT nFlags);
 	void OnLButtonDblClk(const CPoint &point, UINT nFlags);
 	void OnLButtonDown(const CPoint &point, UINT nFlags);
 	void OnLButtonUp(const CPoint &point, UINT nFlags);
