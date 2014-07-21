@@ -43,12 +43,12 @@ class Tests
 {
 private:
 
-	static std::chrono::system_clock::time_point now()
+	static std::chrono::high_resolution_clock::time_point now()
 	{
 		return std::chrono::high_resolution_clock::now();
 	};
 
-	static long long duration_in_microseconds(const std::chrono::system_clock::time_point &started)
+	static long long duration_in_microseconds(const std::chrono::high_resolution_clock::time_point &started)
 	{
 		auto dur = now() - started;
 		return std::chrono::duration_cast<std::chrono::microseconds>(dur).count();

@@ -376,7 +376,7 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int lineIndex) const
 
 		//	Parse the line
 		auto nLength = line.size();
-		auto pBuf = (IHighlight::TEXTBLOCK *) _alloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
+		auto pBuf = (IHighlight::TEXTBLOCK *) _malloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
 		auto nBlocks = 0;
 		auto cookie = GetParseCookie(lineIndex - 1);
 
@@ -439,6 +439,8 @@ void TextView::DrawSingleLine(HDC pdc, const CRect &rc, int lineIndex) const
 			if (frect.right > frect.left)
 				FillSolidRect(pdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
 		}
+
+		_freea(pBuf);
 	}
 }
 

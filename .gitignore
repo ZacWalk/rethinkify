@@ -20,3 +20,4 @@
 /intermediate/*
 *.pdb
 *.sdf
+/Exe/*.ilk
