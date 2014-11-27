@@ -59,17 +59,18 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <FloatingPointModel>Fast</FloatingPointModel>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>..\Libraries</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Libraries;..\Libraries\Jsoncpp\include</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <MinimalRebuild>false</MinimalRebuild>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <EnableParallelCodeGeneration>false</EnableParallelCodeGeneration>
+      <FunctionLevelLinking>false</FunctionLevelLinking>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <CompileAsManaged>false</CompileAsManaged>
       <CompileAsWinRT>false</CompileAsWinRT>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -93,7 +94,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <FloatingPointModel>Fast</FloatingPointModel>
-      <AdditionalIncludeDirectories>..\Libraries</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Libraries;..\Libraries\Jsoncpp\include</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <SmallerTypeCheck>false</SmallerTypeCheck>
       <EnableParallelCodeGeneration>false</EnableParallelCodeGeneration>
@@ -150,11 +151,17 @@
     <ResourceCompile Include="Rethinkify.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\Last.ico" />
+    <Image Include="res\Next.ico" />
+    <Image Include="res\Rethinkify.ico" />
     <Image Include="Rethinkify.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Libraries\hunspell\hunspell.vcxproj">
       <Project>{18527041-f416-114c-500f-5856431d553a}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Libraries\Jsoncpp\Jsoncpp.vcxproj">
+      <Project>{c44da243-f95c-49d3-8f93-5dd6e2960042}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

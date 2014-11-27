@@ -84,5 +84,14 @@
     <Image Include="Rethinkify.ico">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="res\Rethinkify.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Next.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Last.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>

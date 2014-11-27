@@ -5,6 +5,7 @@
 #include "Rethinkify.h"
 #include "TextView.h"
 #include "TextBuffer.h"
+#include "json/json.h"
 
 #include <shellapi.h>
 
@@ -213,7 +214,8 @@ public:
 		COMMAND_ID_HANDLER(ID_FILE_SAVE, OnSave)
 		COMMAND_ID_HANDLER(ID_FILE_SAVE_AS, OnSaveAs)
 		COMMAND_ID_HANDLER(ID_FILE_NEW, OnNew)
-		COMMAND_ID_HANDLER(ID_EDIT_FIND, OnEditFind)		
+		COMMAND_ID_HANDLER(ID_EDIT_FIND, OnEditFind)
+        COMMAND_ID_HANDLER(ID_EDIT_REFORMAT, OnEditReformat)        
 
 		MESSAGE_HANDLER(WM_COMMAND, OnCommand)
 	END_MSG_MAP()
@@ -354,6 +356,32 @@ public:
 		if (!isVisible) _find._findText.SetFocus();
 		return 0;
 	}
+
+    LRESULT OnEditReformat(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+    {
+        Json::Value root;   // will contains the root value after parsing.
+        Json::Reader reader;
+        Json::StyledStreamWriter writer;
+                
+        if (reader.parse(UTF16ToUtf8(Combine(_text.Text())), root))
+        {
+            std::stringstream lines;
+            writer.write(lines, root);
+
+            _text.clear();
+            std::string line;
+
+            while (std::getline(lines, line))
+            {
+                _text.AppendLine(UTF8ToUtf16(line));
+            }
+
+            _view.InvalidateView();
+        }
+
+        return 0;
+    }
+
 	
 	LRESULT OnInitMenuPopup(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
