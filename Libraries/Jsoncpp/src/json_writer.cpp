@@ -152,7 +152,7 @@ std::string valueToQuotedString(const char* value) {
     // (I hope I am not misunderstanding something.
     // blep notes: actually escaping \/ may be useful in javascript to avoid </
     // sequence.
-    // Should add a flag to allow this compatibility mode and prevent this
+    // should add a flag to allow this compatibility mode and prevent this
     // sequence from occurring.
     default:
       if (isControlCharacter(*c)) {

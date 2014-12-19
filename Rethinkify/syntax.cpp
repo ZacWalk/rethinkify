@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "TextView.h"
+#include "text_view.h"
 
 struct caseInsensitiveCompare : public std::binary_function < const wchar_t *, const wchar_t *, bool > {
 	bool operator()(const wchar_t *lhs, const wchar_t *rhs) const {
@@ -146,7 +146,7 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 
 	const int bufferLen = 100;
 	wchar_t sz[bufferLen];
-	wcsncpy_s(sz, pszChars, min(bufferLen - 1, nLength));
+	wcsncpy_s(sz, pszChars, std::min(bufferLen - 1, nLength));
 
 	return keywords.find(sz) != keywords.end();
 }
@@ -195,7 +195,7 @@ static void AddBlock(IHighlight::TEXTBLOCK *pBuf, int &nActualItems, int pos, in
 	}
 }
 
-DWORD CppSyntax::ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
+DWORD CppSyntax::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
 	if (line.empty())
 	{
@@ -385,7 +385,7 @@ DWORD CppSyntax::ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLO
 	return dwCookie;
 }
 
-DWORD TextHighight::ParseLine(DWORD dwCookie, const TextBuffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
+DWORD TextHighight::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
 	if (line.empty())
 	{

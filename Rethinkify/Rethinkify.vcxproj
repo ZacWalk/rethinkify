@@ -13,7 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{E22DE357-DF10-4EAD-8069-A2C780F5CACC}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>Rethinkify</RootNamespace>
+    <RootNamespace>rethinkify</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -111,26 +111,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Platform.h" />
-    <ClInclude Include="Should.h" />
-    <ClInclude Include="SpellCheck.h" />
-    <ClInclude Include="TextBuffer.h" />
-    <ClInclude Include="TextView.h" />
-    <ClInclude Include="Resource.h" />
-    <ClInclude Include="Rethinkify.h" />
+    <ClInclude Include="platform.h" />
+    <ClInclude Include="should.h" />
+    <ClInclude Include="spell_check.h" />
+    <ClInclude Include="text_buffer.h" />
+    <ClInclude Include="text_view.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="ui.h" />
     <ClInclude Include="utf.h" />
-    <ClInclude Include="Util.h" />
+    <ClInclude Include="util.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SpellCheck.cpp" />
+    <ClCompile Include="spell_check.cpp" />
     <ClCompile Include="utf.cpp" />
-    <ClCompile Include="Tests.cpp" />
-    <ClCompile Include="TextBuffer.cpp" />
-    <ClCompile Include="TextView.cpp" />
+    <ClCompile Include="tests.cpp" />
+    <ClCompile Include="text_buffer.cpp" />
+    <ClCompile Include="text_view.cpp" />
     <ClCompile Include="syntax.cpp" />
-    <ClCompile Include="Rethinkify.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -151,10 +151,9 @@
     <ResourceCompile Include="Rethinkify.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\Last.ico" />
-    <Image Include="res\Next.ico" />
-    <Image Include="res\Rethinkify.ico" />
-    <Image Include="Rethinkify.ico" />
+    <Image Include="res\last.ico" />
+    <Image Include="res\next.ico" />
+    <Image Include="res\rethinkify.ico" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Libraries\hunspell\hunspell.vcxproj">

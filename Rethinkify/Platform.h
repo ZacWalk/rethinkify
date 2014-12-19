@@ -1,5 +1,5 @@
 
-namespace Platform
+namespace platform
 {
 	extern size_t StaticMemoryUsage;
 

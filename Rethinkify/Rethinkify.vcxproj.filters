@@ -21,19 +21,10 @@
     <ClInclude Include="Resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Rethinkify.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Util.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TextBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="TextView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Should.h">
@@ -42,24 +33,24 @@
     <ClInclude Include="utf.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SpellCheck.h">
+    <ClInclude Include="Platform.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Platform.h">
+    <ClInclude Include="spell_check.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="text_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="text_view.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Rethinkify.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="pch.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TextBuffer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TextView.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="syntax.cpp">
@@ -71,7 +62,16 @@
     <ClCompile Include="utf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="SpellCheck.cpp">
+    <ClCompile Include="spell_check.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="text_buffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="text_view.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -81,9 +81,6 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="Rethinkify.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="res\Rethinkify.ico">
       <Filter>Resource Files</Filter>
     </Image>

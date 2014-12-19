@@ -42,5 +42,8 @@
 #include <atlbase.h>
 #include <atlwin.h>
 
+#undef min
+#undef max
+
 extern const wchar_t *g_szAppName;
 

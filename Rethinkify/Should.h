@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-class Should
+class should
 {
 public:
 
@@ -39,7 +39,7 @@ public:
 	}
 };
 
-class Tests
+class tests
 {
 private:
 
