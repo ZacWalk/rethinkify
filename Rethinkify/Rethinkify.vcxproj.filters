@@ -39,13 +39,13 @@
     <ClInclude Include="spell_check.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="text_buffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="text_view.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="document.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -65,13 +65,10 @@
     <ClCompile Include="spell_check.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="text_buffer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="text_view.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="document.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -114,7 +114,7 @@
     <ClInclude Include="platform.h" />
     <ClInclude Include="should.h" />
     <ClInclude Include="spell_check.h" />
-    <ClInclude Include="text_buffer.h" />
+    <ClInclude Include="document.h" />
     <ClInclude Include="text_view.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="pch.h" />
@@ -127,8 +127,7 @@
     <ClCompile Include="spell_check.cpp" />
     <ClCompile Include="utf.cpp" />
     <ClCompile Include="tests.cpp" />
-    <ClCompile Include="text_buffer.cpp" />
-    <ClCompile Include="text_view.cpp" />
+    <ClCompile Include="document.cpp" />
     <ClCompile Include="syntax.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="pch.cpp">

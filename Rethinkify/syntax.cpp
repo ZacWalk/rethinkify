@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "text_view.h"
+#include "document.h"
 
 struct caseInsensitiveCompare : public std::binary_function < const wchar_t *, const wchar_t *, bool > {
 	bool operator()(const wchar_t *lhs, const wchar_t *rhs) const {
@@ -195,7 +195,7 @@ static void AddBlock(IHighlight::TEXTBLOCK *pBuf, int &nActualItems, int pos, in
 	}
 }
 
-DWORD CppSyntax::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
+DWORD CppSyntax::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
 	if (line.empty())
 	{
@@ -385,7 +385,7 @@ DWORD CppSyntax::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEXTBL
 	return dwCookie;
 }
 
-DWORD TextHighight::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEXTBLOCK *pBuf, int &nActualItems) const
+DWORD TextHighight::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
 	if (line.empty())
 	{
@@ -461,7 +461,7 @@ DWORD TextHighight::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEX
 				{
 					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
 				}
-				else if (!_check.WordValid(pszChars + nIdentBegin, i - nIdentBegin))
+				else if (!_check.is_word_valid(pszChars + nIdentBegin, i - nIdentBegin))
 				{
 					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
 				}
@@ -481,7 +481,7 @@ DWORD TextHighight::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEX
 		{
 			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
 		}
-		else if (!_check.WordValid(pszChars + nIdentBegin, i - nIdentBegin))
+		else if (!_check.is_word_valid(pszChars + nIdentBegin, i - nIdentBegin))
 		{
 			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
 		}
@@ -490,7 +490,7 @@ DWORD TextHighight::ParseLine(DWORD dwCookie, const text_buffer::Line &line, TEX
 	return dwCookie;
 }
 
-std::vector<std::wstring> TextHighight::Suggest(const std::wstring &wword) const
+std::vector<std::wstring> TextHighight::suggest(const std::wstring &wword) const
 {
-	return _check.Suggest(wword);
+	return _check.suggest(wword);
 }

@@ -70,7 +70,7 @@ void spell_check::Init()
 	}
 }
 
-bool spell_check::WordValid(const wchar_t *wword, int wlen)
+bool spell_check::is_word_valid(const wchar_t *wword, int wlen)
 {
 	platform::Lock l(_cs);
 
@@ -82,7 +82,7 @@ bool spell_check::WordValid(const wchar_t *wword, int wlen)
 	return _psc && _psc->spell(aword) != 0;
 }
 
-std::vector<std::wstring> spell_check::Suggest(const std::wstring &wword)
+std::vector<std::wstring> spell_check::suggest(const std::wstring &wword)
 {
 	platform::Lock l(_cs);
 
@@ -111,7 +111,7 @@ std::vector<std::wstring> spell_check::Suggest(const std::wstring &wword)
 	return results;
 }
 
-void spell_check::AddWord(const std::wstring &wword)
+void spell_check::add_word(const std::wstring &wword)
 {
 	platform::Lock l(_cs);
 

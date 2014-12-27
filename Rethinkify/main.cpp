@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "resource.h"
 #include "text_view.h"
-#include "text_buffer.h"
+#include "document.h"
 #include "json/json.h"
 #include "ui.h"
 
@@ -60,11 +60,11 @@ public:
 	const int nextId = 103;
 	const int lastId = 104;
 
-	text_view &_view;
+    document &_doc;
 	CWindow _findText;
 	CWindow _findNext;
 
-	find_wnd(text_view &v) : _view(v)
+    find_wnd(document &d) : _doc(d)
 	{
 	}
 
@@ -170,19 +170,19 @@ public:
 
 	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
-		_view.Find(Text(), 0);
+        _doc.Find(Text(), 0);
 		return 0;
 	}
 
 	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		_view.Find(Text(), FIND_DIRECTION_UP);
+        _doc.Find(Text(), FIND_DIRECTION_UP);
 		return 0;
 	}
 
 	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		_view.Find(Text(), 0);
+        _doc.Find(Text(), 0);
 		return 0;
 	}
 };
@@ -191,18 +191,19 @@ class main_frame : public CWindowImpl<main_frame>
 {
 public:
 
-	text_buffer _text;
-	text_view _view;
+    text_view _view;
+	document _doc;	
 	find_wnd _find;
-
 	std::wstring _path;
 
-	main_frame() : _view(_text), _find(_view)
+    main_frame() : _view(_doc), _find(_doc), _doc(_view)
 	{
 	}
 
 	BEGIN_MSG_MAP(main_frame)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
+        MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
+        MESSAGE_HANDLER(WM_PAINT, OnPaint)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnFocus)
 		MESSAGE_HANDLER(WM_CLOSE, OnClose)
@@ -223,10 +224,25 @@ public:
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
-		_view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
-		_find.Create(_view, nullptr, nullptr, WS_CHILD);
+        _view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
+        _find.Create(_view, nullptr, nullptr, WS_CHILD, WS_EX_COMPOSITED);
+        _doc.invalidate_view();
+
 		return 0;
 	}
+
+    LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+    {
+        PAINTSTRUCT ps = { 0 };
+        auto hdc = BeginPaint(&ps);
+        EndPaint(&ps);
+        return 0;
+    }
+
+    LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+    {
+        return 1;
+    }
 
 	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 	{
@@ -252,7 +268,7 @@ public:
 	{
 		bool destroy = true;
 
-		if (_text.IsModified())
+        if (_doc.IsModified())
 		{
 			auto id = MessageBox(L"Do you want to save?", g_szAppName, MB_YESNOCANCEL | MB_ICONQUESTION);
 
@@ -289,17 +305,17 @@ public:
 
 	LRESULT OnRunTests(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		_text.clear();
+        _doc.clear();
 
 		std::wstringstream lines(RunTests());
 		std::wstring line;
 
 		while (std::getline(lines, line))
 		{
-			_text.AppendLine(line);
+            _doc.append_line(line);
 		}
 
-		_view.invalidate_view();
+		_doc.invalidate_view();
 		_path = L"tests";
 		SetTitle(L"tests");
 
@@ -328,7 +344,7 @@ public:
 	{
 		bool destroy = true;
 
-		if (_text.IsModified())
+        if (_doc.IsModified())
 		{
 			auto id = MessageBox(L"Do you want to save?", g_szAppName, MB_YESNOCANCEL | MB_ICONQUESTION);
 
@@ -364,20 +380,20 @@ public:
         Json::Reader reader;
         Json::StyledStreamWriter writer;
                 
-        if (reader.parse(UTF16ToUtf8(Combine(_text.text())), root))
+        if (reader.parse(UTF16ToUtf8(Combine(_doc.text())), root))
         {
             std::stringstream lines;
             writer.write(lines, root);
 
-            _text.clear();
+            _doc.clear();
             std::string line;
 
             while (std::getline(lines, line))
             {
-                _text.AppendLine(UTF8ToUtf16(line));
+                _doc.append_line(UTF8ToUtf16(line));
             }
 
-            _view.invalidate_view();
+            _doc.invalidate_view();
         }
 
         return 0;
@@ -386,7 +402,29 @@ public:
 	
 	LRESULT OnInitMenuPopup(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
-		_view.EnableMenuItems((HMENU)wParam);
+        auto hMenu = (HMENU) wParam;
+        auto count = GetMenuItemCount(hMenu);
+
+        for (auto i = 0; i < count; i++)
+        {
+            auto id = GetMenuItemID(hMenu, i);
+            auto enable = true;
+
+            switch (id)
+            {
+            case ID_EDIT_COPY: enable = _doc.HasSelection(); break;
+            case ID_EDIT_CUT: enable = _doc.HasSelection(); break;
+            case ID_EDIT_FIND_PREVIOUS: enable = _doc.CanFindNext(); break;
+            case ID_EDIT_PASTE: enable = _doc.CanPaste(); break;
+            case ID_EDIT_REDO: enable = _doc.can_redo(); break;
+            case ID_EDIT_REPEAT: enable = _doc.CanFindNext(); break;
+            case ID_EDIT_SELECT_ALL: enable = true; break;
+            case ID_EDIT_UNDO: enable = _doc.can_undo(); break;
+            }
+
+            EnableMenuItem(hMenu, i, MF_BYPOSITION | (enable ? MF_ENABLED : MF_DISABLED));
+        }
+
 		return 0;
 	}
 
@@ -404,7 +442,7 @@ public:
 		wcscat_s(title, g_szAppName);
 		SetWindowText(title);
 
-		_view.HighlightFromExtension(PathFindExtension(name));
+		_doc.HighlightFromExtension(PathFindExtension(name));
 	}
 
 	void Load()
@@ -430,18 +468,16 @@ public:
 
 	void New()
 	{
-		_view.invalidate_view();
+        _doc.invalidate_view();
 		_path = L"New";
 		SetTitle(L"New");
 	}
 
 	void Load(const std::wstring &path)
 	{
-		text_buffer text;
-		
-		if (_text.LoadFromFile(path))
+		if (_doc.LoadFromFile(path))
 		{
-			_view.invalidate_view();
+            _doc.invalidate_view();
 			_path = path;
 			SetTitle(PathFindFileName(path.c_str()));
 		}
@@ -449,7 +485,7 @@ public:
 
 	bool Save(const std::wstring &path)
 	{
-		if (_text.SaveToFile(path))
+        if (_doc.SaveToFile(path))
 		{
 			_path = path;
 			SetTitle(PathFindFileName(path.c_str()));
@@ -514,7 +550,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
 	main_frame _frame;
-	_frame.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW);
+    _frame.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);
 	_frame.SetMenu(LoadMenu(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY)));
 
 	auto icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_RETHINKIFY));

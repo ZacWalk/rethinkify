@@ -104,6 +104,7 @@ class CPoint : public POINT
 {
 public:
 	CPoint(int xx = 0, int yy = 0) { x = xx; y = yy; }
+    CPoint(const POINTL &other) { x = other.x; y = other.y; }    
 
 	bool operator==(const CPoint &other) const { return x == other.x && y == other.y; }
 	bool operator!=(const CPoint &other) const { return x != other.x && y != other.y; }
