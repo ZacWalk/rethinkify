@@ -9,9 +9,6 @@
 #define HUNSPELL_STATIC
 #include "hunspell\hunspell.hxx"
 
-
-static spell_check sc;
-
 spell_check::spell_check(void)
 {
 }

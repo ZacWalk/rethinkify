@@ -15,8 +15,11 @@ public:
     void RecalcVertScrollBar(bool bPositionOnly = false) {};
     void ScrollToLine(int nNewTopLine, bool bTrackScrollBar = true) {};
     void ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar = true) {};
-    void invalidate(LPCRECT r = nullptr) {};
-    void ShowDropIndicator(const CPoint &point) {};
+    void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) {};
+    void invalidate_line(int index) {};
+    void invalidate_view() {};
+    void layout() {};
+    void ensure_visible(const text_location &pt) {};
 };
 
 static view_stub null_view;

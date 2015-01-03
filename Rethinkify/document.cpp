@@ -25,19 +25,11 @@ const auto REG_MARGIN_RIGHT = L"RightMargin";
 const auto REG_MARGIN_TOP = L"TopMargin";
 const auto REG_MARGIN_BOTTOM = L"BottomMargin";
 
-const auto TAB_CHARACTER = 0xBB;
-const auto SPACE_CHARACTER = 0x95;
-const auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
-const auto DRAG_BORDER_X = 5;
-const auto DRAG_BORDER_Y = 5;
-
 static auto s_textHighlighter = std::make_shared<TextHighight>();
 
 
-document::document(IView &view, const std::wstring &text, int nCrlfStyle) : _highlight(s_textHighlighter), _view(view), _font_extent(1, 1)
+document::document(IView &view, const std::wstring &text, int nCrlfStyle) : _highlight(s_textHighlighter), _view(view)
 {
-    memset(m_apFonts, 0, sizeof(HFONT) * 4);
-
     m_bSelMargin = true;
     _modified = false;
     m_bCreateBackupFile = false;
@@ -67,8 +59,7 @@ document::~document()
 
 const text_selection &document::selection() const
 {
-    PrepareSelBounds();
-    return m_ptDrawSel;
+    return _selection.normalize();
 }
 
 int document::expanded_line_length(int lineIndex) const
@@ -176,106 +167,6 @@ std::wstring document::ExpandChars(const std::wstring &text, int nOffset, int nC
     return result;
 }
 
-void document::draw_line(HDC pdc, text_location &ptOrigin, const CRect &rcClip, const wchar_t * pszChars, int nOffset, int nCount) const
-{
-    if (nCount > 0)
-    {
-        auto line = ExpandChars(pszChars, nOffset, nCount);
-        auto nWidth = rcClip.right - ptOrigin.x;
-
-        if (nWidth > 0)
-        {
-            auto nCharWidth = _font_extent.cx;
-            auto nCount = line.size();
-            auto nCountFit = nWidth / nCharWidth + 1;
-
-            if (nCount > nCountFit)
-                nCount = nCountFit;
-
-            /*
-            CRect rcBounds = rcClip;
-            rcBounds.left = ptOrigin.x;
-            rcBounds.right = rcBounds.left + _font_extent.cx * nCount;
-            pdc->ExtTextOut(rcBounds.left, rcBounds.top, ETO_OPAQUE, &rcBounds, nullptr, 0, nullptr);
-            */
-            ::ExtTextOut(pdc, ptOrigin.x, ptOrigin.y, ETO_CLIPPED, &rcClip, line.c_str(), nCount, nullptr);
-        }
-        ptOrigin.x += _font_extent.cx * line.size();
-    }
-}
-
-void document::draw_line(HDC pdc, text_location &ptOrigin, const CRect &rcClip, int nColorIndex, const wchar_t * pszChars, int nOffset, int nCount, text_location ptTextPos) const
-{
-    if (nCount > 0)
-    {
-        if (m_bFocused || m_bShowInactiveSelection)
-        {
-            int nSelBegin = 0, nSelEnd = 0;
-            if (m_ptDrawSel._start.y > ptTextPos.y)
-            {
-                nSelBegin = nCount;
-            }
-            else
-                if (m_ptDrawSel._start.y == ptTextPos.y)
-                {
-                    nSelBegin = m_ptDrawSel._start.x - ptTextPos.x;
-                    if (nSelBegin < 0)
-                        nSelBegin = 0;
-                    if (nSelBegin > nCount)
-                        nSelBegin = nCount;
-                }
-            if (m_ptDrawSel._end.y > ptTextPos.y)
-            {
-                nSelEnd = nCount;
-            }
-            else
-                if (m_ptDrawSel._end.y == ptTextPos.y)
-                {
-                    nSelEnd = m_ptDrawSel._end.x - ptTextPos.x;
-                    if (nSelEnd < 0)
-                        nSelEnd = 0;
-                    if (nSelEnd > nCount)
-                        nSelEnd = nCount;
-                }
-
-            assert(nSelBegin >= 0 && nSelBegin <= nCount);
-            assert(nSelEnd >= 0 && nSelEnd <= nCount);
-            assert(nSelBegin <= nSelEnd);
-
-            //	Draw part of the text before selection
-            if (nSelBegin > 0)
-            {
-                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nSelBegin);
-            }
-            if (nSelBegin < nSelEnd)
-            {
-                COLORREF crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
-                COLORREF crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
-                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
-                SetBkColor(pdc, crOldBk);
-                SetTextColor(pdc, crOldText);
-            }
-            if (nSelEnd < nCount)
-            {
-                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelEnd, nCount - nSelEnd);
-            }
-        }
-        else
-        {
-            draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nCount);
-        }
-    }
-}
-
-void document::line_color(int lineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const
-{
-    bDrawWhitespace = true;
-    crText = RGB(255, 255, 255);
-    crBkgnd = CLR_NONE;
-    crText = CLR_NONE;
-    bDrawWhitespace = false;
-}
-
 DWORD document::prse_cookie(int lineIndex) const
 {
     int line_count = _lines.size();
@@ -308,255 +199,32 @@ DWORD document::prse_cookie(int lineIndex) const
 
 
 
-void document::draw_line(HDC pdc, const CRect &rc, int lineIndex) const
+bool document::is_inside_selection(const text_location &ptTextPos) const
 {
-    if (lineIndex == -1)
-    {
-        //	Draw line beyond the text
-        FillSolidRect(pdc, rc, GetColor(IHighlight::COLORINDEX_WHITESPACE));
-    }
-    else
-    {
-        //	Acquire the background color for the current line
-        auto bDrawWhitespace = false;
-        COLORREF crBkgnd, crText;
-        line_color(lineIndex, crBkgnd, crText, bDrawWhitespace);
+    auto sel = _selection.normalize();
 
-        if (crBkgnd == CLR_NONE)
-            crBkgnd = GetColor(IHighlight::COLORINDEX_BKGND);
-
-        const auto &line = _lines[lineIndex];
-
-        if (line.empty())
-        {
-            //	Draw the empty line
-            CRect rect = rc;
-            if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(text_location(0, lineIndex)))
-            {
-                FillSolidRect(pdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
-                rect.left += _font_extent.cx;
-            }
-            FillSolidRect(pdc, rect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
-            return;
-        }
-
-        //	Parse the line
-        auto nLength = line.size();
-        auto pBuf = (IHighlight::TEXTBLOCK *) _malloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
-        auto nBlocks = 0;
-        auto cookie = prse_cookie(lineIndex - 1);
-
-        line._parseCookie = _highlight->ParseLine(cookie, line, pBuf, nBlocks);
-
-        //	Draw the line text
-        text_location origin(rc.left - _char_offset.cx * _font_extent.cx, rc.top);
-        SetBkColor(pdc, crBkgnd);
-        if (crText != CLR_NONE)
-            SetTextColor(pdc, crText);
-
-        auto bColorSet = false;
-        auto pszChars = line.c_str();
-
-        if (nBlocks > 0)
-        {
-            assert(pBuf[0].m_nCharPos >= 0 && pBuf[0].m_nCharPos <= nLength);
-            if (crText == CLR_NONE)
-                SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-            SelectObject(pdc, GetFont(GetItalic(IHighlight::COLORINDEX_NORMALTEXT), GetBold(IHighlight::COLORINDEX_NORMALTEXT)));
-            draw_line(pdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, text_location(0, lineIndex));
-            for (int i = 0; i < nBlocks - 1; i++)
-            {
-                assert(pBuf[i].m_nCharPos >= 0 && pBuf[i].m_nCharPos <= nLength);
-                if (crText == CLR_NONE)
-                    SetTextColor(pdc, GetColor(pBuf[i].m_nColorIndex));
-                SelectObject(pdc, GetFont(GetItalic(pBuf[i].m_nColorIndex), GetBold(pBuf[i].m_nColorIndex)));
-                draw_line(pdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
-                    pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
-                    text_location(pBuf[i].m_nCharPos, lineIndex));
-            }
-            assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
-            if (crText == CLR_NONE)
-                SetTextColor(pdc, GetColor(pBuf[nBlocks - 1].m_nColorIndex));
-            SelectObject(pdc, GetFont(GetItalic(pBuf[nBlocks - 1].m_nColorIndex),
-                GetBold(pBuf[nBlocks - 1].m_nColorIndex)));
-            draw_line(pdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
-                pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
-                text_location(pBuf[nBlocks - 1].m_nCharPos, lineIndex));
-        }
-        else
-        {
-            if (crText == CLR_NONE)
-                SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-            SelectObject(pdc, GetFont(GetItalic(IHighlight::COLORINDEX_NORMALTEXT), GetBold(IHighlight::COLORINDEX_NORMALTEXT)));
-            draw_line(pdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, lineIndex));
-        }
-
-        //	Draw whitespaces to the left of the text
-        auto frect = rc;
-        if (origin.x > frect.left)
-            frect.left = origin.x;
-        if (frect.right > frect.left)
-        {
-            if ((m_bFocused || m_bShowInactiveSelection) && IsInsideSelBlock(text_location(nLength, lineIndex)))
-            {
-                FillSolidRect(pdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
-                frect.left += _font_extent.cx;
-            }
-            if (frect.right > frect.left)
-                FillSolidRect(pdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
-        }
-
-        _freea(pBuf);
-    }
-}
-
-COLORREF document::GetColor(int nColorIndex) const
-{
-    switch (nColorIndex)
-    {
-    case IHighlight::COLORINDEX_WHITESPACE:
-    case IHighlight::COLORINDEX_BKGND:
-        return RGB(30, 30, 30);
-    case IHighlight::COLORINDEX_NORMALTEXT:
-        return RGB(240, 240, 240);
-    case IHighlight::COLORINDEX_SELMARGIN:
-        return RGB(44, 44, 44);
-    case IHighlight::COLORINDEX_PREPROCESSOR:
-        return RGB(128, 128, 192);
-    case IHighlight::COLORINDEX_COMMENT:
-        return RGB(128, 128, 128);
-    case IHighlight::COLORINDEX_NUMBER:
-        return RGB(255, 128, 128);
-    case IHighlight::COLORINDEX_OPERATOR:
-        return RGB(128, 255, 128);
-    case IHighlight::COLORINDEX_KEYWORD:
-        return RGB(128, 128, 255);
-    case IHighlight::COLORINDEX_SELBKGND:
-        return RGB(88, 88, 88);
-    case IHighlight::COLORINDEX_SELTEXT:
-        return RGB(255, 255, 255);
-    }
-    return RGB(255, 0, 0);
-}
-
-//COLORREF document::GetColor(int nColorIndex)
-//{
-//	switch (nColorIndex)
-//	{
-//	case IHighlight::COLORINDEX_WHITESPACE:
-//	case IHighlight::COLORINDEX_BKGND:
-//		return ::GetSysColor(COLOR_WINDOW);
-//	case IHighlight::COLORINDEX_NORMALTEXT:
-//		return ::GetSysColor(COLOR_WINDOWTEXT);
-//	case IHighlight::COLORINDEX_SELMARGIN:
-//		return ::GetSysColor(COLOR_SCROLLBAR);
-//	case IHighlight::COLORINDEX_PREPROCESSOR:
-//		return RGB(0, 128, 192);
-//	case IHighlight::COLORINDEX_COMMENT:
-//		return RGB(128, 128, 128);
-//		//	[JRT]: Enabled Support For Numbers...
-//	case IHighlight::COLORINDEX_NUMBER:
-//		return RGB(0x80, 0x00, 0x00);
-//	case IHighlight::COLORINDEX_OPERATOR:
-//		return RGB(0x00, 0x00, 0x00);
-//	case IHighlight::COLORINDEX_KEYWORD:
-//		return RGB(0, 0, 255);
-//	case IHighlight::COLORINDEX_SELBKGND:
-//		return RGB(0, 0, 0);
-//	case IHighlight::COLORINDEX_SELTEXT:
-//		return RGB(255, 255, 255);
-//	}
-//	return RGB(255, 0, 0);
-//}
-
-
-    void document::draw_margin(HDC pdc, const CRect &rect, int lineIndex) const
-    {
-        FillSolidRect(pdc, rect, GetColor(m_bSelMargin ? IHighlight::COLORINDEX_SELMARGIN : IHighlight::COLORINDEX_BKGND));
-    }
-
-bool document::IsInsideSelBlock(text_location ptTextPos) const
-{
-    if (ptTextPos.y < m_ptDrawSel._start.y)
+    if (ptTextPos.y < sel._start.y)
         return false;
-    if (ptTextPos.y > m_ptDrawSel._end.y)
+    if (ptTextPos.y > sel._end.y)
         return false;
-    if (ptTextPos.y < m_ptDrawSel._end.y && ptTextPos.y > m_ptDrawSel._start.y)
+    if (ptTextPos.y < sel._end.y && ptTextPos.y > sel._start.y)
         return true;
-    if (m_ptDrawSel._start.y < m_ptDrawSel._end.y)
+    if (sel._start.y < sel._end.y)
     {
-        if (ptTextPos.y == m_ptDrawSel._end.y)
-            return ptTextPos.x < m_ptDrawSel._end.x;
-        assert(ptTextPos.y == m_ptDrawSel._start.y);
-        return ptTextPos.x >= m_ptDrawSel._start.x;
+        if (ptTextPos.y == sel._end.y)
+            return ptTextPos.x < sel._end.x;
+        assert(ptTextPos.y == sel._start.y);
+        return ptTextPos.x >= sel._start.x;
     }
-    assert(m_ptDrawSel._start.y == m_ptDrawSel._end.y);
-    return ptTextPos.x >= m_ptDrawSel._start.x && ptTextPos.x < m_ptDrawSel._end.x;
-}
-
-bool document::IsInsideSelection(const text_location &ptTextPos) const
-{
-    PrepareSelBounds();
-    return IsInsideSelBlock(ptTextPos);
-}
-
-void document::PrepareSelBounds() const
-{
-    if (_selection._start.y < _selection._end.y || (_selection._start.y == _selection._end.y && _selection._start.x < _selection._end.x))
-    {
-        m_ptDrawSel._start = _selection._start;
-        m_ptDrawSel._end = _selection._end;
-    }
-    else
-    {
-        m_ptDrawSel._start = _selection._end;
-        m_ptDrawSel._end = _selection._start;
-    }
-}
-
-void document::draw(HDC dc)
-{
-    PrepareSelBounds();
-
-    auto rcClient = client_rect();
-    auto line_count = _lines.size();
-    auto y = 0;
-    auto nCurrentLine = _char_offset.cy;
-
-    while (y < rcClient.bottom)
-    {
-        auto nLineHeight = line_height(nCurrentLine);
-        auto rcLine = rcClient;
-        rcLine.bottom = rcLine.top + nLineHeight;
-
-        CRect rcCacheMargin(0, y, margin_width(), y + nLineHeight);
-        CRect rcCacheLine(margin_width(), y, rcLine.Width(), y + nLineHeight);
-
-        if (nCurrentLine < line_count)
-        {
-            draw_margin(dc, rcCacheMargin, nCurrentLine);
-            draw_line(dc, rcCacheLine, nCurrentLine);
-        }
-        else
-        {
-            draw_margin(dc, rcCacheMargin, -1);
-            draw_line(dc, rcCacheLine, -1);
-        }
-
-        nCurrentLine++;
-        y += nLineHeight;
-    }
+    assert(sel._start.y == sel._end.y);
+    return ptTextPos.x >= sel._start.x && ptTextPos.x < sel._end.x;
 }
 
 void document::reset()
 {
     m_bAutoIndent = true;
-    _char_offset.cy = 0;
-    _char_offset.cx = 0;
     m_tabSize = 4;
     m_nMaxLineLength = -1;
-    m_nScreenLines = -1;
-    m_nScreenChars = -1;
     m_nIdealCharPos = -1;
     m_ptAnchor.x = 0;
     m_ptAnchor.y = 0;
@@ -595,41 +263,12 @@ void document::tab_size(int tabSize)
             line._expanded_length = invalid;
         }
 
-        m_nMaxLineLength = -1;
-        _view.RecalcHorzScrollBar();
-        _view.invalidate();
-        _view.update_caret();
+        m_nMaxLineLength = -1;        
+        _view.invalidate_view();        
     }
 }
 
-HFONT document::GetFont(bool bItalic /*= false*/, bool bBold /*= false*/) const
-{
-    int i = 0;
-    if (bBold) i |= 1;
-    if (bItalic) i |= 2;
 
-    if (m_apFonts[i] == nullptr)
-    {
-        auto f = _font;
-        f.lfWeight = bBold ? FW_BOLD : FW_NORMAL;
-        f.lfItalic = (BYTE) bItalic;
-        m_apFonts[i] = ::CreateFontIndirect(&f);
-    }
-
-    return m_apFonts[i];
-}
-
-int document::line_offset(int lineIndex) const
-{
-    auto max = _lines.size();
-    auto line = Clamp(lineIndex, 0, max - 1);
-    return _lines[line]._y;
-}
-
-int document::line_height(int lineIndex) const
-{
-    return _font_extent.cy;
-}
 
 int document::max_line_length() const
 {
@@ -640,212 +279,19 @@ int document::max_line_length() const
 
         for (int i = 0; i < line_count; i++)
         {
-            int nActualLength = expanded_line_length(i);
-
-            if (m_nMaxLineLength < nActualLength)
-                m_nMaxLineLength = nActualLength;
+            update_max_line_length(i);
         }
     }
 
     return m_nMaxLineLength;
 }
 
-int document::screen_lines() const
+void document::update_max_line_length(int i) const
 {
-    return m_nScreenLines;
-}
+    int nActualLength = expanded_line_length(i);
 
-bool document::GetItalic(int nColorIndex) const
-{
-    return false;
-}
-
-bool document::GetBold(int nColorIndex) const
-{
-    return false;
-}
-
-int document::screen_chars() const
-{
-    if (m_nScreenChars == -1)
-    {
-        auto rect = client_rect();
-        m_nScreenChars = (rect.Width() - margin_width()) / _font_extent.cx;
-    }
-    return m_nScreenChars;
-}
-
-void document::OnDestroy()
-{
-    for (int i = 0; i < 4; i++)
-    {
-        if (m_apFonts[i] != nullptr)
-        {
-            DeleteObject(m_apFonts[i]);
-            m_apFonts[i] = nullptr;
-        }
-    }
-}
-
-void document::layout(const CSize &extent, const CSize &font_extent)
-{
-    _extent = extent;
-    _font_extent = font_extent;
-
-    layout();    
-}
-
-void document::layout()
-{
-    auto rect = client_rect();
-    auto line_count = _lines.size();
-    auto y = 0;
-    auto cy = _font_extent.cy;
-
-    for (int i = 0; i < line_count; i++)
-    {
-        auto &line = _lines[i];
-
-        line._y = y;
-        line._cy = cy;
-
-        y += cy;
-    }
-
-    m_nScreenLines = rect.Height() / _font_extent.cy;
- 
-    _view.RecalcVertScrollBar();
-    _view.RecalcHorzScrollBar();
-}
-
-
-int document::client_to_line(const CPoint &point) const
-{
-    auto line_count = _lines.size();
-    auto y = _char_offset.cy;
-
-    while (y < line_count)
-    {
-        auto const &line = _lines[y];
-
-        if (point.y >= line._y && point.y < (line._y + line._cy))
-        {
-            return y;
-        }
-
-        y += 1;
-    }
-
-    return -1;
-}
-
-text_location document::client_to_text(const CPoint &point) const
-{
-    auto line_count = _lines.size();
-
-    text_location pt;
-    pt.y = client_to_line(point);
-
-    if (pt.y >= 0 && pt.y < line_count)
-    {
-        const auto &line = _lines[pt.y];
-
-        int nPos = _char_offset.cx + (point.x - margin_width()) / _font_extent.cx;
-        if (nPos < 0)
-            nPos = 0;
-
-        int i = 0, nCurPos = 0;
-        int tabSize = tab_size();
-
-        while (i < line.size())
-        {
-            if (line[i] == _T('\t'))
-                nCurPos += (tabSize - nCurPos % tabSize);
-            else
-                nCurPos++;
-
-            if (nCurPos > nPos)
-                break;
-
-            i++;
-        }
-
-        pt.x = i;
-    }
-
-    return pt;
-}
-
-int document::top_offset() const
-{
-    auto result = 0;
-
-    if (!_lines.empty() || _char_offset.cy <= 0)
-    {
-        result = _lines[_char_offset.cy]._y;
-    }
-
-    return result;
-}
-
-CPoint document::text_to_client(const text_location &point) const
-{
-    CPoint pt;
-
-    if (point.y >= 0 && point.y < _lines.size())
-    {
-        pt.y = line_offset(point.y) - top_offset();
-        pt.x = 0;
-
-        auto tabSize = tab_size();
-        const auto &line = _lines[point.y];
-
-        for (int i = 0; i < point.x; i++)
-        {
-            if (line[i] == _T('\t'))
-            {
-                pt.x += (tabSize - pt.x % tabSize);
-            }
-            else
-            {
-                pt.x++;
-            }
-        }
-
-        pt.x = (pt.x - _char_offset.cx) * _font_extent.cx + margin_width();
-    }
-
-    return pt;
-}
-
-void document::invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin /*= false*/)
-{
-    bInvalidateMargin = true;
-
-    auto rcInvalid = client_rect();
-
-    if (nLine2 == -1)
-    {
-        if (!bInvalidateMargin)
-            rcInvalid.left += margin_width();
-
-        rcInvalid.top = line_offset(nLine1) - top_offset();
-    }
-    else
-    {
-        if (nLine2 < nLine1)
-        {
-            std::swap(nLine1, nLine2);
-        }
-
-        if (!bInvalidateMargin)
-            rcInvalid.left += margin_width();
-
-        rcInvalid.top = line_offset(nLine1) - top_offset();
-        rcInvalid.bottom = line_offset(nLine2) + line_height(nLine2) - top_offset();
-    }
-
-    _view.invalidate(rcInvalid);
+    if (m_nMaxLineLength < nActualLength)
+        m_nMaxLineLength = nActualLength;
 }
 
 int document::CalculateActualOffset(int lineIndex, int nCharIndex)
@@ -901,104 +347,7 @@ int document::ApproxActualOffset(int lineIndex, int nOffset)
     return nLength;
 }
 
-void document::EnsureVisible(text_location pt)
-{
-    //	Scroll vertically
-    int line_count = _lines.size();
-    int nNewTopLine = _char_offset.cy;
 
-    if (pt.y >= nNewTopLine + screen_lines())
-    {
-        nNewTopLine = pt.y - screen_lines() + 1;
-    }
-    else if (pt.y < nNewTopLine)
-    {
-        nNewTopLine = pt.y;
-    }
-
-    if (nNewTopLine < 0)
-        nNewTopLine = 0;
-    if (nNewTopLine >= line_count)
-        nNewTopLine = line_count - 1;
-
-    if (_char_offset.cy != nNewTopLine)
-    {
-        _view.ScrollToLine(nNewTopLine);
-    }
-
-    //	Scroll horizontally
-    int nActualPos = CalculateActualOffset(pt.y, pt.x);
-    int nNewOffset = _char_offset.cx;
-    if (nActualPos > nNewOffset + screen_chars())
-    {
-        nNewOffset = nActualPos - screen_chars();
-    }
-    if (nActualPos < nNewOffset)
-    {
-        nNewOffset = nActualPos;
-    }
-
-    if (nNewOffset >= max_line_length())
-        nNewOffset = max_line_length() - 1;
-    if (nNewOffset < 0)
-        nNewOffset = 0;
-
-    if (_char_offset.cx != nNewOffset)
-    {
-        _view.ScrollToChar(nNewOffset);
-        _view.update_caret();
-    }
-}
-
-
-void document::invalidate_line(int index)
-{
-    auto &line = _lines[index];
-    line._expanded_length = -1;
-    line._parseCookie = -1;
-
-    invalidate_lines(index, index + 1, true);
-
-    int nActualLength = expanded_line_length(index);
-
-    if (m_nMaxLineLength < nActualLength)
-        m_nMaxLineLength = nActualLength;
-
-    _view.RecalcHorzScrollBar();
-}
-
-void document::invalidate_view()
-{
-    reset();
-    layout();
-    
-    _view.update_caret();
-    _view.RecalcVertScrollBar();
-    _view.RecalcHorzScrollBar();
-    _view.invalidate();
-}
-
-HINSTANCE document::GetResourceHandle()
-{
-    return _AtlBaseModule.GetResourceInstance();
-}
-
-int document::OnCreate()
-{
-    memset(&_font, 0, sizeof(_font));
-    _font.lfWeight = FW_NORMAL;
-    _font.lfCharSet = ANSI_CHARSET;
-    _font.lfOutPrecision = OUT_DEFAULT_PRECIS;
-    _font.lfClipPrecision = CLIP_DEFAULT_PRECIS;
-    _font.lfQuality = CLEARTYPE_NATURAL_QUALITY;
-    _font.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
-    wcscpy_s(_font.lfFaceName, L"Consolas");
-
-    m_nScreenLines = -1;
-    m_nScreenChars = -1;
-
-    return 0;
-}
 
 void document::SetAnchor(const text_location &ptNewAnchor)
 {
@@ -1016,49 +365,10 @@ void document::selection_margin(bool bSelMargin)
 {
     if (m_bSelMargin != bSelMargin)
     {
-        m_bSelMargin = bSelMargin;
-
-        m_nScreenChars = -1;
-        _view.invalidate();
-        _view.RecalcHorzScrollBar();
+        m_bSelMargin = bSelMargin;        
+        _view.invalidate_view();
     }
 }
-
-void document::ShowCursor()
-{
-    m_bCursorHidden = false;
-    _view.update_caret();
-}
-
-void document::HideCursor()
-{
-    m_bCursorHidden = true;
-    _view.update_caret();
-}
-
-HGLOBAL document::PrepareDragData()
-{
-    PrepareSelBounds();
-    if (m_ptDrawSel._start == m_ptDrawSel._end)
-        return nullptr;
-
-    auto text = Combine(this->text(m_ptDrawSel));
-    auto len = text.size() + 1;
-    auto hData = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
-
-    if (hData == nullptr)
-        return nullptr;
-
-    auto pszData = (wchar_t*) ::GlobalLock(hData);
-    wcscpy_s(pszData, len, text.c_str());
-    ::GlobalUnlock(hData);
-
-    m_ptDraggedText = m_ptDrawSel;
-
-    return hData;
-}
-
-
 
 bool document::HighlightText(const text_location &ptStartPos, int nLength)
 {
@@ -1066,8 +376,7 @@ bool document::HighlightText(const text_location &ptStartPos, int nLength)
     m_ptCursorPos.x += nLength;
     m_ptAnchor = m_ptCursorPos;
     select(text_selection(ptStartPos, m_ptCursorPos));
-    _view.update_caret();
-    EnsureVisible(m_ptCursorPos);
+    _view.ensure_visible(m_ptCursorPos);
     return true;
 }
 
@@ -1111,7 +420,7 @@ void document::Find(const std::wstring &text, DWORD flags)
     //	}
     //
     //	//	Take the current selection, if any
-    //	if (HasSelection())
+    //	if (has_selection())
     //	{
     //		text_location ptSelStart, ptSelEnd;
     //		selection(ptSelStart, ptSelEnd);		if (ptSelStart.y == ptSelEnd.y)
@@ -1189,7 +498,7 @@ void document::view_tabs(bool bViewTabs)
     if (bViewTabs != m_bViewTabs)
     {
         m_bViewTabs = bViewTabs;
-        _view.invalidate();
+        _view.invalidate_view();
     }
 }
 
@@ -1198,23 +507,13 @@ int document::margin_width() const
     return m_bSelMargin ? 20 : 1;
 }
 
-bool document::GetDisableDragAndDrop() const
-{
-    return m_bDisableDragAndDrop;
-}
-
-void document::SetDisableDragAndDrop(bool bDDAD)
-{
-    m_bDisableDragAndDrop = bDDAD;
-}
-
 void document::MoveLeft(bool selecting)
 {
-    PrepareSelBounds();
+    auto sel = _selection.normalize();
 
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
+    if (!sel.empty() && !selecting)
     {
-        m_ptCursorPos = m_ptDrawSel._start;
+        m_ptCursorPos = sel._start;
     }
     else
     {
@@ -1230,8 +529,7 @@ void document::MoveLeft(bool selecting)
             m_ptCursorPos.x--;
     }
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1239,10 +537,11 @@ void document::MoveLeft(bool selecting)
 
 void document::MoveRight(bool selecting)
 {
-    PrepareSelBounds();
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
+    auto sel = _selection.normalize();
+
+    if (!sel.empty() && !selecting)
     {
-        m_ptCursorPos = m_ptDrawSel._end;
+        m_ptCursorPos = sel._end;
     }
     else
     {
@@ -1258,8 +557,7 @@ void document::MoveRight(bool selecting)
             m_ptCursorPos.x++;
     }
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1267,9 +565,9 @@ void document::MoveRight(bool selecting)
 
 void document::MoveWordLeft(bool selecting)
 {
-    PrepareSelBounds();
+    auto sel = _selection.normalize();
 
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
+    if (!sel.empty() && !selecting)
     {
         MoveLeft(selecting);
         return;
@@ -1310,8 +608,7 @@ void document::MoveWordLeft(bool selecting)
 
     m_ptCursorPos.x = nPos;
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1319,8 +616,9 @@ void document::MoveWordLeft(bool selecting)
 
 void document::MoveWordRight(bool selecting)
 {
-    PrepareSelBounds();
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
+    auto sel = _selection.normalize();
+
+    if (!sel.empty() && !selecting)
     {
         MoveRight(selecting);
         return;
@@ -1362,8 +660,7 @@ void document::MoveWordRight(bool selecting)
 
     m_ptCursorPos.x = nPos;
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1371,9 +668,10 @@ void document::MoveWordRight(bool selecting)
 
 void document::MoveUp(bool selecting)
 {
-    PrepareSelBounds();
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
-        m_ptCursorPos = m_ptDrawSel._start;
+    auto sel = _selection.normalize();
+
+    if (!sel.empty() && !selecting)
+        m_ptCursorPos = sel._start;
 
     if (m_ptCursorPos.y > 0)
     {
@@ -1387,8 +685,7 @@ void document::MoveUp(bool selecting)
         if (m_ptCursorPos.x > size)
             m_ptCursorPos.x = size;
     }
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
 
@@ -1397,9 +694,10 @@ void document::MoveUp(bool selecting)
 
 void document::MoveDown(bool selecting)
 {
-    PrepareSelBounds();
-    if (m_ptDrawSel._start != m_ptDrawSel._end && !selecting)
-        m_ptCursorPos = m_ptDrawSel._end;
+    auto sel = _selection.normalize();
+
+    if (!sel.empty() && !selecting)
+        m_ptCursorPos = sel._end;
 
     if (m_ptCursorPos.y < _lines.size() - 1)
     {
@@ -1414,8 +712,7 @@ void document::MoveDown(bool selecting)
         if (m_ptCursorPos.x > size)
             m_ptCursorPos.x = size;
     }
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1433,8 +730,7 @@ void document::MoveHome(bool selecting)
     else
         m_ptCursorPos.x = nHomePos;
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1444,61 +740,7 @@ void document::MoveEnd(bool selecting)
 {
     m_ptCursorPos.x = _lines[m_ptCursorPos.y].size();
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
-    if (!selecting)
-        m_ptAnchor = m_ptCursorPos;
-    select(text_selection(m_ptAnchor, m_ptCursorPos));
-}
-
-void document::MovePgUp(bool selecting)
-{
-    int nNewTopLine = _char_offset.cy - screen_lines() + 1;
-    if (nNewTopLine < 0)
-        nNewTopLine = 0;
-    if (_char_offset.cy != nNewTopLine)
-    {
-        _view.ScrollToLine(nNewTopLine);
-    }
-
-    m_ptCursorPos.y -= screen_lines() - 1;
-    if (m_ptCursorPos.y < 0)
-        m_ptCursorPos.y = 0;
-
-    auto size = _lines[m_ptCursorPos.y].size();
-
-    if (m_ptCursorPos.x > size)
-        m_ptCursorPos.x = size;
-
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);	//todo: no vertical scroll
-    _view.update_caret();
-    if (!selecting)
-        m_ptAnchor = m_ptCursorPos;
-    select(text_selection(m_ptAnchor, m_ptCursorPos));
-}
-
-void document::MovePgDn(bool selecting)
-{
-    int nNewTopLine = _char_offset.cy + screen_lines() - 1;
-    if (nNewTopLine >= _lines.size())
-        nNewTopLine = _lines.size() - 1;
-    if (_char_offset.cy != nNewTopLine)
-    {
-        _view.ScrollToLine(nNewTopLine);
-    }
-
-    m_ptCursorPos.y += screen_lines() - 1;
-    if (m_ptCursorPos.y >= _lines.size())
-        m_ptCursorPos.y = _lines.size() - 1;
-
-    auto size = _lines[m_ptCursorPos.y].size();
-
-    if (m_ptCursorPos.x > size)
-        m_ptCursorPos.x = size;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);	//todo: no vertical scroll
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1509,8 +751,7 @@ void document::MoveCtrlHome(bool selecting)
     m_ptCursorPos.x = 0;
     m_ptCursorPos.y = 0;
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
@@ -1521,45 +762,10 @@ void document::MoveCtrlEnd(bool selecting)
     m_ptCursorPos.y = _lines.size() - 1;
     m_ptCursorPos.x = _lines[m_ptCursorPos.y].size();
     m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    EnsureVisible(m_ptCursorPos);
-    _view.update_caret();
+    _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
     select(text_selection(m_ptAnchor, m_ptCursorPos));
-}
-
-void document::ScrollUp()
-{
-    if (_char_offset.cy > 0)
-    {
-        _view.ScrollToLine(_char_offset.cy - 1);
-    }
-}
-
-void document::ScrollDown()
-{
-    if (_char_offset.cy < _lines.size() - 1)
-    {
-        _view.ScrollToLine(_char_offset.cy + 1);
-    }
-}
-
-void document::ScrollLeft()
-{
-    if (_char_offset.cx > 0)
-    {
-        _view.ScrollToChar(_char_offset.cx - 1);
-        _view.update_caret();
-    }
-}
-
-void document::ScrollRight()
-{
-    if (_char_offset.cx < max_line_length() - 1)
-    {
-        _view.ScrollToChar(_char_offset.cx + 1);
-        _view.update_caret();
-    }
 }
 
 text_location document::WordToRight(text_location pt) const
@@ -1604,18 +810,14 @@ void document::Copy()
     if (_selection._start == _selection._end)
         return;
 
-    PrepareSelBounds();
-    _view.text_to_clipboard(Combine(text(m_ptDrawSel)));
+    auto sel = _selection.normalize();
+    _view.text_to_clipboard(Combine(text(sel)));
 }
 
 bool document::CanPaste()
 {
     return IsClipboardFormatAvailable(CF_UNICODETEXT) != 0;
 }
-
-
-
-
 
 bool document::QueryEditable()
 {
@@ -1639,7 +841,7 @@ void document::Paste()
 
 void document::Cut()
 {
-    if (QueryEditable() && HasSelection())
+    if (QueryEditable() && has_selection())
     {
         auto sel = selection();
         _view.text_to_clipboard(Combine(text(sel)));
@@ -1676,42 +878,11 @@ void document::OnEditDelete()
     }
 }
 
-void document::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
-{
-    if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
-        (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0)
-        return;
-
-    bool bTranslated = false;
-
-    if (nChar == VK_RETURN)
-    {
-        if (QueryEditable())
-        {
-            undo_group ug(*this);
-            auto pos = delete_text(ug, selection());
-            locate(insert_text(ug, pos, L'\n'));
-        }
-
-        return;
-    }
-
-    if (nChar > 31)
-    {
-        if (QueryEditable())
-        {
-            undo_group ug(*this);
-            auto pos = delete_text(ug, selection());
-            locate(insert_text(ug, pos, nChar));
-        }
-    }
-}
-
 void document::OnEditDeleteBack()
 {
     if (QueryEditable())
     {
-        if (HasSelection())
+        if (has_selection())
         {
             OnEditDelete();
         }
@@ -1756,7 +927,7 @@ void document::OnEditTab()
 
             select(sel);
             SetCursorPos(sel._end);
-            EnsureVisible(sel._end);
+            _view.ensure_visible(sel._end);
 
             static const TCHAR pszText [] = _T("\t");
 
@@ -1805,7 +976,7 @@ void document::OnEditUntab()
                 nEndLine--;
             select(sel);
             SetCursorPos(sel._end);
-            EnsureVisible(sel._end);
+            _view.ensure_visible(sel._end);
 
             for (int i = nStartLine; i <= nEndLine; i++)
             {
@@ -1880,69 +1051,6 @@ void document::OnEditUntab()
     }
 }
 
-void document::DoDragScroll(const CPoint &point)
-{
-    auto rcClientRect = client_rect();
-
-    if (point.y < rcClientRect.top + DRAG_BORDER_Y)
-    {
-        HideDropIndicator();
-        ScrollUp();
-        _view.ShowDropIndicator(point);
-        return;
-    }
-    if (point.y >= rcClientRect.bottom - DRAG_BORDER_Y)
-    {
-        HideDropIndicator();
-        ScrollDown();
-        _view.ShowDropIndicator(point);
-        return;
-    }
-    if (point.x < rcClientRect.left + margin_width() + DRAG_BORDER_X)
-    {
-        HideDropIndicator();
-        ScrollLeft();
-        _view.ShowDropIndicator(point);
-        return;
-    }
-    if (point.x >= rcClientRect.right - DRAG_BORDER_X)
-    {
-        HideDropIndicator();
-        ScrollRight();
-        _view.ShowDropIndicator(point);
-        return;
-    }
-}
-
-
-
-
-
-void document::HideDropIndicator()
-{
-    if (m_bDropPosVisible)
-    {
-        SetCursorPos(m_ptSavedCaretPos);
-        ShowCursor();
-        m_bDropPosVisible = false;
-    }
-}
-
-DROPEFFECT document::GetDropEffect()
-{
-    return DROPEFFECT_COPY | DROPEFFECT_MOVE;
-}
-
-void document::OnDropSource(DROPEFFECT de)
-{
-    if (m_bDraggingText && de == DROPEFFECT_MOVE)
-    {
-        undo_group ug(*this);
-        delete_text(ug, m_ptDraggedText);
-    }
-}
-
-
 void document::OnEditReplace()
 {
     //if (! QueryEditable())
@@ -1959,7 +1067,7 @@ void document::OnEditReplace()
     //dlg.m_sText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_FIND_WHAT, _T(""));
     //dlg.m_sNewText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, _T(""));
 
-    //if (HasSelection())
+    //if (has_selection())
     //{
     //	selection(m_ptSavedSelStart, m_ptSavedSelEnd);
     //	m_bSelectionPushed = true;
@@ -1999,7 +1107,7 @@ void document::OnEditReplace()
 bool document::ReplaceSelection(const wchar_t * pszNewText)
 {
     //assert(pszNewText != nullptr);
-    //if (! HasSelection())
+    //if (! has_selection())
     //	return false;
 
     //DeleteCurrentSelection();
@@ -2011,7 +1119,7 @@ bool document::ReplaceSelection(const wchar_t * pszNewText)
     //SetAnchor(ptEndOfBlock);
     //select(ptCursorPos, ptEndOfBlock);
     //SetCursorPos(ptEndOfBlock);
-    //EnsureVisible(ptEndOfBlock);
+    //ensure_visible(ptEndOfBlock);
     return true;
 }
 
@@ -2069,7 +1177,7 @@ void document::OnEditRedo()
 //				SetCursorPos(pt);
 //				select(pt, pt);
 //				SetAnchor(pt);
-//				EnsureVisible(pt);
+//				ensure_visible(pt);
 //			}
 //		}
 //	}
@@ -2425,7 +1533,7 @@ bool document::LoadFromFile(const std::wstring &path)
 
 			success = true;
 
-			invalidate_view();
+			_view.invalidate_view();
 		}
 
 		if (hFile != nullptr)
@@ -2710,7 +1818,7 @@ text_location document::insert_text(const text_location &location, const wchar_t
 		resultLocation.y = location.y + 1;
 		resultLocation.x = 0;
 
-		invalidate_view();
+		_view.invalidate_view();
 	}
 	else if (c != '\r')
 	{
@@ -2724,7 +1832,7 @@ text_location document::insert_text(const text_location &location, const wchar_t
 		resultLocation.y = location.y;
 		resultLocation.x = location.x + 1;
 
-		invalidate_line(location.y);
+        _view.invalidate_line(location.y);
 	}
 
 	return resultLocation;
@@ -2768,7 +1876,7 @@ text_location document::delete_text(const text_selection &selection)
 			after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
 			li._text = after;
 
-			invalidate_line(selection._start.y);
+			_view.invalidate_line(selection._start.y);
 		}
 		else
 		{
@@ -2780,7 +1888,7 @@ text_location document::delete_text(const text_selection &selection)
 				_lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
 			}
 
-			invalidate_view();
+            _view.invalidate_view();
 		}
 	}
 
@@ -2811,7 +1919,7 @@ text_location document::delete_text(const text_location &location)
 			previous._text.insert(previous._text.end(), line._text.begin(), line._text.end());
 			_lines.erase(_lines.begin() + location.y);
 
-			invalidate_view();
+            _view.invalidate_view();
 		}
 	}
 	else
@@ -2826,7 +1934,7 @@ text_location document::delete_text(const text_location &location)
 		resultPos.x = location.x - 1;
 		resultPos.y = location.y;
 
-		invalidate_line(location.y);
+        _view.invalidate_line(location.y);
 	}
 
 

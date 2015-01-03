@@ -226,7 +226,7 @@ public:
 	{
         _view.Create(m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
         _find.Create(_view, nullptr, nullptr, WS_CHILD, WS_EX_COMPOSITED);
-        _doc.invalidate_view();
+        _view.invalidate_view();
 
 		return 0;
 	}
@@ -315,7 +315,7 @@ public:
             _doc.append_line(line);
 		}
 
-		_doc.invalidate_view();
+        _view.invalidate_view();
 		_path = L"tests";
 		SetTitle(L"tests");
 
@@ -393,7 +393,7 @@ public:
                 _doc.append_line(UTF8ToUtf16(line));
             }
 
-            _doc.invalidate_view();
+            _view.invalidate_view();
         }
 
         return 0;
@@ -412,8 +412,8 @@ public:
 
             switch (id)
             {
-            case ID_EDIT_COPY: enable = _doc.HasSelection(); break;
-            case ID_EDIT_CUT: enable = _doc.HasSelection(); break;
+            case ID_EDIT_COPY: enable = _doc.has_selection(); break;
+            case ID_EDIT_CUT: enable = _doc.has_selection(); break;
             case ID_EDIT_FIND_PREVIOUS: enable = _doc.CanFindNext(); break;
             case ID_EDIT_PASTE: enable = _doc.CanPaste(); break;
             case ID_EDIT_REDO: enable = _doc.can_redo(); break;
@@ -468,7 +468,7 @@ public:
 
 	void New()
 	{
-        _doc.invalidate_view();
+        _view.invalidate_view();
 		_path = L"New";
 		SetTitle(L"New");
 	}
@@ -477,7 +477,7 @@ public:
 	{
 		if (_doc.LoadFromFile(path))
 		{
-            _doc.invalidate_view();
+            _view.invalidate_view();
 			_path = path;
 			SetTitle(PathFindFileName(path.c_str()));
 		}
