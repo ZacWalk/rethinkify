@@ -11,10 +11,8 @@ public:
     bool text_to_clipboard(const std::wstring &text) { return true;  };
     void scroll(int dx, int dy) {};
     void update_caret() {};
-    void RecalcHorzScrollBar(bool bPositionOnly = false) {};
-    void RecalcVertScrollBar(bool bPositionOnly = false) {};
-    void ScrollToLine(int nNewTopLine, bool bTrackScrollBar = true) {};
-    void ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar = true) {};
+    void RecalcHorzScrollBar() {};
+    void RecalcVertScrollBar() {};
     void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) {};
     void invalidate_line(int index) {};
     void invalidate_view() {};

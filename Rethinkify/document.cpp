@@ -29,8 +29,7 @@ static auto s_textHighlighter = std::make_shared<TextHighight>();
 
 
 document::document(IView &view, const std::wstring &text, int nCrlfStyle) : _highlight(s_textHighlighter), _view(view)
-{
-    m_bSelMargin = true;
+{    
     _modified = false;
     m_bCreateBackupFile = false;
     m_nUndoPosition = 0;
@@ -56,118 +55,7 @@ document::~document()
 {
 }
 
-
-const text_selection &document::selection() const
-{
-    return _selection.normalize();
-}
-
-int document::expanded_line_length(int lineIndex) const
-{
-    const auto &line = _lines[lineIndex];
-
-    if (line._expanded_length == -1)
-    {
-        auto nActualLength = 0;
-
-        if (!line.empty())
-        {
-            auto nLength = line.size();
-            auto pszCurrent = line.c_str();
-            auto tabSize = tab_size();
-
-            for (;;)
-            {
-                auto psz = wcschr(pszCurrent, L'\t');
-
-                if (psz == nullptr)
-                {
-                    nActualLength += (line.c_str() + nLength - pszCurrent);
-                    break;
-                }
-
-                nActualLength += (psz - pszCurrent);
-                nActualLength += (tabSize - nActualLength % tabSize);
-                pszCurrent = psz + 1;
-            }
-        }
-
-        line._expanded_length = nActualLength;
-    }
-
-    return line._expanded_length;
-}
-
-std::wstring document::ExpandChars(const std::wstring &text, int nOffset, int nCount) const
-{
-    std::wstring result;
-
-    if (nCount > 0)
-    {
-        auto pszChars = text.c_str();
-        int tabSize = tab_size();
-        int nActualOffset = 0;
-        int i = 0;
-
-        for (i = 0; i < nOffset; i++)
-        {
-            if (pszChars[i] == _T('\t'))
-                nActualOffset += (tabSize - nActualOffset % tabSize);
-            else
-                nActualOffset++;
-        }
-
-        pszChars += nOffset;
-        int nLength = nCount;
-
-        int nTabCount = 0;
-        for (i = 0; i < nLength; i++)
-        {
-            if (pszChars[i] == _T('\t'))
-                nTabCount++;
-        }
-
-        int nCurPos = 0;
-
-        if (nTabCount > 0 || m_bViewTabs)
-        {
-            for (i = 0; i < nLength; i++)
-            {
-                if (pszChars[i] == _T('\t'))
-                {
-                    int nSpaces = tabSize - (nActualOffset + nCurPos) % tabSize;
-
-                    if (m_bViewTabs)
-                    {
-                        result += TAB_CHARACTER;
-                        nCurPos++;
-                        nSpaces--;
-                    }
-                    while (nSpaces > 0)
-                    {
-                        result += _T(' ');
-                        nCurPos++;
-                        nSpaces--;
-                    }
-                }
-                else
-                {
-                    result += (pszChars[i] == _T(' ') && m_bViewTabs) ? SPACE_CHARACTER : pszChars[i];
-                    nCurPos++;
-                }
-            }
-        }
-        else
-        {
-            result.append(pszChars, nLength);
-            nCurPos = nLength;
-        }
-    }
-
-    return result;
-}
-
-DWORD document::prse_cookie(int lineIndex) const
+DWORD document::highlight_cookie(int lineIndex) const
 {
     int line_count = _lines.size();
 
@@ -197,7 +85,10 @@ DWORD document::prse_cookie(int lineIndex) const
     return _lines[lineIndex]._parseCookie;
 }
 
-
+DWORD document::highlight_line(DWORD cookie, const document_line &line, IHighlight::TEXTBLOCK *pBuf, int &nBlocks) const
+{
+    return _highlight->ParseLine(cookie, line, pBuf, nBlocks);
+}
 
 bool document::is_inside_selection(const text_location &ptTextPos) const
 {
@@ -243,14 +134,6 @@ void document::reset()
     m_bMultipleSearch = false;
 }
 
-
-
-int document::tab_size() const
-{
-    assert(m_tabSize >= 0 && m_tabSize <= 64);
-    return m_tabSize;
-}
-
 void document::tab_size(int tabSize)
 {
     assert(tabSize >= 0 && tabSize <= 64);
@@ -267,8 +150,6 @@ void document::tab_size(int tabSize)
         _view.invalidate_view();        
     }
 }
-
-
 
 int document::max_line_length() const
 {
@@ -288,34 +169,146 @@ int document::max_line_length() const
 
 void document::update_max_line_length(int i) const
 {
-    int nActualLength = expanded_line_length(i);
+    int len = expanded_line_length(i);
 
-    if (m_nMaxLineLength < nActualLength)
-        m_nMaxLineLength = nActualLength;
+    if (m_nMaxLineLength < len)
+        m_nMaxLineLength = len;
 }
 
-int document::CalculateActualOffset(int lineIndex, int nCharIndex)
+int document::expanded_line_length(int lineIndex) const
 {
-    int nOffset = 0;
+    const auto &line = _lines[lineIndex];
+
+    if (line._expanded_length == -1)
+    {
+        auto nActualLength = 0;
+
+        if (!line.empty())
+        {
+            auto nLength = line.size();
+            auto pszCurrent = line.c_str();
+            auto tabSize = tab_size();
+
+            for (;;)
+            {
+                auto psz = wcschr(pszCurrent, L'\t');
+
+                if (psz == nullptr)
+                {
+                    nActualLength += (line.c_str() + nLength - pszCurrent);
+                    break;
+                }
+
+                nActualLength += (psz - pszCurrent);
+                nActualLength += (tabSize - nActualLength % tabSize);
+                pszCurrent = psz + 1;
+            }
+        }
+
+        line._expanded_length = nActualLength;
+    }
+
+    return line._expanded_length;
+}
+
+std::wstring document::expanded_chars(const std::wstring &text, int nOffset, int nCount) const
+{
+    std::wstring result;
+
+    if (nCount > 0)
+    {
+        auto pszChars = text.c_str();
+        auto tabSize = tab_size();
+        auto nActualOffset = 0;
+
+        for (auto i = 0; i < nOffset; i++)
+        {
+            if (pszChars[i] == _T('\t'))
+            {
+                nActualOffset += (tabSize - nActualOffset % tabSize);
+            }
+            else
+            {
+                nActualOffset++;
+            }
+        }
+
+        pszChars += nOffset;
+        int nLength = nCount;
+
+        int nTabCount = 0;
+        for (auto i = 0; i < nLength; i++)
+        {
+            if (pszChars[i] == _T('\t'))
+                nTabCount++;
+        }
+
+        int nCurPos = 0;
+
+        if (nTabCount > 0 || m_bViewTabs)
+        {
+            for (auto i = 0; i < nLength; i++)
+            {
+                if (pszChars[i] == _T('\t'))
+                {
+                    int nSpaces = tabSize - (nActualOffset + nCurPos) % tabSize;
+
+                    if (m_bViewTabs)
+                    {
+                        result += TAB_CHARACTER;
+                        nCurPos++;
+                        nSpaces--;
+                    }
+                    while (nSpaces > 0)
+                    {
+                        result += _T(' ');
+                        nCurPos++;
+                        nSpaces--;
+                    }
+                }
+                else
+                {
+                    result += (pszChars[i] == _T(' ') && m_bViewTabs) ? SPACE_CHARACTER : pszChars[i];
+                    nCurPos++;
+                }
+            }
+        }
+        else
+        {
+            result.append(pszChars, nLength);
+            nCurPos = nLength;
+        }
+    }
+
+    return result;
+}
+
+int document::calc_offset(int lineIndex, int nCharIndex) const
+{
+    int result = 0;
 
     if (lineIndex >= 0 && lineIndex < _lines.size())
     {
         const auto &line = _lines[lineIndex];
-        auto tabSize = tab_size();
+        const auto tabSize = tab_size();
 
         for (auto i = 0; i < nCharIndex; i++)
         {
             if (line[i] == _T('\t'))
-                nOffset += (tabSize - nOffset % tabSize);
+            {
+                result += (tabSize - result % tabSize);
+            }
             else
-                nOffset++;
+            {
+                result++;
+            }
         }
     }
 
-    return nOffset;
+    return result;
 }
 
-int document::ApproxActualOffset(int lineIndex, int nOffset)
+int document::calc_offset_approx(int lineIndex, int nOffset) const
 {
     if (nOffset == 0)
         return 0;
@@ -349,24 +342,18 @@ int document::ApproxActualOffset(int lineIndex, int nOffset)
 
 
 
-void document::SetAnchor(const text_location &ptNewAnchor)
+void document::anchor_pos(const text_location &ptNewAnchor)
 {
     m_ptAnchor = ptNewAnchor;
 }
 
-void document::SetCursorPos(const text_location &ptCursorPos)
+void document::cursor_pos(const text_location &pos)
 {
-    m_ptCursorPos = ptCursorPos;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
-    _view.update_caret();
-}
-
-void document::selection_margin(bool bSelMargin)
-{
-    if (m_bSelMargin != bSelMargin)
+    if (m_ptCursorPos != pos)
     {
-        m_bSelMargin = bSelMargin;        
-        _view.invalidate_view();
+        m_ptCursorPos = pos;
+        m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
+        _view.update_caret();
     }
 }
 
@@ -502,10 +489,7 @@ void document::view_tabs(bool bViewTabs)
     }
 }
 
-int document::margin_width() const
-{
-    return m_bSelMargin ? 20 : 1;
-}
+
 
 void document::MoveLeft(bool selecting)
 {
@@ -528,7 +512,7 @@ void document::MoveLeft(bool selecting)
         else
             m_ptCursorPos.x--;
     }
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -556,7 +540,7 @@ void document::MoveRight(bool selecting)
         else
             m_ptCursorPos.x++;
     }
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -607,7 +591,7 @@ void document::MoveWordLeft(bool selecting)
     }
 
     m_ptCursorPos.x = nPos;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -659,7 +643,7 @@ void document::MoveWordRight(bool selecting)
         nPos++;
 
     m_ptCursorPos.x = nPos;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -676,9 +660,9 @@ void document::MoveUp(bool selecting)
     if (m_ptCursorPos.y > 0)
     {
         if (m_nIdealCharPos == -1)
-            m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+            m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
         m_ptCursorPos.y--;
-        m_ptCursorPos.x = ApproxActualOffset(m_ptCursorPos.y, m_nIdealCharPos);
+        m_ptCursorPos.x = calc_offset_approx(m_ptCursorPos.y, m_nIdealCharPos);
 
         auto size = _lines[m_ptCursorPos.y].size();
 
@@ -702,10 +686,10 @@ void document::MoveDown(bool selecting)
     if (m_ptCursorPos.y < _lines.size() - 1)
     {
         if (m_nIdealCharPos == -1)
-            m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+            m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
 
         m_ptCursorPos.y++;
-        m_ptCursorPos.x = ApproxActualOffset(m_ptCursorPos.y, m_nIdealCharPos);
+        m_ptCursorPos.x = calc_offset_approx(m_ptCursorPos.y, m_nIdealCharPos);
 
         auto size = _lines[m_ptCursorPos.y].size();
 
@@ -729,7 +713,7 @@ void document::MoveHome(bool selecting)
         m_ptCursorPos.x = 0;
     else
         m_ptCursorPos.x = nHomePos;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -739,7 +723,7 @@ void document::MoveHome(bool selecting)
 void document::MoveEnd(bool selecting)
 {
     m_ptCursorPos.x = _lines[m_ptCursorPos.y].size();
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -750,7 +734,7 @@ void document::MoveCtrlHome(bool selecting)
 {
     m_ptCursorPos.x = 0;
     m_ptCursorPos.y = 0;
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -761,7 +745,7 @@ void document::MoveCtrlEnd(bool selecting)
 {
     m_ptCursorPos.y = _lines.size() - 1;
     m_ptCursorPos.x = _lines[m_ptCursorPos.y].size();
-    m_nIdealCharPos = CalculateActualOffset(m_ptCursorPos.y, m_ptCursorPos.x);
+    m_nIdealCharPos = calc_offset(m_ptCursorPos.y, m_ptCursorPos.x);
     _view.ensure_visible(m_ptCursorPos);
     if (!selecting)
         m_ptAnchor = m_ptCursorPos;
@@ -834,7 +818,7 @@ void document::Paste()
         {
             undo_group ug(*this);
             auto pos = delete_text(ug, selection());
-            locate(insert_text(ug, pos, text));
+            select(insert_text(ug, pos, text));
         }
     }
 }
@@ -847,7 +831,7 @@ void document::Cut()
         _view.text_to_clipboard(Combine(text(sel)));
 
         undo_group ug(*this);
-        locate(delete_text(ug, sel));
+        select(delete_text(ug, sel));
     }
 }
 
@@ -874,7 +858,7 @@ void document::OnEditDelete()
         }
 
         undo_group ug(*this);
-        locate(delete_text(ug, sel));
+        select(delete_text(ug, sel));
     }
 }
 
@@ -889,7 +873,7 @@ void document::OnEditDeleteBack()
         else
         {
             undo_group ug(*this);
-            locate(delete_text(ug, cursor_pos()));
+            select(delete_text(ug, cursor_pos()));
         }
     }
 }
@@ -926,7 +910,7 @@ void document::OnEditTab()
             }
 
             select(sel);
-            SetCursorPos(sel._end);
+            cursor_pos(sel._end);
             _view.ensure_visible(sel._end);
 
             static const TCHAR pszText [] = _T("\t");
@@ -942,7 +926,7 @@ void document::OnEditTab()
         {
             undo_group ug(*this);
             auto pos = delete_text(ug, selection());
-            locate(insert_text(ug, pos, L'\t'));
+            select(insert_text(ug, pos, L'\t'));
         }
     }
 }
@@ -975,7 +959,7 @@ void document::OnEditUntab()
             else
                 nEndLine--;
             select(sel);
-            SetCursorPos(sel._end);
+            cursor_pos(sel._end);
             _view.ensure_visible(sel._end);
 
             for (int i = nStartLine; i <= nEndLine; i++)
@@ -1018,7 +1002,7 @@ void document::OnEditUntab()
             if (ptCursorPos.x > 0)
             {
                 int tabSize = tab_size();
-                int nOffset = CalculateActualOffset(ptCursorPos.y, ptCursorPos.x);
+                int nOffset = calc_offset(ptCursorPos.y, ptCursorPos.x);
                 int nNewOffset = nOffset / tabSize * tabSize;
                 if (nOffset == nNewOffset && nNewOffset > 0)
                     nNewOffset -= tabSize;
@@ -1045,7 +1029,7 @@ void document::OnEditUntab()
                 assert(nCurrentOffset == nNewOffset);
 
                 ptCursorPos.x = i;
-                locate(ptCursorPos);
+                select(ptCursorPos);
             }
         }
     }
@@ -1116,9 +1100,9 @@ bool document::ReplaceSelection(const wchar_t * pszNewText)
     //int x, y;
     //_lines.insert_text(this, ptCursorPos.y, ptCursorPos.x, pszNewText, y, x, CE_ACTION_REPLACE);
     //text_location ptEndOfBlock = text_location(x, y);
-    //SetAnchor(ptEndOfBlock);
+    //anchor_pos(ptEndOfBlock);
     //select(ptCursorPos, ptEndOfBlock);
-    //SetCursorPos(ptEndOfBlock);
+    //cursor_pos(ptEndOfBlock);
     //ensure_visible(ptEndOfBlock);
     return true;
 }
@@ -1129,7 +1113,7 @@ void document::OnEditUndo()
 {
     if (can_undo())
     {
-        locate(undo());
+        select(undo());
     }
 }
 
@@ -1138,7 +1122,7 @@ void document::OnEditRedo()
 {
     if (can_redo())
     {
-        locate(redo());
+        select(redo());
     }
 }
 
@@ -1174,9 +1158,9 @@ void document::OnEditRedo()
 //				_lines.insert_text(ug, ptCursorPos.y, ptCursorPos.x, pszInsertStr, y, x, CE_ACTION_AUTOINDENT);
 //
 //				text_location pt(x, y);
-//				SetCursorPos(pt);
+//				cursor_pos(pt);
 //				select(pt, pt);
-//				SetAnchor(pt);
+//				anchor_pos(pt);
 //				ensure_visible(pt);
 //			}
 //		}
@@ -1245,9 +1229,11 @@ void document::append_line(const std::wstring &text)
 }
 
 void document::clear()
-{
+{    
 	_lines.clear();
 	_undo.clear();
+
+    reset();
 }
 
 static const char *crlfs [] =
@@ -2023,12 +2009,12 @@ bool document::FindInBlock(const std::wstring &what, const text_location &ptStar
 {
 	text_location ptCurrentPos = ptStartPosition;
 
-	assert(ptBlockBegin.y < ptBlockEnd.y || (ptBlockBegin.y == ptBlockEnd.y && ptBlockBegin.x <= ptBlockEnd.x));
+	assert(ptBlockBegin < ptBlockEnd);
 
 	if (ptBlockBegin == ptBlockEnd)
 		return false;
 
-	if (ptCurrentPos.y < ptBlockBegin.y || (ptCurrentPos.y == ptBlockBegin.y && ptCurrentPos.x < ptBlockBegin.x))
+	if (ptCurrentPos < ptBlockBegin)
 	{
 		ptCurrentPos = ptBlockBegin;
 	}

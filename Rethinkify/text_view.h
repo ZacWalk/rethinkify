@@ -21,6 +21,8 @@ private:
     bool m_bPreparingToDrag = false;
     bool m_bDropPosVisible = false;
     bool m_bCursorHidden = false;
+    bool m_bFocused = false;
+    bool m_bSelMargin = true;
     UINT m_nDragSelTimer = 0;
     text_location m_ptSavedCaretPos;
     text_selection m_ptDraggedText;
@@ -155,9 +157,9 @@ public:
     LRESULT OnVScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
     {
         auto nScrollCode = (int) LOWORD(wParam);
-        auto nPos = (short int) HIWORD(wParam);
+        auto y = (short int) HIWORD(wParam);
         auto hwndScrollBar = (HWND) lParam;
-        OnVScroll(nScrollCode, nPos, hwndScrollBar);
+        OnVScroll(nScrollCode, y, hwndScrollBar);
         return 0;
     }
 
@@ -217,7 +219,7 @@ public:
             {
                 undo_group ug(_doc);
                 auto pos = _doc.delete_text(ug, _doc.selection());
-                _doc.locate(_doc.insert_text(ug, pos, L'\n'));
+                _doc.select(_doc.insert_text(ug, pos, L'\n'));
             }
         }
         else if (nChar > 31)
@@ -226,7 +228,7 @@ public:
             {
                 undo_group ug(_doc);
                 auto pos = _doc.delete_text(ug, _doc.selection());
-                _doc.locate(_doc.insert_text(ug, pos, nChar));
+                _doc.select(_doc.insert_text(ug, pos, nChar));
             }
         }
 
@@ -270,7 +272,7 @@ public:
         if (menu)
         {
 
-            auto selection = _doc.select_word(client_to_text(clientLocation));
+            auto selection = _doc.word_selection(client_to_text(clientLocation), false);
             auto word = Combine(_doc.text(selection));
 
             std::map<UINT, std::wstring> replacements;
@@ -393,20 +395,28 @@ public:
         }
     }
 
+    void invalidate_selection()
+    {
+        auto sel = _doc.selection();
+
+        if (!sel.empty())
+            invalidate_lines(sel._start.y, sel._end.y);
+    }
+
     void OnSetFocus(CWindow oldWnd)
     {
-        _doc.m_bFocused = true;
-        if (_doc.has_selection())
-            invalidate_lines(_doc._selection._start.y, _doc._selection._end.y);
+        m_bFocused = true;
+        invalidate_selection();
         update_caret();
     }
 
     void OnKillFocus(CWindow newWnd)
     {
-        _doc.m_bFocused = false;
+        m_bFocused = false;
+
         update_caret();
-        if (_doc.has_selection())
-            invalidate_lines(_doc._selection._start.y, _doc._selection._end.y);
+        invalidate_selection();
+
         if (m_bDragSelection)
         {
             ReleaseCapture();
@@ -426,65 +436,58 @@ public:
 
             auto rcClient = client_rect();
             auto bChanged = false;
-            auto nNewTopLine = _char_offset.cy;
+            auto y = _char_offset.cy;
             auto line_count = _doc.size();
 
             if (pt.y < rcClient.top)
             {
-                nNewTopLine--;
+                y--;
 
                 if (pt.y < rcClient.top - _font_extent.cy)
-                    nNewTopLine -= 2;
+                    y -= 2;
             }
             else if (pt.y >= rcClient.bottom)
             {
-                nNewTopLine++;
+                y++;
 
                 if (pt.y >= rcClient.bottom + _font_extent.cy)
-                    nNewTopLine += 2;
+                    y += 2;
             }
 
-            nNewTopLine = Clamp(nNewTopLine, 0, line_count - 1);
+            y = Clamp(y, 0, line_count - 1);
 
-            if (_char_offset.cy != nNewTopLine)
+            if (_char_offset.cy != y)
             {
-                ScrollToLine(nNewTopLine, true);
+                ScrollToLine(y);
                 bChanged = true;
             }
 
             //	Scroll horizontally, if necessary
-            auto nNewOffsetChar = _char_offset.cx;
+            auto x = _char_offset.cx;
             auto nMaxLineLength = _doc.max_line_length();
 
             if (pt.x < rcClient.left)
             {
-                nNewOffsetChar--;
+                x--;
             }
             else if (pt.x >= rcClient.right)
             {
-                nNewOffsetChar++;
+                x++;
             }
 
-            nNewOffsetChar = Clamp(nNewOffsetChar, 0, nMaxLineLength - 1);
+            x = Clamp(x, 0, nMaxLineLength - 1);
 
-            if (_char_offset.cx != nNewOffsetChar)
+            if (_char_offset.cx != x)
             {
-                ScrollToChar(nNewOffsetChar, true);
-                update_caret();
+                ScrollToChar(x);
                 bChanged = true;
             }
 
             //	Fix changes
             if (bChanged)
             {
-                text_location ptNewCursorPos = client_to_text(pt);
-
-                if (ptNewCursorPos != _doc.m_ptCursorPos)
-                {
-                    _doc.m_ptCursorPos = ptNewCursorPos;
-                    update_caret();
-                }
-                _doc.select(text_selection(_doc.m_ptAnchor, _doc.m_ptCursorPos));
+                _doc.cursor_pos(client_to_text(pt));
+                _doc.select(text_selection(_doc.cursor_pos()));
             }
         }
     }
@@ -496,7 +499,7 @@ public:
 
         SetFocus();
 
-        if (point.x < _doc.margin_width())
+        if (point.x < margin_width())
         {
             if (bControl)
             {
@@ -504,27 +507,8 @@ public:
             }
             else
             {
-                _doc.m_ptCursorPos = client_to_text(point);
-                _doc.m_ptCursorPos.x = 0;				//	Force beginning of the line
-                if (!bShift)
-                    _doc.m_ptAnchor = _doc.m_ptCursorPos;
-
-                text_location ptStart, ptEnd;
-                ptStart = _doc.m_ptAnchor;
-                if (ptStart.y == _doc.size() - 1)
-                    ptStart.x = _doc[ptStart.y].size();
-                else
-                {
-                    ptStart.y++;
-                    ptStart.x = 0;
-                }
-
-                ptEnd = _doc.m_ptCursorPos;
-                ptEnd.x = 0;
-
-                _doc.m_ptCursorPos = ptEnd;
-                ensure_visible(_doc.m_ptCursorPos);
-                _doc.select(text_selection(ptStart, ptEnd));
+                auto sel = _doc.line_selection(client_to_text(point), bShift);
+                _doc.select(sel);
 
                 SetCapture();
                 m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -538,22 +522,15 @@ public:
         {
             auto ptText = client_to_text(point);
 
-            if (_doc.is_inside_selection(ptText))				// And D&D Not Disabled
+            if (_doc.is_inside_selection(ptText))
             {
                 m_bPreparingToDrag = true;
             }
             else
             {
-                _doc.m_ptCursorPos = ptText;
-
-                if (!bShift)
-                    _doc.m_ptAnchor = _doc.m_ptCursorPos;
-
-                auto selection = bControl ? _doc.word_selection() : text_selection(_doc.m_ptAnchor, _doc.m_ptCursorPos);
-
-                _doc.m_ptCursorPos = selection._end;
-                ensure_visible(_doc.m_ptCursorPos);
-                _doc.select(selection);
+                auto pos = client_to_text(point);
+                auto sel = bControl ? _doc.word_selection(pos, bShift) : _doc.pos_selection(pos, bShift);
+                _doc.select(sel);
 
                 SetCapture();
                 m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -567,86 +544,32 @@ public:
 
     void OnMouseWheel(const CPoint &point, int zDelta)
     {
-        ScrollToLine(Clamp(_char_offset.cy + zDelta, 0, _doc.size()), true);
+        ScrollToLine(Clamp(_char_offset.cy + zDelta, 0, _doc.size()));
+        update_caret();
     }
 
     void OnMouseMove(const CPoint &point, UINT nFlags)
     {
         if (m_bDragSelection)
         {
-            bool bOnMargin = point.x < _doc.margin_width();
-            text_location ptNewCursorPos = client_to_text(point);
-            text_location ptStart, ptEnd;
+            auto bOnMargin = point.x < margin_width();
+            auto pos = client_to_text(point);
 
             if (m_bLineSelection)
             {
                 if (bOnMargin)
                 {
-                    if (ptNewCursorPos.y < _doc.m_ptAnchor.y ||
-                        ptNewCursorPos.y == _doc.m_ptAnchor.y && ptNewCursorPos.x < _doc.m_ptAnchor.x)
-                    {
-                        ptEnd = _doc.m_ptAnchor;
-                        if (ptEnd.y == _doc.size() - 1)
-                        {
-                            ptEnd.x = _doc[ptEnd.y].size();
-                        }
-                        else
-                        {
-                            ptEnd.y++;
-                            ptEnd.x = 0;
-                        }
-                        ptNewCursorPos.x = 0;
-                        _doc.m_ptCursorPos = ptNewCursorPos;
-                    }
-                    else
-                    {
-                        ptEnd = _doc.m_ptAnchor;
-                        ptEnd.x = 0;
-                        _doc.m_ptCursorPos = ptNewCursorPos;
-                        if (ptNewCursorPos.y == _doc.size() - 1)
-                        {
-                            ptNewCursorPos.x = _doc[ptNewCursorPos.y].size();
-                        }
-                        else
-                        {
-                            ptNewCursorPos.y++;
-                            ptNewCursorPos.x = 0;
-                        }
-                        _doc.m_ptCursorPos.x = 0;
-                    }
-                    update_caret();
-                    _doc.select(text_selection(ptNewCursorPos, ptEnd));
+                    auto sel = _doc.line_selection(pos, true);
+                    _doc.select(sel);
                     return;
                 }
 
-                //	Moving to normal selection mode
-                ::SetCursor(::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM)));
                 m_bLineSelection = m_bWordSelection = false;
+                update_cursor();
             }
 
-            if (m_bWordSelection)
-            {
-                if (ptNewCursorPos.y < _doc.m_ptAnchor.y ||
-                    (ptNewCursorPos.y == _doc.m_ptAnchor.y && ptNewCursorPos.x < _doc.m_ptAnchor.x))
-                {
-                    ptStart = _doc.WordToLeft(ptNewCursorPos);
-                    ptEnd = _doc.WordToRight(_doc.m_ptAnchor);
-                }
-                else
-                {
-                    ptStart = _doc.WordToLeft(_doc.m_ptAnchor);
-                    ptEnd = _doc.WordToRight(ptNewCursorPos);
-                }
-            }
-            else
-            {
-                ptStart = _doc.m_ptAnchor;
-                ptEnd = ptNewCursorPos;
-            }
-
-            _doc.m_ptCursorPos = ptEnd;
-            update_caret();
-            _doc.select(text_selection(ptStart, ptEnd));
+            auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+            _doc.select(sel);
         }
 
         if (m_bPreparingToDrag)
@@ -686,53 +609,17 @@ public:
     {
         if (m_bDragSelection)
         {
-            text_location ptNewCursorPos = client_to_text(point);
+            auto pos = client_to_text(point);
 
             if (m_bLineSelection)
             {
-                text_location ptStart, ptEnd;
-
-                if (ptNewCursorPos.y < _doc.m_ptAnchor.y ||
-                    ptNewCursorPos.y == _doc.m_ptAnchor.y && ptNewCursorPos.x < _doc.m_ptAnchor.x)
-                {
-                    ptEnd = _doc.m_ptAnchor;
-                    if (ptEnd.y == _doc.size() - 1)
-                    {
-                        ptEnd.x = _doc[ptEnd.y].size();
-                    }
-                    else
-                    {
-                        ptEnd.y++;
-                        ptEnd.x = 0;
-                    }
-                    ptNewCursorPos.x = 0;
-                    _doc.m_ptCursorPos = ptNewCursorPos;
-                }
-                else
-                {
-                    ptEnd = _doc.m_ptAnchor;
-                    ptEnd.x = 0;
-                    if (ptNewCursorPos.y == _doc.size() - 1)
-                    {
-                        ptNewCursorPos.x = _doc[ptNewCursorPos.y].size();
-                    }
-                    else
-                    {
-                        ptNewCursorPos.y++;
-                        ptNewCursorPos.x = 0;
-                    }
-                    _doc.m_ptCursorPos = ptNewCursorPos;
-                }
-
-                ensure_visible(_doc.m_ptCursorPos);
-                _doc.select(text_selection(ptNewCursorPos, ptEnd));
+                auto sel = _doc.line_selection(pos, true);
+                _doc.select(sel);
             }
             else
             {
-                auto selection = m_bWordSelection ? _doc.word_selection() : text_selection(_doc.m_ptAnchor, _doc.m_ptCursorPos);
-                _doc.m_ptCursorPos = selection._end;
-                ensure_visible(_doc.m_ptCursorPos);
-                _doc.select(selection);
+                auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+                _doc.select(sel);
             }
 
             ReleaseCapture();
@@ -743,9 +630,7 @@ public:
         if (m_bPreparingToDrag)
         {
             m_bPreparingToDrag = false;
-            _doc.m_ptCursorPos = client_to_text(point);
-            ensure_visible(_doc.m_ptCursorPos);
-            _doc.select(text_selection(_doc.m_ptCursorPos, _doc.m_ptCursorPos));
+            _doc.select(client_to_text(point));
         }
     }
 
@@ -753,12 +638,8 @@ public:
     {
         if (!m_bDragSelection)
         {
-            _doc.m_ptAnchor = _doc.m_ptCursorPos = client_to_text(point);
-            auto selection = _doc.word_selection();
-
-            _doc.m_ptCursorPos = selection._end;
-            ensure_visible(_doc.m_ptCursorPos);
-            _doc.select(selection);
+            bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            _doc.select(_doc.word_selection(client_to_text(point), bShift));
 
             SetCapture();
             m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
@@ -768,7 +649,6 @@ public:
             m_bDragSelection = true;
         }
     }
-
 
     void OnRButtonDown(const CPoint &point, UINT nFlags)
     {
@@ -782,57 +662,46 @@ public:
         }
     }
 
-    void ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar = true)
+    void ScrollToChar(int x)
     {
-        if (_char_offset.cx != nNewOffsetChar)
+        if (_char_offset.cx != x)
         {
-            int nScrollChars = _char_offset.cx - nNewOffsetChar;
-            _char_offset.cx = nNewOffsetChar;
+            int nScrollChars = _char_offset.cx - x;
+            _char_offset.cx = x;
             auto rcScroll = client_rect();
-            rcScroll.left += _doc.margin_width();
+            rcScroll.left += margin_width();
             ScrollWindowEx(0, nScrollChars * _font_extent.cx, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
-
-            if (bTrackScrollBar)
-                RecalcHorzScrollBar(true);
+            RecalcHorzScrollBar();
         }
     }
 
-    void ScrollToLine(int nNewTopLine, bool bTrackScrollBar = true)
+    void ScrollToLine(int y)
     {
-        if (_char_offset.cy != nNewTopLine)
+        if (_char_offset.cy != y)
         {
-            int nScrollLines = _char_offset.cy - nNewTopLine;
-            _char_offset.cy = nNewTopLine;
+            int nScrollLines = _char_offset.cy - y;
+            _char_offset.cy = y;
             ScrollWindowEx(0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
-            UpdateWindow();
-            if (bTrackScrollBar)
-                RecalcVertScrollBar(true);
+            RecalcVertScrollBar();
         }
     }
 
-    void RecalcVertScrollBar(bool bPositionOnly = false)
+    void RecalcVertScrollBar()
     {
+        if (m_nScreenLines >= _doc.size() && _char_offset.cy > 0)
+        {
+            _char_offset.cy = 0;
+            Invalidate();
+            update_caret();
+        }
+
         SCROLLINFO si;
         si.cbSize = sizeof(si);
-        if (bPositionOnly)
-        {
-            si.fMask = SIF_POS;
-            si.nPos = _char_offset.cy;
-        }
-        else
-        {
-            if (m_nScreenLines >= _doc.size() && _char_offset.cy > 0)
-            {
-                _char_offset.cy = 0;
-                Invalidate();
-                update_caret();
-            }
-            si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
-            si.nMin = 0;
-            si.nMax = _doc.size() - 1;
-            si.nPage = m_nScreenLines;
-            si.nPos = _char_offset.cy;
-        }
+        si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
+        si.nMin = 0;
+        si.nMax = _doc.size() - 1;
+        si.nPage = m_nScreenLines;
+        si.nPos = _char_offset.cy;
         SetScrollInfo(SB_VERT, &si);
     }
 
@@ -848,67 +717,56 @@ public:
         int nPageLines = m_nScreenLines;
         int line_count = _doc.size();
 
-        int nNewTopLine;
+        int y;
         switch (nSBCode)
         {
         case SB_TOP:
-            nNewTopLine = 0;
+            y = 0;
             break;
         case SB_BOTTOM:
-            nNewTopLine = line_count - nPageLines + 1;
+            y = line_count - nPageLines + 1;
             break;
         case SB_LINEUP:
-            nNewTopLine = _char_offset.cy - 1;
+            y = _char_offset.cy - 1;
             break;
         case SB_LINEDOWN:
-            nNewTopLine = _char_offset.cy + 1;
+            y = _char_offset.cy + 1;
             break;
         case SB_PAGEUP:
-            nNewTopLine = _char_offset.cy - si.nPage + 1;
+            y = _char_offset.cy - si.nPage + 1;
             break;
         case SB_PAGEDOWN:
-            nNewTopLine = _char_offset.cy + si.nPage - 1;
+            y = _char_offset.cy + si.nPage - 1;
             break;
         case SB_THUMBPOSITION:
         case SB_THUMBTRACK:
-            nNewTopLine = si.nTrackPos;
+            y = si.nTrackPos;
             break;
         default:
             return;
         }
 
-        if (nNewTopLine < 0)
-            nNewTopLine = 0;
-        if (nNewTopLine >= line_count)
-            nNewTopLine = line_count - 1;
-
-        ScrollToLine(nNewTopLine, true);
+        ScrollToLine(Clamp(y, 0, line_count - 1));
+        update_caret();
     }
 
-    void RecalcHorzScrollBar(bool bPositionOnly = false)
+    void RecalcHorzScrollBar()
     {
-        //	Again, we cannot use nPos because it's 16-bit
+        if (m_nScreenChars >= _doc.max_line_length() && _char_offset.cx > 0)
+        {
+            _char_offset.cx = 0;
+            Invalidate();
+            update_caret();
+        }
+
         SCROLLINFO si;
-        si.cbSize = sizeof(si);
-        if (bPositionOnly)
-        {
-            si.fMask = SIF_POS;
-            si.nPos = _char_offset.cx;
-        }
-        else
-        {
-            if (m_nScreenChars >= _doc.max_line_length() && _char_offset.cx > 0)
-            {
-                _char_offset.cx = 0;
-                Invalidate();
-                update_caret();
-            }
-            si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
-            si.nMin = 0;
-            si.nMax = _doc.max_line_length() - 1;
-            si.nPage = m_nScreenChars;
-            si.nPos = _char_offset.cx;
-        }
+        si.cbSize = sizeof(si);        
+        si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
+        si.nMin = 0;
+        si.nMax = _doc.max_line_length() - 1;
+        si.nPage = m_nScreenChars;
+        si.nPos = _char_offset.cx;
+
         SetScrollInfo(SB_HORZ, &si);
     }
 
@@ -952,54 +810,53 @@ public:
             return;
         }
 
-        if (nNewOffset >= nMaxLineLength)
-            nNewOffset = nMaxLineLength - 1;
-        if (nNewOffset < 0)
-            nNewOffset = 0;
-
-        ScrollToChar(nNewOffset, true);
+        ScrollToChar(Clamp(nNewOffset, 0, nMaxLineLength - 1));
         update_caret();
     }
 
     bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message)
     {
-        static auto arrow = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_ARROW));
-        static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
-
         if (nHitTest == HTCLIENT)
         {
-            CPoint pt;
-            GetCursorPos(&pt);
-            ScreenToClient(&pt);
-
-            if (pt.x < _doc.margin_width())
-            {
-                ::SetCursor(arrow);
-            }
-            else
-            {
-                if (_doc.is_inside_selection(client_to_text(pt)))
-                {
-                    ::SetCursor(arrow);
-                }
-                else
-                {
-                    ::SetCursor(beam);
-                }
-            }
+            update_cursor();
             return true;
         }
         return false;
     }
 
+    void update_cursor()
+    {
+        static auto arrow = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_ARROW));
+        static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
+
+        CPoint pt;
+        GetCursorPos(&pt);
+        ScreenToClient(&pt);
+
+        if (pt.x < margin_width())
+        {
+            ::SetCursor(arrow);
+        }
+        else if (_doc.is_inside_selection(client_to_text(pt)))
+        {
+            ::SetCursor(arrow);
+        }
+        else
+        {
+            ::SetCursor(beam);
+        }
+    }
+
     void update_caret()
     {
-        if (_doc.m_bFocused && !m_bCursorHidden &&
-            _doc.CalculateActualOffset(_doc.m_ptCursorPos.y, _doc.m_ptCursorPos.x) >= _char_offset.cx)
+        auto pos = _doc.cursor_pos();
+
+        if (m_bFocused && !m_bCursorHidden &&
+            _doc.calc_offset(pos.y, pos.x) >= _char_offset.cx)
         {
             CreateSolidCaret(2, _font_extent.cy);
 
-            auto pt = text_to_client(_doc.m_ptCursorPos);
+            auto pt = text_to_client(pos);
             SetCaretPos(pt.x, pt.y);
             ShowCaret();
         }
@@ -1011,7 +868,6 @@ public:
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, LPVOID * ppvObj)
     {
-        // Always set out parameter to NULL, validating it first.
         if (!ppvObj)
             return E_INVALIDARG;
 
@@ -1019,7 +875,6 @@ public:
 
         if (riid == IID_IUnknown || riid == IID_IDropTarget)
         {
-            // Increment the reference count and return the pointer.
             *ppvObj = (LPVOID)this;
             AddRef();
             return NOERROR;
@@ -1151,7 +1006,7 @@ public:
             ScrollDown();
             ShowDropIndicator(point);
         }
-        else if (point.x < rcClientRect.left + _doc.margin_width() + DRAG_BORDER_X)
+        else if (point.x < rcClientRect.left + margin_width() + DRAG_BORDER_X)
         {
             HideDropIndicator();
             ScrollLeft();
@@ -1174,6 +1029,7 @@ public:
         if (_char_offset.cy > 0)
         {
             ScrollToLine(_char_offset.cy - 1);
+            update_caret();
         }
     }
 
@@ -1182,6 +1038,7 @@ public:
         if (_char_offset.cy < _doc.size() - 1)
         {
             ScrollToLine(_char_offset.cy + 1);
+            update_caret();
         }
     }
 
@@ -1231,9 +1088,9 @@ public:
 
         if (IsDraggingText() && is_inside_selection(ptDropPos))
         {
-        SetAnchor(ptDropPos);
+        anchor_pos(ptDropPos);
         select(ptDropPos, ptDropPos);
-        SetCursorPos(ptDropPos);
+        cursor_pos(ptDropPos);
         ensure_visible(ptDropPos);
         return false;
         }
@@ -1241,9 +1098,9 @@ public:
         int x, y;
         _doc.insert_text(this, ptDropPos.y, ptDropPos.x, A2T(pszText), y, x, CE_ACTION_DRAGDROP);
         text_location ptCurPos(x, y);
-        SetAnchor(ptDropPos);
+        anchor_pos(ptDropPos);
         select(ptDropPos, ptCurPos);
-        SetCursorPos(ptCurPos);
+        cursor_pos(ptCurPos);
         ensure_visible(ptCurPos);*/
 
         //::GlobalUnlock(hData);
@@ -1276,7 +1133,7 @@ public:
     {
         if (m_bDropPosVisible)
         {
-            _doc.SetCursorPos(m_ptSavedCaretPos);
+            _doc.cursor_pos(m_ptSavedCaretPos);
             ShowCursor();
             m_bDropPosVisible = false;
         }
@@ -1378,7 +1235,9 @@ public:
     int client_to_line(const CPoint &point) const
     {
         auto line_count = _doc.size();
-        auto y = _char_offset.cy;
+
+        auto result = (point.y / _font_extent.cy) + _char_offset.cy;
+        /*auto y = _char_offset.cy;
 
         while (y < line_count)
         {
@@ -1390,43 +1249,50 @@ public:
             }
 
             y += 1;
-        }
+        }*/
 
-        return -1;
+        return Clamp(result, 0, line_count - 1);
     }
 
     text_location client_to_text(const CPoint &point) const
     {
-        auto line_count = _doc.size();
+        const auto line_count = _doc.size();
 
         text_location pt;
         pt.y = client_to_line(point);
 
         if (pt.y >= 0 && pt.y < line_count)
         {
+            const auto tabSize = _doc.tab_size();
             const auto &line = _doc[pt.y];
+            const auto lineSize = line.size();
 
-            int nPos = _char_offset.cx + (point.x - _doc.margin_width()) / _font_extent.cx;
-            if (nPos < 0)
-                nPos = 0;
+            auto x = _char_offset.cx + ((point.x - margin_width()) / _font_extent.cx);
 
-            int i = 0, nCurPos = 0;
-            int tabSize = _doc.tab_size();
+            if (x < 0)
+                x = 0;
 
-            while (i < line.size())
+            auto i = 0;
+            auto xx = 0;            
+
+            while (i < lineSize)
             {
                 if (line[i] == _T('\t'))
-                    nCurPos += (tabSize - nCurPos % tabSize);
+                {
+                    xx += (tabSize - xx % tabSize);
+                }
                 else
-                    nCurPos++;
+                {
+                    xx++;
+                }
 
-                if (nCurPos > nPos)
+                if (xx > x)
                     break;
 
                 i++;
             }
 
-            pt.x = i;
+            pt.x = Clamp(i, 0, lineSize - 1);
         }
 
         return pt;
@@ -1456,7 +1322,7 @@ public:
                 }
             }
 
-            pt.x = (pt.x - _char_offset.cx) * _font_extent.cx + _doc.margin_width();
+            pt.x = (pt.x - _char_offset.cx) * _font_extent.cx + margin_width();
         }
 
         return pt;
@@ -1464,12 +1330,12 @@ public:
 
     int top_offset() const
     {
-        auto result = 0;
+        auto result = _char_offset.cy * _font_extent.cy;
 
-        if (!_doc.empty() || _char_offset.cy <= 0)
+        /*if (!_doc.empty() || _char_offset.cy <= 0)
         {
             result = _doc[_char_offset.cy]._y;
-        }
+        }*/
 
         return result;
     }
@@ -1479,13 +1345,14 @@ public:
         bInvalidateMargin = true;
 
         auto rcInvalid = client_rect();
+        auto top = top_offset();
 
         if (nLine2 == -1)
         {
             if (!bInvalidateMargin)
-                rcInvalid.left += _doc.margin_width();
+                rcInvalid.left += margin_width();
 
-            rcInvalid.top = line_offset(nLine1) - top_offset();
+            rcInvalid.top = line_offset(nLine1) - top;
         }
         else
         {
@@ -1495,10 +1362,10 @@ public:
             }
 
             if (!bInvalidateMargin)
-                rcInvalid.left += _doc.margin_width();
+                rcInvalid.left += margin_width();
 
-            rcInvalid.top = line_offset(nLine1) - top_offset();
-            rcInvalid.bottom = line_offset(nLine2) + line_height(nLine2) - top_offset();
+            rcInvalid.top = line_offset(nLine1) - top;
+            rcInvalid.bottom = line_offset(nLine2) + line_height(nLine2) - top;
         }
 
         invalidate(rcInvalid);
@@ -1524,8 +1391,8 @@ public:
         layout();
 
         update_caret();
-        RecalcVertScrollBar(false);
-        RecalcHorzScrollBar(false);
+        RecalcVertScrollBar();
+        RecalcHorzScrollBar();
         invalidate();
     }
 
@@ -1536,7 +1403,7 @@ public:
         auto y = 0;
         auto cy = _font_extent.cy;
 
-        for (int i = 0; i < line_count; i++)
+        /*for (int i = 0; i < line_count; i++)
         {
             auto &line = _doc[i];
 
@@ -1544,9 +1411,10 @@ public:
             line._cy = cy;
 
             y += cy;
-        }
+        }*/
 
         m_nScreenLines = rect.Height() / _font_extent.cy;
+        m_nScreenChars = rect.Width() / _font_extent.cx;
 
         RecalcVertScrollBar();
         RecalcHorzScrollBar();
@@ -1554,9 +1422,11 @@ public:
 
     int line_offset(int lineIndex) const
     {
-        auto max = _doc.size();
+        /*auto max = _doc.size();
         auto line = Clamp(lineIndex, 0, max - 1);
-        return _doc[line]._y;
+        return _doc[line]._y;*/
+
+        return lineIndex * _font_extent.cy;
     }
 
     int line_height(int lineIndex) const
@@ -1568,30 +1438,28 @@ public:
     {
         //	Scroll vertically
         int line_count = _doc.size();
-        int nNewTopLine = _char_offset.cy;
+        int y = _char_offset.cy;
 
-        if (pt.y >= nNewTopLine + m_nScreenLines)
+        if (pt.y >= y + m_nScreenLines)
         {
-            nNewTopLine = pt.y - m_nScreenLines + 1;
+            y = pt.y - m_nScreenLines + 1;
         }
-        else if (pt.y < nNewTopLine)
+        else if (pt.y < y)
         {
-            nNewTopLine = pt.y;
+            y = pt.y;
         }
 
-        if (nNewTopLine < 0)
-            nNewTopLine = 0;
-        if (nNewTopLine >= line_count)
-            nNewTopLine = line_count - 1;
+        y = Clamp(y, 0, line_count - 1);
 
-        if (_char_offset.cy != nNewTopLine)
+        if (_char_offset.cy != y)
         {
-            ScrollToLine(nNewTopLine);
+            ScrollToLine(y);
         }
 
         //	Scroll horizontally
-        int nActualPos = _doc.CalculateActualOffset(pt.y, pt.x);
+        int nActualPos = _doc.calc_offset(pt.y, pt.x);
         int nNewOffset = _char_offset.cx;
+
         if (nActualPos > nNewOffset + m_nScreenChars)
         {
             nNewOffset = nActualPos - m_nScreenChars;
@@ -1616,20 +1484,16 @@ public:
 
     CRect client_rect() const { return CRect(0, 0, _extent.cx, _extent.cy); }
 
-    void line_color(int lineIndex, COLORREF &crBkgnd, COLORREF &crText, bool &bDrawWhitespace) const
+    int margin_width() const
     {
-        bDrawWhitespace = true;
-        crText = RGB(255, 255, 255);
-        crBkgnd = CLR_NONE;
-        crText = CLR_NONE;
-        bDrawWhitespace = false;
+        return m_bSelMargin ? 20 : 1;
     }
 
     void draw_line(HDC pdc, text_location &ptOrigin, const CRect &rcClip, const wchar_t * pszChars, int nOffset, int nCount) const
     {
         if (nCount > 0)
         {
-            auto line = _doc.ExpandChars(pszChars, nOffset, nCount);
+            auto line = _doc.expanded_chars(pszChars, nOffset, nCount);
             auto nWidth = rcClip.right - ptOrigin.x;
 
             if (nWidth > 0)
@@ -1654,11 +1518,11 @@ public:
         }
     }
 
-    void draw_line(HDC pdc, text_location &ptOrigin, const CRect &rcClip, int nColorIndex, const wchar_t * pszChars, int nOffset, int nCount, text_location ptTextPos) const
+    void draw_line(HDC pdc, text_location &ptOrigin, const CRect &rcClip, int nColorIndex, const wchar_t * pszChars, int nOffset, int nCount, const text_location &ptTextPos) const
     {
         if (nCount > 0)
         {
-            if (_doc.m_bFocused || _doc.m_bShowInactiveSelection)
+            if (m_bFocused || _doc.ShowInactiveSelection())
             {
                 auto sel = _doc.selection();
                 int nSelBegin = 0, nSelEnd = 0;
@@ -1691,8 +1555,8 @@ public:
                 }
                 if (nSelBegin < nSelEnd)
                 {
-                    COLORREF crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
-                    COLORREF crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
+                    auto crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
+                    auto crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
                     draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
                     SetBkColor(pdc, crOldBk);
                     SetTextColor(pdc, crOldText);
@@ -1719,12 +1583,8 @@ public:
         else
         {
             //	Acquire the background color for the current line
-            auto bDrawWhitespace = false;
-            COLORREF crBkgnd, crText;
-            line_color(lineIndex, crBkgnd, crText, bDrawWhitespace);
-
-            if (crBkgnd == CLR_NONE)
-                crBkgnd = GetColor(IHighlight::COLORINDEX_BKGND);
+            auto bDrawWhitespace = true;
+            auto crBkgnd = GetColor(IHighlight::COLORINDEX_BKGND);
 
             const auto &line = _doc[lineIndex];
 
@@ -1732,80 +1592,82 @@ public:
             {
                 //	Draw the empty line
                 CRect rect = rc;
-                if ((_doc.m_bFocused || _doc.m_bShowInactiveSelection) && _doc.is_inside_selection(text_location(0, lineIndex)))
+                if ((m_bFocused || _doc.ShowInactiveSelection()) && _doc.is_inside_selection(text_location(0, lineIndex)))
                 {
                     FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                     rect.left += _font_extent.cx;
                 }
+
                 FillSolidRect(hdc, rect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
-                return;
-            }
-
-            //	Parse the line
-            auto nLength = line.size();
-            auto pBuf = (IHighlight::TEXTBLOCK *) _malloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
-            auto nBlocks = 0;
-            auto cookie = _doc.prse_cookie(lineIndex - 1);
-
-            line._parseCookie = _doc._highlight->ParseLine(cookie, line, pBuf, nBlocks);
-
-            //	Draw the line text
-            text_location origin(rc.left - _char_offset.cx * _font_extent.cx, rc.top);
-            SetBkColor(hdc, crBkgnd);
-            if (crText != CLR_NONE)
-                SetTextColor(hdc, crText);
-
-            auto bColorSet = false;
-            auto pszChars = line.c_str();
-
-            if (nBlocks > 0)
-            {
-                assert(pBuf[0].m_nCharPos >= 0 && pBuf[0].m_nCharPos <= nLength);
-                if (crText == CLR_NONE)
-                    SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-                draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, text_location(0, lineIndex));
-
-                for (int i = 0; i < nBlocks - 1; i++)
-                {
-                    assert(pBuf[i].m_nCharPos >= 0 && pBuf[i].m_nCharPos <= nLength);
-                    if (crText == CLR_NONE)
-                        SetTextColor(hdc, GetColor(pBuf[i].m_nColorIndex));
-                    draw_line(hdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
-                        pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
-                        text_location(pBuf[i].m_nCharPos, lineIndex));
-                }
-                assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
-                if (crText == CLR_NONE)
-                    SetTextColor(hdc, GetColor(pBuf[nBlocks - 1].m_nColorIndex));
-                draw_line(hdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
-                    pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
-                    text_location(pBuf[nBlocks - 1].m_nCharPos, lineIndex));
             }
             else
             {
-                if (crText == CLR_NONE)
-                    SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-                draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, lineIndex));
-            }
+                //	Parse the line
+                auto nLength = line.size();
+                auto pBuf = (IHighlight::TEXTBLOCK *) _malloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
+                auto nBlocks = 0;
+                auto cookie = _doc.highlight_cookie(lineIndex - 1);
 
-            //	Draw whitespaces to the left of the text
-            auto frect = rc;
+                line._parseCookie = _doc.highlight_line(cookie, line, pBuf, nBlocks);
 
-            if (origin.x > frect.left)
-                frect.left = origin.x;
+                //	Draw the line text
+                text_location origin(rc.left - _char_offset.cx * _font_extent.cx, rc.top);
+                SetBkColor(hdc, crBkgnd);
 
-            if (frect.right > frect.left)
-            {
-                if ((_doc.m_bFocused || _doc.m_bShowInactiveSelection) && _doc.is_inside_selection(text_location(nLength, lineIndex)))
+                auto bColorSet = false;
+                auto pszChars = line.c_str();
+
+                if (nBlocks > 0)
                 {
-                    FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
-                    frect.left += _font_extent.cx;
-                }
-                if (frect.right > frect.left)
-                    FillSolidRect(hdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
-            }
+                    assert(pBuf[0].m_nCharPos >= 0 && pBuf[0].m_nCharPos <= nLength);
 
-            _freea(pBuf);
+                    SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
+                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, text_location(0, lineIndex));
+
+                    for (int i = 0; i < nBlocks - 1; i++)
+                    {
+                        assert(pBuf[i].m_nCharPos >= 0 && pBuf[i].m_nCharPos <= nLength);
+
+                        SetTextColor(hdc, GetColor(pBuf[i].m_nColorIndex));
+
+                        draw_line(hdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
+                            pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
+                            text_location(pBuf[i].m_nCharPos, lineIndex));
+                    }
+
+                    assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
+
+                    SetTextColor(hdc, GetColor(pBuf[nBlocks - 1].m_nColorIndex));
+
+                    draw_line(hdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
+                        pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
+                        text_location(pBuf[nBlocks - 1].m_nCharPos, lineIndex));
+                }
+                else
+                {
+                    SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
+                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, lineIndex));
+                }
+
+                //	Draw whitespaces to the left of the text
+                auto frect = rc;
+
+                if (origin.x > frect.left)
+                    frect.left = origin.x;
+
+                if (frect.right > frect.left)
+                {
+                    if ((m_bFocused || _doc.ShowInactiveSelection()) && _doc.is_inside_selection(text_location(nLength, lineIndex)))
+                    {
+                        FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
+                        frect.left += _font_extent.cx;
+                    }
+                    if (frect.right > frect.left)
+                        FillSolidRect(hdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
+                }
+
+                _freea(pBuf);
+            }
         }
     }
 
@@ -1871,7 +1733,7 @@ public:
 
     void draw_margin(HDC hdc, const CRect &rect, int lineIndex) const
     {
-        FillSolidRect(hdc, rect, GetColor(_doc.m_bSelMargin ? IHighlight::COLORINDEX_SELMARGIN : IHighlight::COLORINDEX_BKGND));
+        FillSolidRect(hdc, rect, GetColor(m_bSelMargin ? IHighlight::COLORINDEX_SELMARGIN : IHighlight::COLORINDEX_BKGND));
     }
 
 public:
@@ -1890,8 +1752,8 @@ public:
             auto rcLine = rcClient;
             rcLine.bottom = rcLine.top + nLineHeight;
 
-            CRect rcCacheMargin(0, y, _doc.margin_width(), y + nLineHeight);
-            CRect rcCacheLine(_doc.margin_width(), y, rcLine.Width(), y + nLineHeight);
+            CRect rcCacheMargin(0, y, margin_width(), y + nLineHeight);
+            CRect rcCacheLine(margin_width(), y, rcLine.Width(), y + nLineHeight);
 
             if (nCurrentLine < line_count)
             {
@@ -1913,27 +1775,17 @@ public:
 
     void move_page(bool down, bool selecting)
     {
-        int nNewTopLine = Clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0, _doc.size() - 1);
+        int y = Clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0, _doc.size() - 1);
 
-        if (_char_offset.cy != nNewTopLine)
+        if (_char_offset.cy != y)
         {
-            ScrollToLine(nNewTopLine);
+            ScrollToLine(y);
+            update_caret();
         }
 
-        _doc.m_ptCursorPos.y = Clamp(down ? _doc.m_ptCursorPos.y + (m_nScreenLines - 1) : _doc.m_ptCursorPos.y - (m_nScreenLines - 1), 0, _doc.size() - 1);
-        
-        auto size = _doc[_doc.m_ptCursorPos.y].size();
-
-        if (_doc.m_ptCursorPos.x > size)
-            _doc.m_ptCursorPos.x = size;
-
-        _doc.m_nIdealCharPos = _doc.CalculateActualOffset(_doc.m_ptCursorPos.y, _doc.m_ptCursorPos.x);
-        ensure_visible(_doc.m_ptCursorPos);	//todo: no vertical scroll
-
-        if (!selecting)
-            _doc.m_ptAnchor = _doc.m_ptCursorPos;
-
-        _doc.select(text_selection(_doc.m_ptAnchor, _doc.m_ptCursorPos));
+        auto pos = _doc.cursor_pos();
+        pos.y = Clamp(down ? pos.y + (m_nScreenLines - 1) : pos.y - (m_nScreenLines - 1), 0, _doc.size() - 1);
+        _doc.move_to(pos, selecting);
     }
 };
 

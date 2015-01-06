@@ -37,6 +37,7 @@ inline std::wstring AsciiToUtf16(const std::string &str)
 inline int Clamp(int v, int l, int r)
 {
 	if (v < l) return l;
+    if (r < l) return l;
 	if (v > r) return r;
 	return v;
 }

@@ -87,10 +87,8 @@ public:
     virtual std::wstring text_from_clipboard() const = 0;
     virtual bool text_to_clipboard(const std::wstring &text) = 0;
     virtual void update_caret() = 0;
-    virtual void RecalcHorzScrollBar(bool bPositionOnly = false) = 0;
-    virtual void RecalcVertScrollBar(bool bPositionOnly = false) = 0;
-    virtual void ScrollToLine(int nNewTopLine, bool bTrackScrollBar = true) = 0;
-    virtual void ScrollToChar(int nNewOffsetChar, bool bTrackScrollBar = true) = 0;
+    virtual void RecalcHorzScrollBar() = 0;
+    virtual void RecalcVertScrollBar() = 0;
     virtual void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) = 0;
     virtual void invalidate_line(int index) = 0;
     virtual void invalidate_view() = 0;
@@ -123,7 +121,12 @@ public:
     text_location(int xx = 0, int yy = 0) { x = xx; y = yy; }
 
     bool operator==(const text_location &other) const { return x == other.x && y == other.y; }
-    bool operator!=(const text_location &other) const { return x != other.x && y != other.y; }
+    bool operator!=(const text_location &other) const { return x != other.x || y != other.y; }
+
+    bool operator<(const text_location &other) const
+    {
+        return y < other.y || (y == other.y && x < other.x);
+    }
 };
 
 class text_selection
@@ -133,19 +136,21 @@ public:
     text_location _end;
 
     text_selection() { }
-    text_selection(const text_location &start, const text_location &end) { _start = start; _end = end; }
+    text_selection(const text_location &start, const text_location &end) : _start(start), _end(end) { }
+    text_selection(const text_location &loc) : _start(loc), _end(loc) { }
     text_selection(int x1, int y1, int x2, int y2) : _start(x1, y1), _end(x2, y2) { }
 
     bool operator==(const text_selection &other) const { return _start == other._start && _end == other._end; }
-    bool operator!=(const text_selection &other) const { return _start != other._start && _end != other._end; }
+    bool operator!=(const text_selection &other) const { return _start != other._start || _end != other._end; }
 
     bool empty() const { return _start == _end; };
+    bool is_valid() const { return _start.x >= 0 && _start.y >= 0 && _end.x >= 0 && _end.y >= 0; };
 
     text_selection normalize() const
     {
         text_selection result;
 
-        if (_start.y < _end.y || (_start.y == _end.y && _start.x < _end.x))
+        if (_start < _end)
         {
             result._start = _start;
             result._end = _end;
@@ -166,8 +171,6 @@ public:
 
     std::wstring _text;
     DWORD _flags = 0;
-    int _y = 0;
-    int _cy = 0;
 
     mutable int _expanded_length = invalid;
     mutable int _parseCookie = invalid;
@@ -205,42 +208,17 @@ private:
     bool _overtype;
     bool m_bAutoIndent;
     bool m_bDraggingText;
-    bool m_bFocused;
     bool m_bLastSearch;
     bool m_bMultipleSearch;
-    bool m_bSelMargin;
     bool m_bSelectionPushed;
     bool m_bShowInactiveSelection;
-    bool m_bViewTabs;
+    bool m_bViewTabs = false;
     int m_nIdealCharPos;
     int m_tabSize;
     mutable int m_nMaxLineLength;
     
     std::wstring _lastFindWhat;
-    std::shared_ptr<IHighlight> _highlight;
-
-    int margin_width() const;
-    COLORREF GetColor(int nColorIndex) const;
-    const text_location &cursor_pos() const { return m_ptCursorPos; };
-    text_location WordToLeft(text_location pt) const;
-    text_location WordToRight(text_location pt) const;
-    DWORD prse_cookie(int lineIndex) const;
-
-    std::wstring GetFromClipboard() const;
-    bool selection_margin() const;
-    bool view_tabs() const;
-    bool HighlightText(const text_location &ptStartPos, int nLength);
-    bool is_inside_selection(const text_location &loc) const;
-    bool PutToClipboard(const std::wstring &text);
-    int ApproxActualOffset(int lineIndex, int nOffset);
-    int CalculateActualOffset(int lineIndex, int nCharIndex);
-    int expanded_line_length(int lineIndex) const;
-    int max_line_length() const;
-    void update_max_line_length(int lineIndex) const;
-
-    int tab_size() const;
-    int top_offset() const;
-    std::wstring ExpandChars(const std::wstring &text, int nOffset, int nCount) const;
+    std::shared_ptr<IHighlight> _highlight;   
 
 private:
 
@@ -433,7 +411,7 @@ public:
     void Paste();
     void SetAutoIndent(bool bAutoIndent);
     void SetOverwriteMode(bool bOvrMode = true);
-    const text_selection &selection() const;
+    text_selection selection() const { return _selection.normalize(); };
     void MoveCtrlEnd(bool selecting);
     void MoveCtrlHome(bool selecting);
     void MoveDown(bool selecting);
@@ -445,63 +423,122 @@ public:
     void MoveWordLeft(bool selecting);
     void MoveWordRight(bool selecting);
 
+    bool is_inside_selection(const text_location &loc) const;
     void reset();
     void SelectAll();
-    void SetAnchor(const text_location &ptNewAnchor);
-    void SetCursorPos(const text_location &ptCursorPos);
-    void SetDisableDragAndDrop(bool bDDAD);
-    void selection_margin(bool bSelMargin);
+    
+    int tab_size() const { return m_tabSize; };
     void tab_size(int nTabSize);
     void view_tabs(bool bViewTabs);
+    int max_line_length() const;
+    text_location WordToLeft(text_location pt) const;
+    text_location WordToRight(text_location pt) const;
+    
+    DWORD highlight_cookie(int lineIndex) const;
+    DWORD highlight_line(DWORD dwCookie, const document_line &line, IHighlight::TEXTBLOCK *pBuf, int &nActualItems) const;
 
-    text_selection word_selection() const
+    bool view_tabs() const;
+    bool HighlightText(const text_location &ptStartPos, int nLength);
+    bool ShowInactiveSelection() const { return m_bShowInactiveSelection; };
+
+    int calc_offset(int lineIndex, int nCharIndex) const;
+    int calc_offset_approx(int lineIndex, int nOffset) const;
+    int expanded_line_length(int lineIndex) const;
+    std::wstring expanded_chars(const std::wstring &text, int nOffset, int nCount) const;
+
+    const text_location &cursor_pos() const { return m_ptCursorPos; };
+    const text_location &anchor_pos() const { return m_ptAnchor; };
+
+    void anchor_pos(const text_location &ptNewAnchor);
+    void cursor_pos(const text_location &ptCursorPos);
+
+    void update_max_line_length(int lineIndex) const;
+
+    void move_to(text_location pos, bool selecting)
     {
-        text_location ptStart, ptEnd;
+        auto limit = _lines[pos.y].size();
 
-        if (m_ptCursorPos.y < m_ptAnchor.y ||
-            (m_ptCursorPos.y == m_ptAnchor.y && m_ptCursorPos.x < m_ptAnchor.x))
+        if (pos.x > limit)
         {
-            ptStart = WordToLeft(m_ptCursorPos);
-            ptEnd = WordToRight(m_ptAnchor);
+            pos.x = limit;
+        }
+
+        if (!selecting)
+        {
+            m_ptAnchor = m_ptCursorPos;
+        }
+
+        select(text_selection(m_ptAnchor, m_ptCursorPos));
+    }
+
+    text_selection word_selection(const text_location &pos, bool from_anchor) const
+    {
+        auto ptStart = from_anchor ? m_ptAnchor : pos;
+        auto ptEnd = pos;
+
+        if (ptStart < ptEnd || ptStart == ptEnd)
+        {
+            return text_selection(WordToLeft(ptStart), WordToRight(ptEnd));
         }
         else
         {
-            ptStart = WordToLeft(m_ptAnchor);
-            ptEnd = WordToRight(m_ptCursorPos);
+            return text_selection(WordToRight(ptStart), WordToLeft(ptEnd));
+        }
+    }
+
+    text_selection word_selection() const
+    {
+        if (m_ptCursorPos < m_ptAnchor)
+        {
+            return text_selection(WordToLeft(m_ptCursorPos), WordToRight(m_ptAnchor));
+        }
+        else
+        {
+            return text_selection(WordToLeft(m_ptAnchor), WordToRight(m_ptCursorPos));
+        }
+    }
+
+    text_selection line_selection(const text_location &pos, bool from_anchor) const
+    {
+        auto ptStart = from_anchor ? m_ptAnchor : pos;
+        auto ptEnd = pos;
+
+        ptEnd.x = 0;				//	Force beginning of the line
+
+        if (ptStart.y >= _lines.size())
+        {
+            ptStart.x = _lines[ptStart.y].size();
+        }
+        else
+        {
+            ptStart.y++;
+            ptStart.x = 0;
         }
 
         return text_selection(ptStart, ptEnd);
     }
 
-    text_selection select_word(const text_location &loc)
+    text_selection pos_selection(const text_location &pos, bool from_anchor) const
     {
-        m_ptAnchor = m_ptCursorPos = loc;
-
-        auto selection = word_selection();
-        select(selection);
-        return selection;
+        return text_selection(from_anchor ? m_ptAnchor : pos, pos);
     }
 
     void select(const text_selection &selection)
     {
-        _view.invalidate_lines(selection._start.y, selection._end.y);
-        _view.invalidate_lines(_selection._start.y, _selection._end.y);
+        if (_selection != selection)
+        {
+            assert(selection.is_valid());
 
-        _selection = selection;
+            anchor_pos(selection._start);
+            cursor_pos(selection._end);
 
-        SetAnchor(selection._start);
-        SetCursorPos(selection._end);
+            _view.ensure_visible(selection._end);
+            _view.update_caret();
 
-        _view.ensure_visible(selection._end);
-        _view.update_caret();
-    }
-
-    void locate(const text_location &pos)
-    {
-        select(text_selection(pos, pos));
-        SetAnchor(pos);
-        SetCursorPos(pos);
-        _view.ensure_visible(pos);
+            _view.invalidate_lines(selection._start.y, selection._end.y);
+            _view.invalidate_lines(_selection._start.y, _selection._end.y);
+            _selection = selection;
+        }
     }
 
     void add_word(const std::wstring &word)
@@ -521,7 +558,6 @@ public:
     }
 
     friend class undo_group;
-    friend class text_view;
 };
 
 
