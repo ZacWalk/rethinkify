@@ -200,22 +200,22 @@ private:
 
     IView &_view;
 
-    DWORD m_dwLastSearchFlags;
+    DWORD m_dwLastSearchFlags = 0;
     text_location m_ptAnchor;
     text_location m_ptCursorPos;
     text_selection _selection;
     text_selection m_ptSavedSel;
-    bool _overtype;
-    bool m_bAutoIndent;
-    bool m_bDraggingText;
-    bool m_bLastSearch;
-    bool m_bMultipleSearch;
-    bool m_bSelectionPushed;
-    bool m_bShowInactiveSelection;
+    bool _overtype = false;
+    bool m_bAutoIndent = false;
+    bool m_bDraggingText = false;
+    bool m_bLastSearch = false;
+    bool m_bMultipleSearch = false;
+    bool m_bSelectionPushed = false;
+    bool m_bShowInactiveSelection = false;
     bool m_bViewTabs = false;
-    int m_nIdealCharPos;
-    int m_tabSize;
-    mutable int m_nMaxLineLength;
+    int m_nIdealCharPos = 0;
+    int m_tabSize = 4;
+    mutable int m_nMaxLineLength = -1;
     
     std::wstring _lastFindWhat;
     std::shared_ptr<IHighlight> _highlight;   

@@ -1292,7 +1292,7 @@ public:
                 i++;
             }
 
-            pt.x = Clamp(i, 0, lineSize - 1);
+            pt.x = Clamp(i, 0, lineSize);
         }
 
         return pt;
