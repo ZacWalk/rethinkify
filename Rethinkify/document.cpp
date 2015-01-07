@@ -795,7 +795,7 @@ void document::Copy()
         return;
 
     auto sel = _selection.normalize();
-    _view.text_to_clipboard(Combine(text(sel)));
+    _view.text_to_clipboard(Combine(text(sel), L"\r\n"));
 }
 
 bool document::CanPaste()

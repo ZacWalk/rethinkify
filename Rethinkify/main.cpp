@@ -274,7 +274,14 @@ public:
 
 			if (id == IDYES)
 			{
-				destroy = Save();
+                if (_path.empty())
+                {
+                    destroy = Save();
+                }
+                else
+                {
+                    destroy = Save(_path);
+                }
 			}
 			else if (id == IDCANCEL)
 			{
@@ -305,17 +312,14 @@ public:
 
 	LRESULT OnRunTests(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.clear();
-
-		std::wstringstream lines(RunTests());
-		std::wstring line;
-
-		while (std::getline(lines, line))
-		{
-            _doc.append_line(line);
-		}
-
+        _doc.SelectAll();
+        
+        undo_group ug(_doc);
+        auto pos = _doc.delete_text(ug, _doc.selection());
+        _doc.insert_text(ug, pos, RunTests());
+        _doc.select(text_location());
         _view.invalidate_view();
+
 		_path = L"tests";
 		SetTitle(L"tests");
 

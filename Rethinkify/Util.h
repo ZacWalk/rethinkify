@@ -56,7 +56,7 @@ inline std::wstring UnQuote(const std::wstring &text)
 	return text;
 }
 
-static inline std::wstring Combine(const std::vector<std::wstring> &lines)
+static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *endl = L"\n")
 {
 	if (lines.size() == 1)
 	{
@@ -76,7 +76,7 @@ static inline std::wstring Combine(const std::vector<std::wstring> &lines)
 			}
 			else
 			{
-				result << std::endl << line;
+                result << endl << line;
 
 			}
 		}

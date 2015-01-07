@@ -247,26 +247,6 @@ public:
         CPoint clientLocation(location);
         ScreenToClient(&clientLocation);
 
-        // Find out if we're over any errors
-        /*SpError thisError;
-        bool bFound = false;
-
-        for (auto split = _errors.begin(); !bFound && split != _errors.end(); ++split)
-        {
-        if (split->rcArea.Contains(clientPt))
-        {
-        thisError = *split;
-        bFound = true;
-        }
-        }
-
-        if (!bFound)
-        {
-        bHandled = FALSE;
-        return 0;
-        }*/
-
-
         auto menu = CreatePopupMenu();
 
         if (menu)
@@ -304,16 +284,16 @@ public:
 
             if (_doc.can_undo())
             {
-                AppendMenu(menu, MF_ENABLED, ID_EDIT_UNDO, L"undo");
+                AppendMenu(menu, MF_ENABLED, ID_EDIT_UNDO, L"Undo");
                 AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
             }
 
             AppendMenu(menu, MF_ENABLED, ID_EDIT_CUT, L"Cut");
             AppendMenu(menu, MF_ENABLED, ID_EDIT_COPY, L"Copy");
             AppendMenu(menu, MF_ENABLED, ID_EDIT_PASTE, L"Paste");
-            AppendMenu(menu, MF_ENABLED, ID_EDIT_DELETE, L"erase");
+            AppendMenu(menu, MF_ENABLED, ID_EDIT_DELETE, L"Erase");
             AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
-            AppendMenu(menu, MF_ENABLED, ID_EDIT_SELECT_ALL, L"select All");
+            AppendMenu(menu, MF_ENABLED, ID_EDIT_SELECT_ALL, L"Select All");
 
             auto result = TrackPopupMenu(menu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_NONOTIFY | TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_VERNEGANIMATION, location.x, location.y, 0, m_hWnd, NULL);
             DestroyMenu(menu);
@@ -707,8 +687,6 @@ public:
 
     void OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
     {
-
-        //	Note we cannot use nPos because of its 16-bit nature
         SCROLLINFO si;
         si.cbSize = sizeof(si);
         si.fMask = SIF_ALL;
@@ -772,7 +750,6 @@ public:
 
     void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
     {
-
         SCROLLINFO si;
         si.cbSize = sizeof(si);
         si.fMask = SIF_ALL;
@@ -1266,7 +1243,6 @@ public:
             const auto tabSize = _doc.tab_size();
             const auto &line = _doc[pt.y];
             const auto lineSize = line.size();
-
             auto x = _char_offset.cx + ((point.x - margin_width()) / _font_extent.cx);
 
             if (x < 0)
@@ -1687,7 +1663,7 @@ public:
         case IHighlight::COLORINDEX_COMMENT:
             return RGB(128, 128, 128);
         case IHighlight::COLORINDEX_NUMBER:
-            return RGB(255, 128, 128);
+            return RGB(123, 234, 123);
         case IHighlight::COLORINDEX_OPERATOR:
             return RGB(128, 255, 128);
         case IHighlight::COLORINDEX_KEYWORD:
