@@ -6,6 +6,7 @@
 
 static FORMATETC plainTextFormat = { CF_TEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
 static FORMATETC plainTextWFormat = { CF_UNICODETEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+static FORMATETC file_drop_format = { CF_HDROP, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
 
 class text_view : public CWindowImpl<text_view>, public IDropTarget, public IView
 {
@@ -23,6 +24,7 @@ private:
     bool m_bCursorHidden = false;
     bool m_bFocused = false;
     bool m_bSelMargin = true;
+    bool m_bDraggingText = false;
     UINT m_nDragSelTimer = 0;
     text_location m_ptSavedCaretPos;
     text_selection m_ptDraggedText;
@@ -251,8 +253,11 @@ public:
 
         if (menu)
         {
+            auto loc = client_to_text(clientLocation);
+            auto selection = _doc.is_inside_selection(loc) ? _doc.selection() : _doc.word_selection(loc, false);
 
-            auto selection = _doc.word_selection(client_to_text(clientLocation), false);
+            _doc.select(selection);
+
             auto word = Combine(_doc.text(selection));
 
             std::map<UINT, std::wstring> replacements;
@@ -317,9 +322,8 @@ public:
 
                 if (replacements.find(result) != replacements.end())
                 {
-                    _doc.delete_text(selection);
-                    _doc.insert_text(selection._start, replacements[result]);
-                    _doc.select(_doc.word_selection());
+                    undo_group ug(_doc);
+                    _doc.select(_doc.replace_text(ug, selection, replacements[result]));
                 }
                 break;
             }
@@ -738,7 +742,7 @@ public:
         }
 
         SCROLLINFO si;
-        si.cbSize = sizeof(si);        
+        si.cbSize = sizeof(si);
         si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
         si.nMin = 0;
         si.nMax = _doc.max_line_length() - 1;
@@ -870,24 +874,32 @@ public:
         return InterlockedDecrement(&m_cRef);
     }
 
-
-    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject *pDataObj, DWORD grfKeyState, POINTL pt, DWORD *pdwEffect)
+    bool CanDrop(IDataObject *pDataObj)
     {
-        CPoint point = pt;
+        return pDataObj->QueryGetData(&plainTextFormat) == S_OK ||
+            pDataObj->QueryGetData(&plainTextWFormat) == S_OK ||
+            pDataObj->QueryGetData(&file_drop_format) == S_OK;
+    }
 
-        if (pDataObj->QueryGetData(&plainTextFormat) != S_OK &&
-            pDataObj->QueryGetData(&plainTextWFormat) != S_OK)
+
+    DWORD DropEffect(IDataObject *pDataObj, const CPoint &loc)
+    {
+        if (CanDrop(pDataObj))
         {
-            HideDropIndicator();
-
-            *pdwEffect = DROPEFFECT_NONE;
+            ShowDropIndicator(loc);
+            return (GetKeyState(VK_CONTROL) < 0) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;
         }
         else
         {
-            ShowDropIndicator(point);
 
-            *pdwEffect = (GetKeyState(VK_CONTROL) < 0) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;
+            HideDropIndicator();
+            return DROPEFFECT_NONE;
         }
+    }
+
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject *pDataObj, DWORD grfKeyState, POINTL pt, DWORD *pdwEffect)
+    {
+        *pdwEffect = DropEffect(pDataObj, pt);
         return S_OK;
     }
 
@@ -899,70 +911,15 @@ public:
 
     HRESULT STDMETHODCALLTYPE DragOver(DWORD grfKeyState, POINTL pt, DWORD *pdwEffect)
     {
-        ///*
-        //	if (! pDataObject->IsDataAvailable(CF_UNICODETEXT))
-        //	{
-        //		m_pOwner->HideDropIndicator();
-        //		return DROPEFFECT_NONE;
-        //	}
-        //*/
-        //	//
-        //	
-        //	//
-        //	bool bDataSupported = false;
-        //
-        //	if ((!m_pOwner) ||									// If No Owner 
-        //			(!( m_pOwner->QueryEditable())) ||			// Or Not Editable
-        //			(m_pOwner->GetDisableDragAndDrop()))		// Or Drag And Drop Disabled
-        //	{
-        //		m_pOwner -> HideDropIndicator();					// Hide Drop Caret
-        //		return DROPEFFECT_NONE;							    // Return DE_NONE
-        //	}
-        ////	if ((pDataObject->IsDataAvailable( CF_UNICODETEXT ) ) ||	    // If Text Available
-        ////			( pDataObject -> IsDataAvailable( xxx ) ) ||	// Or xxx Available
-        ////			( pDataObject -> IsDataAvailable( yyy ) ) )		// Or yyy Available
-        //	if (pDataObject->IsDataAvailable(CF_UNICODETEXT))		  	    // If Text Available
-        //	{
-        //		bDataSupported = true;								// Set Flag
-        //	}
-        //	if (!bDataSupported)									// If No Supported Formats Available
-        //	{
-        //		m_pOwner->HideDropIndicator();					    // Hide Drop Caret
-        //		return DROPEFFECT_NONE;						   	    // Return DE_NONE
-        //	}
-        //	m_pOwner->ShowDropIndicator(point);
-        //	if (dwKeyState & MK_CONTROL)
-        //		return DROPEFFECT_COPY;
-        return DROPEFFECT_MOVE;
+        //*pdwEffect = DropEffect(pDataObj, pt);
+        //return S_OK;
+        *pdwEffect = DROPEFFECT_MOVE;
+        return S_OK;
     }
 
     HRESULT STDMETHODCALLTYPE Drop(IDataObject *pDataObj, DWORD grfKeyState, POINTL pt, DWORD *pdwEffect)
     {
-        //	//
-        //	 			( m_pOwner -> GetDisableDragAndDrop() ) )		// Or Drag And Drop Disabled
-        //	//
-        //	bool bDataSupported = false;
-        //
-        //	m_pOwner->HideDropIndicator();						// Hide Drop Caret
-        //	if ((!m_pOwner) ||									// If No Owner 
-        //			(!( m_pOwner->QueryEditable())) ||			// Or Not Editable
-        //			(m_pOwner->GetDisableDragAndDrop()))		// Or Drag And Drop Disabled
-        //	{
-        //		return DROPEFFECT_NONE;							// Return DE_NONE
-        //	}
-        ////	if( ( pDataObject -> IsDataAvailable( CF_UNICODETEXT ) ) ||	// If Text Available
-        ////			( pDataObject -> IsDataAvailable( xxx ) ) ||	// Or xxx Available
-        ////			( pDataObject -> IsDataAvailable( yyy ) ) )		// Or yyy Available
-        //	if (pDataObject->IsDataAvailable(CF_UNICODETEXT))			    // If Text Available
-        //	{
-        //		bDataSupported = true;								// Set Flag
-        //	}
-        //	if (!bDataSupported)									// If No Supported Formats Available
-        //	{
-        //		return DROPEFFECT_NONE;							    // Return DE_NONE
-        //	}
-        //	return (m_pOwner->DoDropText(pDataObject, point));	    // Return Result Of Drop
-        return S_OK;
+        return DropData(pDataObj, pt) ? S_OK : S_FALSE;
     }
 
     DROPEFFECT OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point)
@@ -1037,50 +994,54 @@ public:
         }
     }
 
-    bool DoDropText(IDataObject *pDataObject, const CPoint &ptClient)
+    bool DropData(IDataObject *pDataObject, const CPoint &ptClient)
     {
-        STGMEDIUM store;
+        STGMEDIUM stgmed;
         std::wstring text;
-        bool success = false;
 
-
-        if (SUCCEEDED(pDataObject->GetData(&plainTextWFormat, &store))) {
+        if (SUCCEEDED(pDataObject->GetData(&plainTextWFormat, &stgmed))) {
             //unicode text
-            auto data = (const wchar_t*) GlobalLock(store.hGlobal);
+            auto data = (const wchar_t*) GlobalLock(stgmed.hGlobal);
             text = data;
-            GlobalUnlock(store.hGlobal);
-            ReleaseStgMedium(&store);
-            success = true;
+            GlobalUnlock(stgmed.hGlobal);
+            ReleaseStgMedium(&stgmed);
         }
-        else if (SUCCEEDED(pDataObject->GetData(&plainTextFormat, &store))) {
+        else if (SUCCEEDED(pDataObject->GetData(&plainTextFormat, &stgmed))) {
             //ascii text
-            auto data = (const char*) GlobalLock(store.hGlobal);
+            auto data = (const char*) GlobalLock(stgmed.hGlobal);
             text = AsciiToUtf16(data);
-            GlobalUnlock(store.hGlobal);
-            ReleaseStgMedium(&store);
-            success = true;
+            GlobalUnlock(stgmed.hGlobal);
+            ReleaseStgMedium(&stgmed);
+        }
+        else if (SUCCEEDED(pDataObject->GetData(&file_drop_format, &stgmed))) {
+             
+            auto data = (const char*) GlobalLock(stgmed.hGlobal);
+            auto files = (const DROPFILES*) data;
+            text = (const wchar_t *)(data + files->pFiles);
+
+            if (_doc.LoadFromFile(text))
+            {
+                GetParent().SetWindowText(PathFindFileName(text.c_str()));
+            }
+
+            GlobalUnlock(stgmed.hGlobal);
+            ReleaseStgMedium(&stgmed);
+
+            return true;
         }
 
-        /*text_location ptDropPos = client_to_text(ptClient);
+        auto drop_loc = client_to_text(ptClient);
 
-        if (IsDraggingText() && is_inside_selection(ptDropPos))
+        if (m_bDraggingText && _doc.is_inside_selection(drop_loc))
         {
-        anchor_pos(ptDropPos);
-        select(ptDropPos, ptDropPos);
-        cursor_pos(ptDropPos);
-        ensure_visible(ptDropPos);
-        return false;
+            return false;
+        }
+        else
+        {
+            undo_group ug(_doc);
+            _doc.select(_doc.insert_text(ug, drop_loc, text));
         }
 
-        int x, y;
-        _doc.insert_text(this, ptDropPos.y, ptDropPos.x, A2T(pszText), y, x, CE_ACTION_DRAGDROP);
-        text_location ptCurPos(x, y);
-        anchor_pos(ptDropPos);
-        select(ptDropPos, ptCurPos);
-        cursor_pos(ptCurPos);
-        ensure_visible(ptCurPos);*/
-
-        //::GlobalUnlock(hData);
         return true;
     }
 
@@ -1088,7 +1049,7 @@ public:
     {
         if (!m_bDropPosVisible)
         {
-            HideCursor();
+            //HideCursor();
             m_ptSavedCaretPos = _doc.cursor_pos();
             m_bDropPosVisible = true;
             ::CreateCaret(m_hWnd, (HBITMAP) 1, 2, _font_extent.cy);
@@ -1111,7 +1072,7 @@ public:
         if (m_bDropPosVisible)
         {
             _doc.cursor_pos(m_ptSavedCaretPos);
-            ShowCursor();
+            //ShowCursor();
             m_bDropPosVisible = false;
         }
     }
@@ -1218,14 +1179,14 @@ public:
 
         while (y < line_count)
         {
-            auto const &line = _doc[y];
+        auto const &line = _doc[y];
 
-            if (point.y >= line._y && point.y < (line._y + line._cy))
-            {
-                return y;
-            }
+        if (point.y >= line._y && point.y < (line._y + line._cy))
+        {
+        return y;
+        }
 
-            y += 1;
+        y += 1;
         }*/
 
         return Clamp(result, 0, line_count - 1);
@@ -1249,7 +1210,7 @@ public:
                 x = 0;
 
             auto i = 0;
-            auto xx = 0;            
+            auto xx = 0;
 
             while (i < lineSize)
             {
@@ -1310,7 +1271,7 @@ public:
 
         /*if (!_doc.empty() || _char_offset.cy <= 0)
         {
-            result = _doc[_char_offset.cy]._y;
+        result = _doc[_char_offset.cy]._y;
         }*/
 
         return result;
@@ -1381,12 +1342,12 @@ public:
 
         /*for (int i = 0; i < line_count; i++)
         {
-            auto &line = _doc[i];
+        auto &line = _doc[i];
 
-            line._y = y;
-            line._cy = cy;
+        line._y = y;
+        line._cy = cy;
 
-            y += cy;
+        y += cy;
         }*/
 
         m_nScreenLines = rect.Height() / _font_extent.cy;

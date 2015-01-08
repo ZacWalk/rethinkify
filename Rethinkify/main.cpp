@@ -194,7 +194,6 @@ public:
     text_view _view;
 	document _doc;	
 	find_wnd _find;
-	std::wstring _path;
 
     main_frame() : _view(_doc), _find(_doc), _doc(_view)
 	{
@@ -274,14 +273,9 @@ public:
 
 			if (id == IDYES)
 			{
-                if (_path.empty())
-                {
-                    destroy = Save();
-                }
-                else
-                {
-                    destroy = Save(_path);
-                }
+                auto path = _doc.Path();
+                bool saved = !path.empty() && Save(path);
+                destroy = saved || Save();
 			}
 			else if (id == IDCANCEL)
 			{
@@ -320,7 +314,9 @@ public:
         _doc.select(text_location());
         _view.invalidate_view();
 
-		_path = L"tests";
+        // http://www.bbc.com/news/
+
+		_doc.Path(L"tests");
 		SetTitle(L"tests");
 
 		return 0;
@@ -334,7 +330,7 @@ public:
 
 	LRESULT OnSave(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		Save(_path);
+        Save(_doc.Path());
 		return 0;
 	}
 
@@ -473,7 +469,7 @@ public:
 	void New()
 	{
         _view.invalidate_view();
-		_path = L"New";
+        _doc.Path(L"New");
 		SetTitle(L"New");
 	}
 
@@ -481,8 +477,6 @@ public:
 	{
 		if (_doc.LoadFromFile(path))
 		{
-            _view.invalidate_view();
-			_path = path;
 			SetTitle(PathFindFileName(path.c_str()));
 		}
 	}
@@ -491,7 +485,7 @@ public:
 	{
         if (_doc.SaveToFile(path))
 		{
-			_path = path;
+            _doc.Path(path);
 			SetTitle(PathFindFileName(path.c_str()));
 			return true;
 		}
@@ -504,7 +498,7 @@ public:
 		wchar_t filters[] = L"Text Files (*.txt)\0*.txt\0\0";
 		wchar_t path[_MAX_PATH] = L"";
 
-		wcscpy_s(path, _path.c_str());
+        wcscpy_s(path, _doc.Path().c_str());
 
 		OPENFILENAME ofn = { 0 };
 		ofn.lStructSize = sizeof(OPENFILENAME);
@@ -552,6 +546,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
+
+    OleInitialize(nullptr);
 
 	main_frame _frame;
     _frame.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);

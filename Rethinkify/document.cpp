@@ -1088,27 +1088,6 @@ void document::OnEditReplace()
     //pApp->WriteProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, dlg.m_sNewText);
 }
 
-bool document::ReplaceSelection(const wchar_t * pszNewText)
-{
-    //assert(pszNewText != nullptr);
-    //if (! has_selection())
-    //	return false;
-
-    //DeleteCurrentSelection();
-
-    //text_location ptCursorPos = cursor_pos();
-    //int x, y;
-    //_lines.insert_text(this, ptCursorPos.y, ptCursorPos.x, pszNewText, y, x, CE_ACTION_REPLACE);
-    //text_location ptEndOfBlock = text_location(x, y);
-    //anchor_pos(ptEndOfBlock);
-    //select(ptCursorPos, ptEndOfBlock);
-    //cursor_pos(ptEndOfBlock);
-    //ensure_visible(ptEndOfBlock);
-    return true;
-}
-
-
-
 void document::OnEditUndo()
 {
     if (can_undo())
@@ -1117,64 +1096,12 @@ void document::OnEditUndo()
     }
 }
 
-
 void document::OnEditRedo()
 {
     if (can_redo())
     {
         select(redo());
     }
-}
-
-
-
-//void document::OnEditOperation(int nAction, const std::wstring &text)
-//{
-//	if (m_bAutoIndent)
-//	{
-//		//	Analyse last action...
-//		if (nAction == CE_ACTION_TYPING && _tcscmp(text.c_str(), _T("\r\n")) == 0 && !_overtype)
-//		{
-//			//	Enter stroke!
-//			text_location ptCursorPos = cursor_pos();
-//			assert(ptCursorPos.y > 0);
-//
-//			//	Take indentation from the previos line
-//			const auto &line = _lines.GetLineChars(ptCursorPos.y - 1);
-//			const auto len = line.size();
-//
-//			int nPos = 0;
-//			while (nPos < len && iswspace(line[nPos]))
-//				nPos++;
-//
-//			if (nPos > 0)
-//			{
-//				//	insert part of the previos line
-//				TCHAR *pszInsertStr = (TCHAR *) _alloca(sizeof(TCHAR) * (len + 1));
-//				_tcsncpy_s(pszInsertStr, (len + 1), line.c_str(), nPos);
-//				pszInsertStr[nPos] = 0;
-//
-//				int x, y;
-//				_lines.insert_text(ug, ptCursorPos.y, ptCursorPos.x, pszInsertStr, y, x, CE_ACTION_AUTOINDENT);
-//
-//				text_location pt(x, y);
-//				cursor_pos(pt);
-//				select(pt, pt);
-//				anchor_pos(pt);
-//				ensure_visible(pt);
-//			}
-//		}
-//	}
-//}
-
-bool document::GetOverwriteMode() const
-{
-    return _overtype;
-}
-
-void document::SetOverwriteMode(bool bOvrMode /*= true*/)
-{
-    _overtype = bOvrMode;
 }
 
 bool document::GetAutoIndent() const
@@ -1522,6 +1449,7 @@ bool document::LoadFromFile(const std::wstring &path)
 
 			success = true;
 
+            _path = path;
 			_view.invalidate_view();
 		}
 
@@ -1761,6 +1689,14 @@ text_location document::redo()
 	auto result = _undo[m_nUndoPosition].redo(*this);
 	m_nUndoPosition++;
 	return result;
+}
+
+text_selection document::replace_text(undo_group &ug, const text_selection &selection, const std::wstring &text)
+{
+    text_selection result;
+    result._start = delete_text(ug, selection);
+    result._end = insert_text(ug, selection._start, text);
+    return result;
 }
 
 text_location document::insert_text(const text_location &location, const std::wstring &text)

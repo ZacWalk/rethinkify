@@ -7,7 +7,7 @@ struct caseInsensitiveCompare : public std::binary_function < const wchar_t *, c
 	}
 };
 
-static bool IsKeyword(const wchar_t * pszChars, int nLength)
+static bool IsKeyword(const wchar_t * pszChars, int len)
 {
 	static const wchar_t *raw_keywords [] =
 	{
@@ -146,16 +146,16 @@ static bool IsKeyword(const wchar_t * pszChars, int nLength)
 
 	const int bufferLen = 100;
 	wchar_t sz[bufferLen];
-	wcsncpy_s(sz, pszChars, std::min(bufferLen - 1, nLength));
+	wcsncpy_s(sz, pszChars, std::min(bufferLen - 1, len));
 
 	return keywords.find(sz) != keywords.end();
 }
 
-static bool IsNumber(const wchar_t * pszChars, int nLength)
+static bool IsNumber(const wchar_t * pszChars, int len)
 {
-	if (nLength > 2 && pszChars[0] == '0' && pszChars[1] == 'x')
+	if (len > 2 && pszChars[0] == '0' && pszChars[1] == 'x')
 	{
-		for (int i = 2; i < nLength; i++)
+		for (int i = 2; i < len; i++)
 		{
 			if (iswdigit(pszChars[i]) || (pszChars[i] >= 'A' && pszChars[i] <= 'F') ||
 				(pszChars[i] >= 'a' && pszChars[i] <= 'f'))
@@ -166,7 +166,7 @@ static bool IsNumber(const wchar_t * pszChars, int nLength)
 	}
 	if (!iswdigit(pszChars[0]))
 		return false;
-	for (int i = 1; i < nLength; i++)
+	for (int i = 1; i < len; i++)
 	{
 		if (!iswdigit(pszChars[i]) && pszChars[i] != '+' &&
 			pszChars[i] != '-' && pszChars[i] != '.' && pszChars[i] != 'e' &&
@@ -186,7 +186,7 @@ static void AddBlock(IHighlight::TEXTBLOCK *pBuf, int &nActualItems, int pos, in
 {
 	if (pBuf != nullptr)
 	{
-		if (nActualItems == 0 || pBuf[nActualItems - 1].m_nCharPos <= (pos))
+		if (nActualItems == 0 || pBuf[nActualItems - 1].m_nCharPos <= pos)
 		{
 			pBuf[nActualItems].m_nCharPos = (pos);
 			pBuf[nActualItems].m_nColorIndex = (colorindex);
@@ -202,11 +202,11 @@ DWORD CppSyntax::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK 
 		return dwCookie & COOKIE_EXT_COMMENT;
 	}
 
-	auto nLength = line.size();
+	auto len = line.size();
 	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
 	auto bRedefineBlock = true;
 	auto bDecIndex = false;
-	auto nIdentBegin = -1;
+	auto block_start = -1;
 	auto i = 0;
 
 	for (i = 0;; i++)
@@ -238,7 +238,7 @@ DWORD CppSyntax::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK 
 			bDecIndex = false;
 		}
 
-		if (i == nLength)
+		if (i == len)
 			break;
 
 		if (dwCookie & COOKIE_COMMENT)
@@ -341,153 +341,91 @@ DWORD CppSyntax::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK 
 
 		if (iswalnum(c) || c == '_' || c == '.')
 		{
-			if (nIdentBegin == -1)
-				nIdentBegin = i;
+			if (block_start == -1)
+				block_start = i;
 		}
 		else
 		{
-			if (nIdentBegin >= 0)
+			if (block_start >= 0)
 			{
 				auto pszChars = line.c_str();
 
-				if (IsKeyword(pszChars + nIdentBegin, i - nIdentBegin))
+				if (IsKeyword(pszChars + block_start, i - block_start))
 				{
-					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_KEYWORD);
+					AddBlock(pBuf, nActualItems, block_start, COLORINDEX_KEYWORD);
 				}
-				else if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
+				else if (IsNumber(pszChars + block_start, i - block_start))
 				{
-					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
+					AddBlock(pBuf, nActualItems, block_start, COLORINDEX_NUMBER);
 				}
 
 				bRedefineBlock = true;
 				bDecIndex = true;
-				nIdentBegin = -1;
+				block_start = -1;
 			}
 		}
 	}
 
-	if (nIdentBegin >= 0)
+	if (block_start >= 0)
 	{
 		auto pszChars = line.c_str();
 
-		if (IsKeyword(pszChars + nIdentBegin, i - nIdentBegin))
+		if (IsKeyword(pszChars + block_start, i - block_start))
 		{
-			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_KEYWORD);
+			AddBlock(pBuf, nActualItems, block_start, COLORINDEX_KEYWORD);
 		}
-		else if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
+		else if (IsNumber(pszChars + block_start, i - block_start))
 		{
-			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
+			AddBlock(pBuf, nActualItems, block_start, COLORINDEX_NUMBER);
 		}
 	}
 
-	if (line[nLength - 1] != '\\')
+	if (line[len - 1] != '\\')
 		dwCookie &= COOKIE_EXT_COMMENT;
 	return dwCookie;
 }
 
 DWORD TextHighight::ParseLine(DWORD dwCookie, const document_line &line, TEXTBLOCK *pBuf, int &nActualItems) const
 {
-	if (line.empty())
-	{
-		return dwCookie & COOKIE_EXT_COMMENT;
-	}
+    if (pBuf)
+    {
+        auto len = line.size();
+        auto block_start = -1;
+        auto i = 0;
 
-	auto nLength = line.size();
-	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
-	auto bRedefineBlock = true;
-	auto bDecIndex = false;
-	auto nIdentBegin = -1;
-	auto i = 0;
+        for (i = 0; i <= len; i++)
+        {
+            if (i < len && iswalnum(line[i]))
+            {
+                if (block_start == -1)
+                    block_start = i;
+            }
+            else
+            {
+                if (block_start >= 0)
+                {
+                    auto pszChars = line.c_str();
 
-	for (i = 0;; i++)
-	{
-		if (bRedefineBlock)
-		{
-			int nPos = i;
-			if (bDecIndex)
-				nPos--;
+                    if (IsNumber(pszChars + block_start, i - block_start))
+                    {
+                        AddBlock(pBuf, nActualItems, block_start, COLORINDEX_NUMBER);
+                    }
+                    else if (!_check.is_word_valid(pszChars + block_start, i - block_start))
+                    {
+                        AddBlock(pBuf, nActualItems, block_start, COLORINDEX_ERRORTEXT);
+                    }
+                    else
+                    {
+                        AddBlock(pBuf, nActualItems, block_start, COLORINDEX_NORMALTEXT);
+                    }
+                }
 
-			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
-			{
-				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_COMMENT);
-			}
-			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING))
-			{
-				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_STRING);
-			}
-			else if (dwCookie & COOKIE_PREPROCESSOR)
-			{
-				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_PREPROCESSOR);
-			}
-			else
-			{
-				AddBlock(pBuf, nActualItems, nPos, COLORINDEX_NORMALTEXT);
-			}
+                block_start = -1;
+            }
+        }
+    }
 
-			bRedefineBlock = false;
-			bDecIndex = false;
-		}
-
-		if (i == nLength)
-			break;
-
-		if (dwCookie & COOKIE_COMMENT)
-		{
-			AddBlock(pBuf, nActualItems, i, COLORINDEX_COMMENT);
-			dwCookie |= COOKIE_COMMENT;
-			break;
-		}
-
-		auto c = line[i];		
-
-		if (pBuf == nullptr)
-			continue;
-
-		//	We don't need to extract words,
-		//	for faster parsing skip the rest of loop
-
-		if (iswalnum(c) || c == '_' || c == '\'')
-		{
-			if (nIdentBegin == -1)
-				nIdentBegin = i;
-		}
-		else
-		{
-			if (nIdentBegin >= 0)
-			{
-				auto pszChars = line.c_str();
-
-				if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
-				{
-					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
-				}
-				else if (!_check.is_word_valid(pszChars + nIdentBegin, i - nIdentBegin))
-				{
-					AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
-				}
-
-				bRedefineBlock = true;
-				bDecIndex = true;
-				nIdentBegin = -1;
-			}
-		}
-	}
-
-	if (nIdentBegin >= 0)
-	{
-		auto pszChars = line.c_str();
-
-		if (IsNumber(pszChars + nIdentBegin, i - nIdentBegin))
-		{
-			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_NUMBER);
-		}
-		else if (!_check.is_word_valid(pszChars + nIdentBegin, i - nIdentBegin))
-		{
-			AddBlock(pBuf, nActualItems, nIdentBegin, COLORINDEX_ERRORTEXT);
-		}
-	}
-
-	return dwCookie;
+    return 0;
 }
 
 std::vector<std::wstring> TextHighight::suggest(const std::wstring &wword) const

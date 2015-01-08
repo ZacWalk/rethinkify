@@ -205,9 +205,7 @@ private:
     text_location m_ptCursorPos;
     text_selection _selection;
     text_selection m_ptSavedSel;
-    bool _overtype = false;
     bool m_bAutoIndent = false;
-    bool m_bDraggingText = false;
     bool m_bLastSearch = false;
     bool m_bMultipleSearch = false;
     bool m_bSelectionPushed = false;
@@ -217,6 +215,7 @@ private:
     int m_tabSize = 4;
     mutable int m_nMaxLineLength = -1;
     
+    std::wstring _path;
     std::wstring _lastFindWhat;
     std::shared_ptr<IHighlight> _highlight;   
 
@@ -365,7 +364,12 @@ public:
     std::vector<std::wstring> text() const;
     std::wstring str() const { return Combine(text()); }
 
+    void Path(const std::wstring &path) { _path = path; }
+    const std::wstring Path() const { return _path; }
+
     void append_line(const std::wstring &text);
+
+    text_selection replace_text(undo_group &ug, const text_selection &selection, const std::wstring &text);
 
     text_location insert_text(undo_group &ug, const text_location &location, const std::wstring &text);
     text_location insert_text(undo_group &ug, const text_location &location, const wchar_t &c);
@@ -394,7 +398,7 @@ public:
     bool GetOverwriteMode() const;
     bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message);
     bool QueryEditable();
-    bool ReplaceSelection(const wchar_t * pszNewText);
+    
     void Cut();
     void Copy();
     void OnEditDelete();
