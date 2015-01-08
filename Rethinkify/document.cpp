@@ -1431,6 +1431,7 @@ bool document::LoadFromFile(const std::wstring &path)
 			const char *crlf = crlfs[m_nCRLFMode];
 
 			auto bufferPos = headerLen;
+            auto last_char = 0;
 
 			if (encoding == NCP_UTF8 || encoding == NCP_ASCII)
 			{
@@ -1440,15 +1441,15 @@ bool document::LoadFromFile(const std::wstring &path)
 				{
 					int c = buffer[bufferPos];
 
+                    if ((last_char == 0x0A && c == 0x0D) || (last_char == 0x0A && c != 0x0D))
+                    {
+                        append_line((encoding == NCP_ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
+                        line.clear();
+                    }
+
 					if (c != 0x0A && c != 0x0D)
 					{
 						line += (char) c;
-					}
-
-					if (c == 0x0D)
-					{
-						append_line((encoding == NCP_ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
-						line.clear();
 					}
 
 					bufferPos++;
@@ -1464,6 +1465,8 @@ bool document::LoadFromFile(const std::wstring &path)
 							readLen = 0;
 						}
 					}
+
+                    last_char = c;
 				}
 
 				append_line((encoding == NCP_ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
