@@ -440,9 +440,7 @@ public:
 		wcscpy_s(title, name);
 		wcscat_s(title, L" - ");
 		wcscat_s(title, g_szAppName);
-		SetWindowText(title);
-
-		_doc.HighlightFromExtension(PathFindExtension(name));
+		SetWindowText(title);		
 	}
 
 	void Load()

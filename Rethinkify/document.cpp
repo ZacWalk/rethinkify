@@ -26,7 +26,7 @@ const auto REG_MARGIN_TOP = L"TopMargin";
 const auto REG_MARGIN_BOTTOM = L"BottomMargin";
 
 static auto s_textHighlighter = std::make_shared<TextHighight>();
-
+static auto s_cppHighlighter = std::make_shared<CppSyntax>();
 
 document::document(IView &view, const std::wstring &text, int nCrlfStyle) : _highlight(s_textHighlighter), _view(view)
 {    
@@ -1140,9 +1140,8 @@ void document::HighlightFromExtension(const wchar_t *ext)
     if (*ext == L'.') ext++;
 
     if (IsCppExtension(ext))
-    {
-        static auto highlighter = std::make_shared<CppSyntax>();
-        _highlight = highlighter;
+    {        
+        _highlight = s_cppHighlighter;
     }
     else
     {
@@ -1448,6 +1447,8 @@ bool document::LoadFromFile(const std::wstring &path)
 			m_nUndoPosition = 0;
 
 			success = true;
+
+            HighlightFromExtension(PathFindExtension(path.c_str()));
 
             _path = path;
 			_view.invalidate_view();
