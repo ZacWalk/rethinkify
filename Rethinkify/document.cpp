@@ -10,20 +10,6 @@
 #include <codecvt>
 
 const TCHAR crlf [] = _T("\r\n");
-const int UNDO_BUF_SIZE = 1000;
-
-const auto REG_FIND_SUBKEY = L"Rethinkify\\Find";
-const auto REG_REPLACE_SUBKEY = L"Rethinkify\\Replace";
-const auto REG_MATCH_CASE = L"MatchCase";
-const auto REG_WHOLE_WORD = L"WholeWord";
-const auto REG_FIND_WHAT = L"FindWhat";
-const auto REG_REPLACE_WITH = L"ReplaceWith";
-
-const auto REG_PAGE_SUBKEY = L"Rethinkify\\PageSetup";
-const auto REG_MARGIN_LEFT = L"LeftMargin";
-const auto REG_MARGIN_RIGHT = L"RightMargin";
-const auto REG_MARGIN_TOP = L"TopMargin";
-const auto REG_MARGIN_BOTTOM = L"BottomMargin";
 
 static auto s_textHighlighter = std::make_shared<TextHighight>();
 static auto s_cppHighlighter = std::make_shared<CppSyntax>();
@@ -129,9 +115,6 @@ void document::reset()
     m_ptCursorPos.x = 0;
     m_ptCursorPos.y = 0;
     _selection._start = _selection._end = m_ptCursorPos;
-    m_bLastSearch = false;
-    m_bShowInactiveSelection = false;
-    m_bMultipleSearch = false;
 }
 
 void document::tab_size(int tabSize)
@@ -368,21 +351,64 @@ bool document::HighlightText(const text_location &ptStartPos, int nLength)
 }
 
 
-void document::Find(const std::wstring &text, DWORD flags)
+static int find_in_line(const wchar_t * pszFindWhere, const wchar_t * pszFindWhat, bool bWholeWord)
+{
+    assert(pszFindWhere != nullptr);
+    assert(pszFindWhat != nullptr);
+
+    auto nCur = 0;
+    auto nLength = wcslen(pszFindWhat);
+
+    for (;;)
+    {
+        auto pszPos = wcsistr(pszFindWhere, pszFindWhat);
+
+        if (pszPos == nullptr)
+        {
+            return -1;
+        }
+
+        if (!bWholeWord)
+        {
+            return nCur + (pszPos - pszFindWhere);
+        }
+
+        if (pszPos > pszFindWhere && (iswalnum(pszPos[-1]) || pszPos[-1] == _T('_')))
+        {
+            nCur += (pszPos - pszFindWhere);
+            pszFindWhere = pszPos + 1;
+            continue;
+        }
+
+        if (iswalnum(pszPos[nLength]) || pszPos[nLength] == _T('_'))
+        {
+            nCur += (pszPos - pszFindWhere + 1);
+            pszFindWhere = pszPos + 1;
+            continue;
+        }
+
+        return nCur + (pszPos - pszFindWhere);
+    }
+
+    assert(false);		// Unreachable
+    return -1;
+}
+
+
+
+
+void document::find(const std::wstring &text, DWORD flags)
 {
     text_location loc;
 
-    if (Find(text, m_ptCursorPos, flags, true, &loc))
+    if (find(text, m_ptCursorPos, all(), flags, true, &loc))
     {
+        _find_text = text;
+        _find_flags = flags;
+
         auto end = loc;
         end.x += text.size();
         select(text_selection(loc, end));
-        m_ptCursorPos = loc;
-        _view.update_caret();
-
-        _lastFindWhat = text;
-        m_dwLastSearchFlags = flags;
-        m_bShowInactiveSelection = true;
     }
     //	CWinApp *pApp = AfxGetApp();
     //	assert(pApp != nullptr);
@@ -391,11 +417,11 @@ void document::Find(const std::wstring &text, DWORD flags)
     //	if (m_bLastSearch)
     //	{
     //		//	Get the latest search parameters
-    //		dlg.m_bMatchCase = (m_dwLastSearchFlags & FIND_MATCH_CASE) != 0;
-    //		dlg.m_bWholeWord = (m_dwLastSearchFlags & FIND_WHOLE_WORD) != 0;
-    //		dlg.m_nDirection = (m_dwLastSearchFlags & FIND_DIRECTION_UP) != 0 ? 0 : 1;
-    //		if (_lastFindWhat != nullptr)
-    //			dlg.m_sText = _lastFindWhat;
+    //		dlg.m_bMatchCase = (_find_flags & FIND_MATCH_CASE) != 0;
+    //		dlg.m_bWholeWord = (_find_flags & FIND_WHOLE_WORD) != 0;
+    //		dlg.m_nDirection = (_find_flags & FIND_DIRECTION_UP) != 0 ? 0 : 1;
+    //		if (_find_text != nullptr)
+    //			dlg.m_sText = _find_text;
     //	}
     //	else
     //	{
@@ -427,17 +453,17 @@ void document::Find(const std::wstring &text, DWORD flags)
     //
     //	//	Save search parameters for 'F3' command
     //	m_bLastSearch = true;
-    //	if (_lastFindWhat != nullptr)
-    //		free(_lastFindWhat);
-    //	_lastFindWhat = _wcsdup(dlg.m_sText);
+    //	if (_find_text != nullptr)
+    //		free(_find_text);
+    //	_find_text = _wcsdup(dlg.m_sText);
     //
-    //	m_dwLastSearchFlags = 0;
+    //	_find_flags = 0;
     //	if (dlg.m_bMatchCase)
-    //		m_dwLastSearchFlags |= FIND_MATCH_CASE;
+    //		_find_flags |= FIND_MATCH_CASE;
     //	if (dlg.m_bWholeWord)
-    //		m_dwLastSearchFlags |= FIND_WHOLE_WORD;
+    //		_find_flags |= FIND_WHOLE_WORD;
     //	if (dlg.m_nDirection == 0)
-    //		m_dwLastSearchFlags |= FIND_DIRECTION_UP;
+    //		_find_flags |= FIND_DIRECTION_UP;
     //
     //	//	Save search parameters to registry
     //	pApp->WriteProfileInt(REG_FIND_SUBKEY, REG_MATCH_CASE, dlg.m_bMatchCase);
@@ -445,34 +471,134 @@ void document::Find(const std::wstring &text, DWORD flags)
     //	pApp->WriteProfileString(REG_FIND_SUBKEY, REG_FIND_WHAT, dlg.m_sText);
 }
 
-void document::OnEditRepeat()
+void document::find_next()
 {
     //if (m_bLastSearch)
     //{
     //	text_location ptFoundPos;
-    //	if (! FindText(_lastFindWhat, m_ptCursorPos, m_dwLastSearchFlags, true, &ptFoundPos))
+    //	if (! FindText(_find_text, m_ptCursorPos, _find_flags, true, &ptFoundPos))
     //	{
     //		std::wstring prompt;
-    //		prompt.Format(IDS_EDIT_TEXT_NOT_FOUND, _lastFindWhat);
+    //		prompt.Format(IDS_EDIT_TEXT_NOT_FOUND, _find_text);
     //		AfxMessageBox(prompt);
     //		return;
     //	}
-    //	HighlightText(ptFoundPos, lstrlen(_lastFindWhat));
+    //	HighlightText(ptFoundPos, lstrlen(_find_text));
     //	m_bMultipleSearch = true;       // More search       
     //}
 }
 
-
-
-void document::OnEditFindPrevious()
+void document::find_previous()
 {
-    DWORD dwSaveSearchFlags = m_dwLastSearchFlags;
-    if ((m_dwLastSearchFlags & FIND_DIRECTION_UP) != 0)
-        m_dwLastSearchFlags &= ~FIND_DIRECTION_UP;
+    DWORD dwSaveSearchFlags = _find_flags;
+    if ((_find_flags & FIND_DIRECTION_UP) != 0)
+        _find_flags &= ~FIND_DIRECTION_UP;
     else
-        m_dwLastSearchFlags |= FIND_DIRECTION_UP;
-    OnEditRepeat();
-    m_dwLastSearchFlags = dwSaveSearchFlags;
+        _find_flags |= FIND_DIRECTION_UP;
+    find_next();
+    _find_flags = dwSaveSearchFlags;
+}
+
+bool document::find(const std::wstring &what, const text_location &ptStartPos, const text_selection &selection, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos)
+{
+    text_location ptCurrentPos = ptStartPos;
+
+    if (selection.empty())
+        return false;
+
+    if (ptCurrentPos < selection._start)
+    {
+        ptCurrentPos = selection._start;
+    }
+
+    auto matchCase = (dwFlags & FIND_MATCH_CASE) != 0;
+    auto wholeWord = (dwFlags & FIND_WHOLE_WORD) != 0;
+
+    if (dwFlags & FIND_DIRECTION_UP)
+    {
+        //	Let's check if we deal with whole text.
+        //	At this point, we cannot search *up* in selection
+        //	Proceed as if we have whole text search.
+
+        for (;;)
+        {
+            if (ptCurrentPos.x == 0)
+            {
+                ptCurrentPos.y--;
+            }
+
+            while (ptCurrentPos.y >= 0)
+            {
+                const auto &line = _lines[ptCurrentPos.y];
+                const auto nLineLength = line._text.size() - ptCurrentPos.x;
+
+                if (nLineLength > 0)
+                {
+                    auto nPos = ::find_in_line(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
+
+                    if (nPos >= 0)		//	Found text!
+                    {
+                        ptCurrentPos.x += nPos;
+                        *pptFoundPos = ptCurrentPos;
+                        return true;
+                    }
+                }
+
+                ptCurrentPos.x = 0;
+                ptCurrentPos.y--;
+            }
+
+            //	Beginning of text reached
+            if (!bWrapSearch)
+                return false;
+
+            //	Start again from the end of text
+            bWrapSearch = false;
+            ptCurrentPos = text_location(0, _lines.size() - 1);
+        }
+    }
+    else
+    {
+        for (;;)
+        {
+            while (ptCurrentPos.y <= selection._end.y)
+            {
+                const auto &line = _lines[ptCurrentPos.y];
+                const auto nLineLength = line._text.size() - ptCurrentPos.x;
+
+                if (nLineLength > 0)
+                {
+                    auto nPos = ::find_in_line(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
+
+                    if (nPos >= 0)
+                    {
+                        ptCurrentPos.x += nPos;
+                        //	Check of the text found is outside the block.
+                        if (selection._end < ptCurrentPos)
+                            break;
+
+                        *pptFoundPos = ptCurrentPos;
+                        return true;
+                    }
+                }
+
+                //	Go further, text was not found
+                ptCurrentPos.x = 0;
+                ptCurrentPos.y++;
+            }
+
+            //	End of text reached
+            if (!bWrapSearch)
+                return false;
+
+            //	Start from the beginning
+            bWrapSearch = false;
+            ptCurrentPos = selection._start;
+        }
+    }
+
+    assert(false);		// Unreachable
+    return false;
 }
 
 bool document::view_tabs() const
@@ -778,17 +904,6 @@ text_location document::WordToLeft(text_location pt) const
     return pt;
 }
 
-void document::SelectAll()
-{
-    int line_count = _lines.size();
-    m_ptCursorPos.x = _lines[line_count - 1].size();
-    m_ptCursorPos.y = line_count - 1;
-    select(text_selection(text_location(0, 0), m_ptCursorPos));
-    _view.update_caret();
-}
-
-
-
 void document::Copy()
 {
     if (_selection._start == _selection._end)
@@ -1033,59 +1148,6 @@ void document::OnEditUntab()
             }
         }
     }
-}
-
-void document::OnEditReplace()
-{
-    //if (! QueryEditable())
-    //	return;
-
-    //CWinApp *pApp = AfxGetApp();
-    //assert(pApp != nullptr);
-
-    //CEditReplaceDlg dlg(this);
-
-    ////	Take search parameters from registry
-    //dlg.m_bMatchCase = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_MATCH_CASE, false);
-    //dlg.m_bWholeWord = pApp->GetProfileInt(REG_REPLACE_SUBKEY, REG_WHOLE_WORD, false);
-    //dlg.m_sText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_FIND_WHAT, _T(""));
-    //dlg.m_sNewText = pApp->GetProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, _T(""));
-
-    //if (has_selection())
-    //{
-    //	selection(m_ptSavedSelStart, m_ptSavedSelEnd);
-    //	m_bSelectionPushed = true;
-
-    //	dlg.m_nScope = 0;	//	Replace in current selection
-    //	dlg.m_ptCurrentPos = m_ptSavedSelStart;
-    //	dlg.m_bEnableScopeSelection = true;
-    //	dlg.m_ptBlockBegin = m_ptSavedSelStart;
-    //	dlg.m_ptBlockEnd = m_ptSavedSelEnd;
-    //}
-    //else
-    //{
-    //	dlg.m_nScope = 1;	//	Replace in whole text
-    //	dlg.m_ptCurrentPos = cursor_pos();
-    //	dlg.m_bEnableScopeSelection = false;
-    //}
-
-    ////	Execute Replace dialog
-    //m_bShowInactiveSelection = true;
-    //dlg.DoModal();
-    //m_bShowInactiveSelection = false;
-
-    ////	Restore selection
-    //if (m_bSelectionPushed)
-    //{
-    //	select(m_ptSavedSelStart, m_ptSavedSelEnd);
-    //	m_bSelectionPushed = false;
-    //}
-
-    ////	Save search parameters to registry
-    //pApp->WriteProfileInt(REG_REPLACE_SUBKEY, REG_MATCH_CASE, dlg.m_bMatchCase);
-    //pApp->WriteProfileInt(REG_REPLACE_SUBKEY, REG_WHOLE_WORD, dlg.m_bWholeWord);
-    //pApp->WriteProfileString(REG_REPLACE_SUBKEY, REG_FIND_WHAT, dlg.m_sText);
-    //pApp->WriteProfileString(REG_REPLACE_SUBKEY, REG_REPLACE_WITH, dlg.m_sNewText);
 }
 
 void document::OnEditUndo()
@@ -1692,6 +1754,13 @@ text_location document::redo()
 	return result;
 }
 
+void document::record_undo(const undo_item &ui)
+{
+    _undo.erase(_undo.begin() + m_nUndoPosition, _undo.end());
+    _undo.push_back(ui);
+    m_nUndoPosition = _undo.size();
+}
+
 text_selection document::replace_text(undo_group &ug, const text_selection &selection, const std::wstring &text)
 {
     text_selection result;
@@ -1806,8 +1875,11 @@ text_location document::delete_text(const text_selection &selection)
 		}
 		else
 		{
-			_lines[selection._start.y]._text.erase(_lines[selection._start.y]._text.begin() + selection._start.x, _lines[selection._start.y]._text.end());
-			_lines[selection._start.y]._text.append(_lines[selection._end.y]._text.begin() + selection._end.x, _lines[selection._end.y]._text.end());
+            auto &line_start = _lines[selection._start.y];
+            auto &line_end = _lines[selection._end.y];
+
+            line_start._text.erase(line_start._text.begin() + selection._start.x, line_start._text.end());
+            line_start._text.append(line_end._text.begin() + selection._end.x, line_end._text.end());
 
 			if (selection._start.y + 1 < selection._end.y + 1)
 			{
@@ -1869,182 +1941,5 @@ text_location document::delete_text(const text_location &location)
 
 
 
-static wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
-{
-	auto s = s1;
-	auto p = s2;
-
-	do
-	{
-		if (!*p) return (wchar_t*) s1;
-		if ((*p == *s) || (towlower(*p) == towlower(*s)))
-		{
-			++p;
-			++s;
-		}
-		else
-		{
-			p = s2;
-			if (!*s) return nullptr;
-			s = ++s1;
-		}
-
-	} while (1);
-
-	return nullptr;
-}
 
 
-static int FindStringHelper(const wchar_t * pszFindWhere, const wchar_t * pszFindWhat, bool bWholeWord)
-{
-	assert(pszFindWhere != nullptr);
-	assert(pszFindWhat != nullptr);
-
-	auto nCur = 0;
-	auto nLength = wcslen(pszFindWhat);
-
-	for (;;)
-	{
-		auto pszPos = wcsistr(pszFindWhere, pszFindWhat);
-
-		if (pszPos == nullptr)
-		{
-			return -1;
-		}
-
-		if (!bWholeWord)
-		{
-			return nCur + (pszPos - pszFindWhere);
-		}
-
-		if (pszPos > pszFindWhere && (iswalnum(pszPos[-1]) || pszPos[-1] == _T('_')))
-		{
-			nCur += (pszPos - pszFindWhere);
-			pszFindWhere = pszPos + 1;
-			continue;
-		}
-
-		if (iswalnum(pszPos[nLength]) || pszPos[nLength] == _T('_'))
-		{
-			nCur += (pszPos - pszFindWhere + 1);
-			pszFindWhere = pszPos + 1;
-			continue;
-		}
-
-		return nCur + (pszPos - pszFindWhere);
-	}
-
-	assert(false);		// Unreachable
-	return -1;
-}
-
-bool document::Find(const std::wstring &text, const text_location &ptStartPos, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos)
-{
-	int line_count = _lines.size();
-
-	return FindInBlock(text, ptStartPos, text_location(0, 0), text_location(_lines[line_count - 1]._text.size(), line_count - 1), dwFlags, bWrapSearch, pptFoundPos);
-}
-
-bool document::FindInBlock(const std::wstring &what, const text_location &ptStartPosition, const text_location &ptBlockBegin, const text_location &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos)
-{
-	text_location ptCurrentPos = ptStartPosition;
-
-	assert(ptBlockBegin < ptBlockEnd);
-
-	if (ptBlockBegin == ptBlockEnd)
-		return false;
-
-	if (ptCurrentPos < ptBlockBegin)
-	{
-		ptCurrentPos = ptBlockBegin;
-	}
-
-	auto matchCase = (dwFlags & FIND_MATCH_CASE) != 0;
-	auto wholeWord = (dwFlags & FIND_WHOLE_WORD) != 0;
-
-	if (dwFlags & FIND_DIRECTION_UP)
-	{
-		//	Let's check if we deal with whole text.
-		//	At this point, we cannot search *up* in selection
-		//	Proceed as if we have whole text search.
-
-		for (;;)
-		{
-			if (ptCurrentPos.x == 0)
-			{
-				ptCurrentPos.y--;
-			}
-
-			while (ptCurrentPos.y >= 0)
-			{
-				const auto &line = _lines[ptCurrentPos.y];
-				const auto nLineLength = line._text.size() - ptCurrentPos.x;
-
-				if (nLineLength > 0)
-				{
-					auto nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
-
-					if (nPos >= 0)		//	Found text!
-					{
-						ptCurrentPos.x += nPos;
-						*pptFoundPos = ptCurrentPos;
-						return true;
-					}
-				}
-
-				ptCurrentPos.x = 0;
-				ptCurrentPos.y--;
-			}
-
-			//	Beginning of text reached
-			if (!bWrapSearch)
-				return false;
-
-			//	Start again from the end of text
-			bWrapSearch = false;
-			ptCurrentPos = text_location(0, _lines.size() - 1);
-		}
-	}
-	else
-	{
-		for (;;)
-		{
-			while (ptCurrentPos.y <= ptBlockEnd.y)
-			{
-				const auto &line = _lines[ptCurrentPos.y];
-				const auto nLineLength = line._text.size() - ptCurrentPos.x;
-
-				if (nLineLength > 0)
-				{
-					int nPos = ::FindStringHelper(line._text.c_str() + ptCurrentPos.x, what.c_str(), wholeWord);
-
-					if (nPos >= 0)
-					{
-						ptCurrentPos.x += nPos;
-						//	Check of the text found is outside the block.
-						if (ptCurrentPos.y == ptBlockEnd.y && ptCurrentPos.x >= ptBlockEnd.x)
-							break;
-
-						*pptFoundPos = ptCurrentPos;
-						return true;
-					}
-				}
-
-				//	Go further, text was not found
-				ptCurrentPos.x = 0;
-				ptCurrentPos.y++;
-			}
-
-			//	End of text reached
-			if (!bWrapSearch)
-				return false;
-
-			//	Start from the beginning
-			bWrapSearch = false;
-			ptCurrentPos = ptBlockBegin;
-		}
-	}
-
-	assert(false);		// Unreachable
-	return false;
-}

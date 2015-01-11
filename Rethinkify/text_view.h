@@ -337,10 +337,10 @@ public:
         switch (id)
         {
         case ID_EDIT_COPY: _doc.Copy(); break;
-        case ID_EDIT_SELECT_ALL: _doc.SelectAll(); break;
-            //case ID_EDIT_FIND: OnEditFind(); break;
-        case ID_EDIT_REPEAT: _doc.OnEditRepeat(); break;
-        case ID_EDIT_FIND_PREVIOUS: _doc.OnEditFindPrevious(); break;
+        case ID_EDIT_SELECT_ALL: _doc.select(_doc.all()); break;
+        //case ID_EDIT_FIND: _doc.find(); break;
+        case ID_EDIT_REPEAT: _doc.find_next(); break;
+        case ID_EDIT_FIND_PREVIOUS: _doc.find_previous(); break;
         case ID_EDIT_CHAR_LEFT: _doc.MoveLeft(false); break;
         case ID_EDIT_EXT_CHAR_LEFT: _doc.MoveLeft(true); break;
         case ID_EDIT_CHAR_RIGHT: _doc.MoveRight(false); break;
@@ -373,7 +373,7 @@ public:
         case ID_EDIT_DELETE_BACK: _doc.OnEditDeleteBack(); break;
         case ID_EDIT_UNTAB: _doc.OnEditUntab(); break;
         case ID_EDIT_TAB: _doc.OnEditTab(); break;
-        case ID_EDIT_REPLACE: _doc.OnEditReplace(); break;
+        //case ID_EDIT_REPLACE: _doc.OnEditReplace(); break;
         case ID_EDIT_UNDO: _doc.OnEditUndo(); break;
         case ID_EDIT_REDO: _doc.OnEditRedo(); break;
         }
@@ -487,7 +487,7 @@ public:
         {
             if (bControl)
             {
-                _doc.SelectAll();
+                _doc.select(_doc.all());
             }
             else
             {
@@ -1459,7 +1459,7 @@ public:
     {
         if (nCount > 0)
         {
-            if (m_bFocused || _doc.ShowInactiveSelection())
+            if (m_bFocused)
             {
                 auto sel = _doc.selection();
                 int nSelBegin = 0, nSelEnd = 0;
@@ -1529,7 +1529,7 @@ public:
             {
                 //	Draw the empty line
                 CRect rect = rc;
-                if ((m_bFocused || _doc.ShowInactiveSelection()) && _doc.is_inside_selection(text_location(0, lineIndex)))
+                if (m_bFocused && _doc.is_inside_selection(text_location(0, lineIndex)))
                 {
                     FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                     rect.left += _font_extent.cx;
@@ -1594,7 +1594,7 @@ public:
 
                 if (frect.right > frect.left)
                 {
-                    if ((m_bFocused || _doc.ShowInactiveSelection()) && _doc.is_inside_selection(text_location(nLength, lineIndex)))
+                    if (m_bFocused && _doc.is_inside_selection(text_location(nLength, lineIndex)))
                     {
                         FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                         frect.left += _font_extent.cx;

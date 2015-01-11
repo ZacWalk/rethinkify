@@ -170,24 +170,24 @@ public:
 
 	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
-        _doc.Find(Text(), 0);
+        _doc.find(Text(), 0);
 		return 0;
 	}
 
 	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.Find(Text(), FIND_DIRECTION_UP);
+        _doc.find(Text(), FIND_DIRECTION_UP);
 		return 0;
 	}
 
 	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.Find(Text(), 0);
+        _doc.find(Text(), 0);
 		return 0;
 	}
 };
 
-class main_frame : public CWindowImpl<main_frame>
+class mainmf : public CWindowImpl<mainmf>
 {
 public:
 
@@ -195,11 +195,11 @@ public:
 	document _doc;	
 	find_wnd _find;
 
-    main_frame() : _view(_doc), _find(_doc), _doc(_view)
+    mainmf() : _view(_doc), _find(_doc), _doc(_view)
 	{
 	}
 
-	BEGIN_MSG_MAP(main_frame)
+	BEGIN_MSG_MAP(mainmf)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
         MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
         MESSAGE_HANDLER(WM_PAINT, OnPaint)
@@ -306,7 +306,7 @@ public:
 
 	LRESULT OnRunTests(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.SelectAll();
+        _doc.select(_doc.all());
         
         undo_group ug(_doc);
         auto pos = _doc.delete_text(ug, _doc.selection());
@@ -414,10 +414,10 @@ public:
             {
             case ID_EDIT_COPY: enable = _doc.has_selection(); break;
             case ID_EDIT_CUT: enable = _doc.has_selection(); break;
-            case ID_EDIT_FIND_PREVIOUS: enable = _doc.CanFindNext(); break;
+            case ID_EDIT_FIND_PREVIOUS: enable = _doc.can_find_next(); break;
             case ID_EDIT_PASTE: enable = _doc.CanPaste(); break;
             case ID_EDIT_REDO: enable = _doc.can_redo(); break;
-            case ID_EDIT_REPEAT: enable = _doc.CanFindNext(); break;
+            case ID_EDIT_REPEAT: enable = _doc.can_find_next(); break;
             case ID_EDIT_SELECT_ALL: enable = true; break;
             case ID_EDIT_UNDO: enable = _doc.can_undo(); break;
             }
@@ -547,39 +547,39 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 
     OleInitialize(nullptr);
 
-	main_frame _frame;
-    _frame.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);
-	_frame.SetMenu(LoadMenu(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY)));
+	mainmf mf;
+    mf.Create(nullptr, nullptr, g_szAppName, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);
+	mf.SetMenu(LoadMenu(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY)));
 
 	auto icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_RETHINKIFY));
-	_frame.SetIcon(icon, true);
-	_frame.SetIcon(icon, false);
-	_frame.ShowWindow(SW_SHOW);
+	mf.SetIcon(icon, true);
+	mf.SetIcon(icon, false);
+	mf.ShowWindow(SW_SHOW);
 
 	int argCount;
 	auto args = CommandLineToArgvW(GetCommandLine(), &argCount);
 
 	if (argCount > 1)
 	{
-		_frame.Load(UnQuote(args[1]));
+		mf.Load(UnQuote(args[1]));
 	}
 
-	auto hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY));
+	auto accelerators = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_RETHINKIFY));
 	MSG msg;
 
 	while (GetMessage(&msg, nullptr, 0, 0))
 	{
-		auto findFocused = _frame._find.IsChild(GetFocus());
+		auto findFocused = mf._find.IsChild(GetFocus());
 
 		if (findFocused && msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE)
 		{
-			_frame._find.ShowWindow(SW_HIDE);
+			mf._find.ShowWindow(SW_HIDE);
 		}
 		else
 		{
 			auto dontTranslate = findFocused && IsNeededByDialog(msg);
 
-			if (dontTranslate || !TranslateAccelerator(_frame, hAccelTable, &msg))
+			if (dontTranslate || !TranslateAccelerator(mf, accelerators, &msg))
 			{
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);

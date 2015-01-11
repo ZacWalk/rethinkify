@@ -56,6 +56,31 @@ inline std::wstring UnQuote(const std::wstring &text)
 	return text;
 }
 
+static inline wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
+{
+    auto s = s1;
+    auto p = s2;
+
+    do
+    {
+        if (!*p) return (wchar_t*) s1;
+        if ((*p == *s) || (towlower(*p) == towlower(*s)))
+        {
+            ++p;
+            ++s;
+        }
+        else
+        {
+            p = s2;
+            if (!*s) return nullptr;
+            s = ++s1;
+        }
+
+    } while (1);
+
+    return nullptr;
+}
+
 static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *endl = L"\n")
 {
 	if (lines.size() == 1)

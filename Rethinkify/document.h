@@ -200,24 +200,21 @@ private:
 
     IView &_view;
 
-    DWORD m_dwLastSearchFlags = 0;
+    
     text_location m_ptAnchor;
     text_location m_ptCursorPos;
     text_selection _selection;
     text_selection m_ptSavedSel;
     bool m_bAutoIndent = false;
-    bool m_bLastSearch = false;
-    bool m_bMultipleSearch = false;
-    bool m_bSelectionPushed = false;
-    bool m_bShowInactiveSelection = false;
     bool m_bViewTabs = false;
     int m_nIdealCharPos = 0;
     int m_tabSize = 4;
     mutable int m_nMaxLineLength = -1;
-    
+
     std::wstring _path;
-    std::wstring _lastFindWhat;
-    std::shared_ptr<IHighlight> _highlight;   
+    DWORD _find_flags = 0;
+    std::wstring _find_text;
+    std::shared_ptr<IHighlight> _highlight;
 
 private:
 
@@ -385,30 +382,29 @@ public:
     bool can_redo() const;
     text_location undo();
     text_location redo();
+    void record_undo(const undo_item &ui);
 
-    bool Find(const std::wstring &text, const text_location &ptStartPos, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos);
-    bool FindInBlock(const std::wstring &text, const text_location &ptStartPos, const text_location &ptBlockBegin, const text_location &ptBlockEnd, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos);
-    
+    bool find(const std::wstring &text, const text_location &ptStartPos, const text_selection &selection, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos);
+    void find(const std::wstring &text, DWORD flags);
+    void find_next();
+    void find_previous();
+    bool can_find_next() const { return !_find_text.empty(); };
+
     void HighlightFromExtension(const wchar_t *ext);
 
     bool CanPaste();
-    bool CanFindNext() const { return m_bLastSearch; };
+    
     bool has_selection() const { return !_selection.empty(); };
     bool GetAutoIndent() const;
     bool GetOverwriteMode() const;
     bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message);
     bool QueryEditable();
-    
+
     void Cut();
     void Copy();
     void OnEditDelete();
-    void OnEditDeleteBack();
-    //void OnEditFind() { Find(_lastFindWhat); };
-    void Find(const std::wstring &text, DWORD flags);
-    void OnEditFindPrevious();
-    void OnEditRedo();
-    void OnEditRepeat();
-    void OnEditReplace();
+    void OnEditDeleteBack();    
+    void OnEditRedo();    
     void OnEditTab();
     void OnEditUndo();
     void OnEditUntab();
@@ -429,7 +425,17 @@ public:
 
     bool is_inside_selection(const text_location &loc) const;
     void reset();
-    void SelectAll();
+
+    text_location end() const
+    {
+        auto last_line = _lines.size() - 1;
+        return text_location(_lines[last_line].size(), last_line);
+    }
+
+    text_selection all() const
+    {  
+        return text_selection(text_location(0, 0), end());
+    }
     
     int tab_size() const { return m_tabSize; };
     void tab_size(int nTabSize);
@@ -443,7 +449,6 @@ public:
 
     bool view_tabs() const;
     bool HighlightText(const text_location &ptStartPos, int nLength);
-    bool ShowInactiveSelection() const { return m_bShowInactiveSelection; };
 
     int calc_offset(int lineIndex, int nCharIndex) const;
     int calc_offset_approx(int lineIndex, int nOffset) const;
@@ -567,19 +572,18 @@ public:
 
 class undo_group
 {
-    document &_buffer;
+    document &_doc;
     document::undo_item _undo;
 
 public:
 
-    undo_group(document &buffer) : _buffer(buffer)
+    undo_group(document &d) : _doc(d)
     {
     }
 
     ~undo_group()
     {
-        _buffer._undo.push_back(_undo);
-        _buffer.m_nUndoPosition = _buffer._undo.size();
+        _doc.record_undo(_undo);
     }
 
     void insert(const text_location &location, const wchar_t &c)
