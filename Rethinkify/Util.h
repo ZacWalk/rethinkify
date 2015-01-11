@@ -81,6 +81,12 @@ static inline wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
     return nullptr;
 }
 
+static inline const std::wstring &first_line_text(const std::vector<std::wstring> &lines)
+{
+    static std::wstring empty;
+    return lines.empty() ? empty : lines.front();
+}
+
 static inline std::wstring Combine(const std::vector<std::wstring> &lines, const wchar_t *endl = L"\n")
 {
 	if (lines.size() == 1)

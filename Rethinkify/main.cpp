@@ -57,8 +57,6 @@ public:
 
 	const int editId = 101;
 	const int tbId = 102;
-	const int nextId = 103;
-	const int lastId = 104;
 
     document &_doc;
 	CWindow _findText;
@@ -74,8 +72,8 @@ public:
 		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
 		//MESSAGE_HANDLER(WM_PAINT, OnPaint)
 
-		COMMAND_ID_HANDLER(nextId, OnNext)
-		COMMAND_ID_HANDLER(lastId, OnLast)
+        COMMAND_ID_HANDLER(ID_EDIT_FIND_NEXT, OnNext)
+        COMMAND_ID_HANDLER(ID_EDIT_FIND_PREVIOUS, OnPrevious)
 
 		COMMAND_HANDLER(editId, EN_CHANGE, OnEditChange)
 
@@ -90,7 +88,7 @@ public:
 
 		auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN | CCS_NODIVIDER | CCS_ADJUSTABLE;
 		
-		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, nextId);
+		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, 1);
 		_findNext.SetFont(font);
 
 		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
@@ -108,8 +106,8 @@ public:
 
 		TBBUTTON tbButtons[numButtons] =
 		{
-			{ 0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
-			{ 1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
+            { 0, ID_EDIT_FIND_PREVIOUS, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
+            { 1, ID_EDIT_FIND_NEXT, TBSTATE_ENABLED, BTNS_AUTOSIZE, { 0 }, 0, 0 },
 		};
 		_findNext.SendMessage(TB_ADDBUTTONS, numButtons, (LPARAM) tbButtons);
 		_findNext.SendMessage(TB_AUTOSIZE, 0, 0);
@@ -160,7 +158,7 @@ public:
 		return 0;
 	}
 
-	std::wstring Text()
+	std::wstring text()
 	{
 		const int bufferSize = 200;
 		wchar_t text[bufferSize];
@@ -168,21 +166,26 @@ public:
 		return text;
 	}
 
+    void text(const std::wstring &text)
+    {
+        _findText.SetWindowText(text.c_str());
+    }
+
 	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
-        _doc.find(Text(), 0);
+        _doc.find_next(text());
 		return 0;
 	}
 
-	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+    LRESULT OnPrevious(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.find(Text(), FIND_DIRECTION_UP);
+        _doc.find_previous(text());
 		return 0;
 	}
 
 	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-        _doc.find(Text(), 0);
+        _doc.find_next(text());
 		return 0;
 	}
 };
@@ -370,7 +373,20 @@ public:
 	{
 		bool isVisible = _find.IsWindowVisible() != 0;
 		_find.ShowWindow(isVisible ? SW_HIDE : SW_SHOW);
-		if (!isVisible) _find._findText.SetFocus();
+
+        if (!isVisible)
+        {
+            if (_doc.has_selection())
+            {
+                _find.text(first_line_text(_doc.text(_doc.selection())));
+            }
+
+            _find._findText.SetFocus();
+        }
+        else
+        {
+        }
+
 		return 0;
 	}
 
@@ -417,7 +433,7 @@ public:
             case ID_EDIT_FIND_PREVIOUS: enable = _doc.can_find_next(); break;
             case ID_EDIT_PASTE: enable = _doc.CanPaste(); break;
             case ID_EDIT_REDO: enable = _doc.can_redo(); break;
-            case ID_EDIT_REPEAT: enable = _doc.can_find_next(); break;
+            case ID_EDIT_FIND_NEXT: enable = _doc.can_find_next(); break;
             case ID_EDIT_SELECT_ALL: enable = true; break;
             case ID_EDIT_UNDO: enable = _doc.can_undo(); break;
             }

@@ -12,6 +12,8 @@ class text_view : public CWindowImpl<text_view>, public IDropTarget, public IVie
 {
 private:
 
+    const int RETHINKIFY_TIMER_DRAGSEL = 1001;
+
     document &_doc;
 
     volatile unsigned long m_cRef = 0;
@@ -339,7 +341,7 @@ public:
         case ID_EDIT_COPY: _doc.Copy(); break;
         case ID_EDIT_SELECT_ALL: _doc.select(_doc.all()); break;
         //case ID_EDIT_FIND: _doc.find(); break;
-        case ID_EDIT_REPEAT: _doc.find_next(); break;
+        case ID_EDIT_FIND_NEXT: _doc.find_next(); break;
         case ID_EDIT_FIND_PREVIOUS: _doc.find_previous(); break;
         case ID_EDIT_CHAR_LEFT: _doc.MoveLeft(false); break;
         case ID_EDIT_EXT_CHAR_LEFT: _doc.MoveLeft(true); break;
@@ -584,10 +586,10 @@ public:
         }
     }
 
-    DROPEFFECT GetDropEffect()
+    /*DROPEFFECT GetDropEffect()
     {
         return DROPEFFECT_COPY | DROPEFFECT_MOVE;
-    }
+    }*/
 
     void OnLButtonUp(const CPoint &point, UINT nFlags)
     {
@@ -922,8 +924,11 @@ public:
         return DropData(pDataObj, pt) ? S_OK : S_FALSE;
     }
 
-    DROPEFFECT OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point)
+    /*DROPEFFECT OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point)
     {
+        const auto DRAG_BORDER_X = 5;
+        const auto DRAG_BORDER_Y = 5;
+
         assert(m_hWnd == wnd.m_hWnd);
 
         auto rcClientRect = client_rect();
@@ -956,7 +961,7 @@ public:
         if (dwKeyState & MK_CONTROL)
             return DROPEFFECT_COPY;
         return DROPEFFECT_MOVE;
-    }
+    }*/
 
     void ScrollUp()
     {
@@ -1459,53 +1464,46 @@ public:
     {
         if (nCount > 0)
         {
-            if (m_bFocused)
+            auto sel = _doc.selection();
+            int nSelBegin = 0, nSelEnd = 0;
+
+            if (sel._start.y > ptTextPos.y)
             {
-                auto sel = _doc.selection();
-                int nSelBegin = 0, nSelEnd = 0;
-
-                if (sel._start.y > ptTextPos.y)
-                {
-                    nSelBegin = nCount;
-                }
-                else if (sel._start.y == ptTextPos.y)
-                {
-                    nSelBegin = Clamp(sel._start.x - ptTextPos.x, 0, nCount);
-                }
-                if (sel._end.y > ptTextPos.y)
-                {
-                    nSelEnd = nCount;
-                }
-                else if (sel._end.y == ptTextPos.y)
-                {
-                    nSelEnd = Clamp(sel._end.x - ptTextPos.x, 0, nCount);
-                }
-
-                assert(nSelBegin >= 0 && nSelBegin <= nCount);
-                assert(nSelEnd >= 0 && nSelEnd <= nCount);
-                assert(nSelBegin <= nSelEnd);
-
-                //	Draw part of the text before selection
-                if (nSelBegin > 0)
-                {
-                    draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nSelBegin);
-                }
-                if (nSelBegin < nSelEnd)
-                {
-                    auto crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
-                    auto crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
-                    draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
-                    SetBkColor(pdc, crOldBk);
-                    SetTextColor(pdc, crOldText);
-                }
-                if (nSelEnd < nCount)
-                {
-                    draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelEnd, nCount - nSelEnd);
-                }
+                nSelBegin = nCount;
             }
-            else
+            else if (sel._start.y == ptTextPos.y)
             {
-                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nCount);
+                nSelBegin = Clamp(sel._start.x - ptTextPos.x, 0, nCount);
+            }
+            if (sel._end.y > ptTextPos.y)
+            {
+                nSelEnd = nCount;
+            }
+            else if (sel._end.y == ptTextPos.y)
+            {
+                nSelEnd = Clamp(sel._end.x - ptTextPos.x, 0, nCount);
+            }
+
+            assert(nSelBegin >= 0 && nSelBegin <= nCount);
+            assert(nSelEnd >= 0 && nSelEnd <= nCount);
+            assert(nSelBegin <= nSelEnd);
+
+            //	Draw part of the text before selection
+            if (nSelBegin > 0)
+            {
+                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nSelBegin);
+            }
+            if (nSelBegin < nSelEnd)
+            {
+                auto crOldBk = SetBkColor(pdc, GetColor(IHighlight::COLORINDEX_SELBKGND));
+                auto crOldText = SetTextColor(pdc, GetColor(IHighlight::COLORINDEX_SELTEXT));
+                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
+                SetBkColor(pdc, crOldBk);
+                SetTextColor(pdc, crOldText);
+            }
+            if (nSelEnd < nCount)
+            {
+                draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelEnd, nCount - nSelEnd);
             }
         }
     }
@@ -1527,9 +1525,9 @@ public:
 
             if (line.empty())
             {
-                //	Draw the empty line
                 CRect rect = rc;
-                if (m_bFocused && _doc.is_inside_selection(text_location(0, lineIndex)))
+                
+                if (_doc.is_inside_selection(text_location(0, lineIndex)))
                 {
                     FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                     rect.left += _font_extent.cx;
@@ -1594,13 +1592,16 @@ public:
 
                 if (frect.right > frect.left)
                 {
-                    if (m_bFocused && _doc.is_inside_selection(text_location(nLength, lineIndex)))
+                    if (_doc.is_inside_selection(text_location(nLength, lineIndex)))
                     {
                         FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                         frect.left += _font_extent.cx;
                     }
+
                     if (frect.right > frect.left)
+                    {
                         FillSolidRect(hdc, frect, bDrawWhitespace ? crBkgnd : GetColor(IHighlight::COLORINDEX_WHITESPACE));
+                    }
                 }
 
                 _freea(pBuf);

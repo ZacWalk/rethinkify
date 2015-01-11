@@ -9,17 +9,9 @@ class text_view;
 class document_line;
 class text_location;
 
-typedef DWORD DROPEFFECT;
-typedef int POSITION;
-
-const int RETHINKIFY_TIMER_DRAGSEL = 1001;
 const auto invalid = -1;
-
 const auto TAB_CHARACTER = 0xBB;
 const auto SPACE_CHARACTER = 0x95;
-const auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
-const auto DRAG_BORDER_X = 5;
-const auto DRAG_BORDER_Y = 5;
 
 class IHighlight
 {
@@ -108,8 +100,6 @@ enum
 {
     FIND_MATCH_CASE = 0x0001,
     FIND_WHOLE_WORD = 0x0002,
-    FIND_DIRECTION_UP = 0x0010,
-    REPLACE_SELECTION = 0x0100
 };
 
 class text_location
@@ -384,9 +374,12 @@ public:
     text_location redo();
     void record_undo(const undo_item &ui);
 
-    bool find(const std::wstring &text, const text_location &ptStartPos, const text_selection &selection, DWORD dwFlags, bool bWrapSearch, text_location *pptFoundPos);
-    void find(const std::wstring &text, DWORD flags);
+    text_selection find_next(const std::wstring &text, text_location loc, const text_selection &selection, DWORD dwFlags, bool wrap_search) const;
+    text_selection find_previous(const std::wstring &text, text_location loc, const text_selection &selection, DWORD dwFlags, bool wrap_search) const;
+
+    void find_next(const std::wstring &text, DWORD flags = 0);
     void find_next();
+    void find_previous(const std::wstring &text, DWORD flags = 0);
     void find_previous();
     bool can_find_next() const { return !_find_text.empty(); };
 
@@ -507,24 +500,19 @@ public:
         }
     }
 
+    text_selection line_selection(int first_line, int last_line) const
+    {
+        auto limit = _lines.size() - 1;
+
+        first_line = Clamp(first_line, 0, limit);
+        last_line = Clamp(last_line, 0, limit);
+
+        return text_selection(0, Clamp(first_line, 0, limit), _lines[last_line].size(), last_line);
+    }
+
     text_selection line_selection(const text_location &pos, bool from_anchor) const
     {
-        auto ptStart = from_anchor ? m_ptAnchor : pos;
-        auto ptEnd = pos;
-
-        ptEnd.x = 0;				//	Force beginning of the line
-
-        if (ptStart.y >= _lines.size())
-        {
-            ptStart.x = _lines[ptStart.y].size();
-        }
-        else
-        {
-            ptStart.y++;
-            ptStart.x = 0;
-        }
-
-        return text_selection(ptStart, ptEnd);
+        return line_selection(from_anchor ? m_ptAnchor.y : pos.y, pos.y);
     }
 
     text_selection pos_selection(const text_location &pos, bool from_anchor) const
