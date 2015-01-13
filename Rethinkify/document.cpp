@@ -1263,12 +1263,12 @@ static Encoding detect_encoding(const unsigned char *header, size_t filesize, in
 
     if (header[0] == 0 && header[1] != 0 && header[2] == 0 && header[3] != 0)
     {
-        return NCP_UTF16;
+        return NCP_UTF16BE;
     }
 
     if (header[0] != 0 && header[1] == 0 && header[2] != 0 && header[3] == 0)
     {
-        return NCP_UTF16BE;
+        return NCP_UTF16;
     }
 
     return NCP_ASCII;
@@ -1426,7 +1426,7 @@ bool document::LoadFromFile(const std::wstring &path)
                 {
                     wchar_t c = buffer16[bufferPos];
 
-                    if (encoding == NCP_UTF16)
+                    if (encoding == NCP_UTF16BE)
                     {
                         c = _byteswap_ushort(c);
                     }
