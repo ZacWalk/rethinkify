@@ -1431,15 +1431,15 @@ bool document::LoadFromFile(const std::wstring &path)
                         c = _byteswap_ushort(c);
                     }
 
-                    if (c != 0x0A && c != 0x0D)
-                    {
-                        line += c;
-                    }
-
-                    if (c == 0x0D)
+                    if ((last_char == 0x0A && c == 0x0D) || (last_char == 0x0A && c != 0x0D))
                     {
                         append_line(line);
                         line.clear();
+                    }
+
+                    if (c != 0x0A && c != 0x0D)
+                    {
+                        line += (char) c;
                     }
 
                     bufferPos++;
@@ -1456,6 +1456,8 @@ bool document::LoadFromFile(const std::wstring &path)
                             readLen = 0;
                         }
                     }
+
+                    last_char = c;
                 }
 
                 append_line(line);
