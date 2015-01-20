@@ -108,7 +108,7 @@ public:
     int x;
     int y;
 
-    text_location(int xx = 0, int yy = 0) { x = xx; y = yy; }
+    explicit text_location(int xx = 0, int yy = 0) { x = xx; y = yy; }
 
     bool operator==(const text_location &other) const { return x == other.x && y == other.y; }
     bool operator!=(const text_location &other) const { return x != other.x || y != other.y; }
@@ -117,6 +117,8 @@ public:
     {
         return y < other.y || (y == other.y && x < other.x);
     }
+
+    static const text_location null;
 };
 
 class text_selection
@@ -155,6 +157,7 @@ public:
     }
 };
 
+
 class document_line
 {
 public:
@@ -168,6 +171,7 @@ public:
     document_line() { };
     document_line(const std::wstring &line) : _flags(0), _text(line) { };
     document_line(const document_line &other) : _flags(other._flags), _text(other._text) {};
+    document_line(document_line && other) : _flags(other._flags), _text(std::move(other._text)) {};
 
     const document_line& operator=(const document_line &other)
     {
@@ -180,6 +184,134 @@ public:
     size_t size() const { return _text.size(); };
     const wchar_t *c_str() const { return _text.c_str(); };
     const wchar_t &operator[](int n) const { return _text[n]; };
+
+    enum line_type {
+        LineEmpty = 0x001,		//empty line (whitespace or nothing)
+        LineLabel = 0x002,		//ends with colon
+        LineCase = 0x004,		//case
+        LineAccess = 0x008,		//public/private
+        LineBraceOpen = 0x010,		//line with opening brace
+        LineBraceClose = 0x020,		//line with closing brace
+        LineClosed = 0x040,		//Regular line (semicolon)
+        LineOpen = 0x080,		//unfinished line (also for single-line if/else/while/for)
+        LinePreprocessor = 0x100,		//preprocessor directive (starts with '#'), act like label
+        LineComment = 0x200,		//single line comments
+        LineMask = 0x3FF,		//All LineTypes
+    };
+
+    enum line_flags {
+        FlagNone = 0x01,	//No special flags for the line
+        FlagBraceSingle = 0x02,	//The line only contains a brace		//These two are
+        FlagBraceText = 0x04,	//The line contains a brace and text	//mutex!
+        FlagMask = 0x07	//All LineFlags
+    };
+
+    static inline bool is_text(const wchar_t ch)
+    {
+        return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_';
+    }
+
+    static inline bool is_whitespace(const wchar_t ch)
+    {
+        return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+    }
+
+    line_type calc_line_type() const 
+    {
+        /*
+        LineEmpty,			//empty line (whitespace or nothing)
+        LineLabel,			//ends with colon
+        LineBraceOpen,		//line with opening brace
+        LineBraceClose,		//line with closing brace
+        LineClosed,			//Regular line (semicolon)
+        LineOpen			//unfinished line (similar to statement)
+        */
+        auto first = _text.find_first_not_of(L" \t\r\n");
+        auto len = _text.size();
+
+        if (_text.empty() || first == std::string::npos)
+            return LineEmpty;
+
+        if (_text[first] == '#')
+        {
+            return LinePreprocessor;
+        }
+        else if (first < (len - 1) && _text[first] == '/' && _text[first + 1] == '/')	// '//' comment line
+        {
+            return LineComment;
+        }
+
+        auto last = _text.find_last_not_of(L" \t\r\n");
+
+        //Trailing whitespace stripped, so can look at end of _text
+        switch (_text[last]) {
+        case ':': 
+        {
+            const int max_word_len = 64;
+            wchar_t word[max_word_len + 1];
+
+            auto i = first;
+            auto j = 0;
+            auto c = _text[i++];
+
+            while (j < max_word_len && i < last && is_text(c)) 
+            {
+                if (is_text(c))
+                {
+                    word[j++] = c;
+                }
+                
+                c = _text[i++];
+            }
+
+            word[j] = 0;
+
+            static std::map<const wchar_t *, line_type, ltstr> keywords;
+
+            if (keywords.empty())
+            {
+                keywords[L"case"] = LineCase;
+                keywords[L"default"] = LineCase;
+                keywords[L"public"] = LineAccess;
+                keywords[L"private"] = LineAccess;
+                keywords[L"protected"] = LineAccess;
+            }
+
+            auto found = keywords.find(word);
+            return found != keywords.end() ? found->second : LineLabel;
+        }
+        case '{':
+            return LineBraceOpen;
+        case '}':
+            return LineBraceClose;
+        case ';':
+            return LineClosed;
+        default:
+            return LineOpen;
+        }
+    }
+
+    line_flags calc_line_flags(const line_type &current_line_type)
+    {
+        auto first = _text.find_first_not_of(L" \t\r\n");
+        auto len = _text.size();
+
+        if (_text.empty() || first == std::string::npos)
+            return FlagNone;
+
+        if (current_line_type == LineBraceOpen || current_line_type == LineBraceClose)
+        {
+            if (_text[first] != '{' && _text[first] != '}')
+            {
+                return FlagBraceText;
+            }
+            else 
+            {
+                return FlagBraceSingle;
+            }
+        }
+        return FlagNone;
+    }
 };
 
 
@@ -419,6 +551,49 @@ public:
     bool is_inside_selection(const text_location &loc) const;
     void reset();
 
+    wchar_t char_at(const text_location &loc) const
+    {
+        return _lines[loc.y][loc.x];
+    }
+
+    text_location next(const text_location &loc, bool forward = true) const
+    {
+        auto last_line = _lines.size() - 1;
+        auto result = text_location::null;
+
+        if (loc.y >= 0 && loc.y <= last_line)
+        {
+            if (forward)
+            {
+                if (loc.x < _lines[last_line].size())
+                {
+                    result.x = loc.x + 1;
+                    result.y = loc.y;
+                }
+                else if (loc.y < last_line)
+                {
+                    result.x = 0;
+                    result.y = loc.y + 1;
+                }
+            }
+            else
+            {
+                if (loc.x > 0)
+                {
+                    result.x = loc.x - 1;
+                    result.y = loc.y;
+                }
+                else if (loc.y > 0)
+                {                    
+                    result.y = loc.y - 1;
+                    result.x = _lines[result.y].size();
+                }
+            }
+        }
+        
+        return result;
+    }
+
     text_location end() const
     {
         auto last_line = _lines.size() - 1;
@@ -436,16 +611,23 @@ public:
     int max_line_length() const;
     text_location WordToLeft(text_location pt) const;
     text_location WordToRight(text_location pt) const;
+    text_location match_brace(const text_location &loc) const;
+    text_location findBraceOpenLine(int y) const;
+    text_location indent_line(int y);
+    text_location indentation(int y, int size);
+    int indentation(int y) const;
     
-    DWORD highlight_cookie(int lineIndex) const;
+    DWORD highlight_cookie(int y) const;
     DWORD highlight_line(DWORD dwCookie, const document_line &line, IHighlight::TEXTBLOCK *pBuf, int &nActualItems) const;
 
     bool view_tabs() const;
     bool HighlightText(const text_location &ptStartPos, int nLength);
 
-    int calc_offset(int lineIndex, int nCharIndex) const;
-    int calc_offset_approx(int lineIndex, int nOffset) const;
-    int expanded_line_length(int lineIndex) const;
+    int calc_offset(int y, int nCharIndex) const;
+    int calc_offset_approx(int y, int nOffset) const;
+    int expanded_line_length(int y) const;
+
+
     std::wstring expanded_chars(const std::wstring &text, int nOffset, int nCount) const;
 
     const text_location &cursor_pos() const { return m_ptCursorPos; };
@@ -454,7 +636,7 @@ public:
     void anchor_pos(const text_location &ptNewAnchor);
     void cursor_pos(const text_location &ptCursorPos);
 
-    void update_max_line_length(int lineIndex) const;
+    void update_max_line_length(int y) const;
 
     void move_to(text_location pos, bool selecting)
     {

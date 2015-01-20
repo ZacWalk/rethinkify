@@ -1362,16 +1362,16 @@ public:
         RecalcHorzScrollBar();
     }
 
-    int line_offset(int lineIndex) const
+    int line_offset(int y) const
     {
         /*auto max = _doc.size();
-        auto line = Clamp(lineIndex, 0, max - 1);
+        auto line = Clamp(y, 0, max - 1);
         return _doc[line]._y;*/
 
-        return lineIndex * _font_extent.cy;
+        return y * _font_extent.cy;
     }
 
-    int line_height(int lineIndex) const
+    int line_height(int y) const
     {
         return _font_extent.cy;
     }
@@ -1508,9 +1508,9 @@ public:
         }
     }
 
-    void draw_line(HDC hdc, const CRect &rc, int lineIndex) const
+    void draw_line(HDC hdc, const CRect &rc, int y) const
     {
-        if (lineIndex == -1)
+        if (y == -1)
         {
             //	Draw line beyond the text
             FillSolidRect(hdc, rc, GetColor(IHighlight::COLORINDEX_WHITESPACE));
@@ -1521,13 +1521,13 @@ public:
             auto bDrawWhitespace = true;
             auto crBkgnd = GetColor(IHighlight::COLORINDEX_BKGND);
 
-            const auto &line = _doc[lineIndex];
+            const auto &line = _doc[y];
 
             if (line.empty())
             {
                 CRect rect = rc;
                 
-                if (_doc.is_inside_selection(text_location(0, lineIndex)))
+                if (_doc.is_inside_selection(text_location(0, y)))
                 {
                     FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                     rect.left += _font_extent.cx;
@@ -1541,7 +1541,7 @@ public:
                 auto nLength = line.size();
                 auto pBuf = (IHighlight::TEXTBLOCK *) _malloca(sizeof(IHighlight::TEXTBLOCK) * nLength * 3);
                 auto nBlocks = 0;
-                auto cookie = _doc.highlight_cookie(lineIndex - 1);
+                auto cookie = _doc.highlight_cookie(y - 1);
 
                 line._parseCookie = _doc.highlight_line(cookie, line, pBuf, nBlocks);
 
@@ -1557,7 +1557,7 @@ public:
                     assert(pBuf[0].m_nCharPos >= 0 && pBuf[0].m_nCharPos <= nLength);
 
                     SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, text_location(0, lineIndex));
+                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0].m_nCharPos, text_location(0, y));
 
                     for (int i = 0; i < nBlocks - 1; i++)
                     {
@@ -1567,7 +1567,7 @@ public:
 
                         draw_line(hdc, origin, rc, pBuf[i].m_nColorIndex, pszChars,
                             pBuf[i].m_nCharPos, pBuf[i + 1].m_nCharPos - pBuf[i].m_nCharPos,
-                            text_location(pBuf[i].m_nCharPos, lineIndex));
+                            text_location(pBuf[i].m_nCharPos, y));
                     }
 
                     assert(pBuf[nBlocks - 1].m_nCharPos >= 0 && pBuf[nBlocks - 1].m_nCharPos <= nLength);
@@ -1576,12 +1576,12 @@ public:
 
                     draw_line(hdc, origin, rc, pBuf[nBlocks - 1].m_nColorIndex, pszChars,
                         pBuf[nBlocks - 1].m_nCharPos, nLength - pBuf[nBlocks - 1].m_nCharPos,
-                        text_location(pBuf[nBlocks - 1].m_nCharPos, lineIndex));
+                        text_location(pBuf[nBlocks - 1].m_nCharPos, y));
                 }
                 else
                 {
                     SetTextColor(hdc, GetColor(IHighlight::COLORINDEX_NORMALTEXT));
-                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, lineIndex));
+                    draw_line(hdc, origin, rc, IHighlight::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, y));
                 }
 
                 //	Draw whitespaces to the left of the text
@@ -1592,7 +1592,7 @@ public:
 
                 if (frect.right > frect.left)
                 {
-                    if (_doc.is_inside_selection(text_location(nLength, lineIndex)))
+                    if (_doc.is_inside_selection(text_location(nLength, y)))
                     {
                         FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(IHighlight::COLORINDEX_SELBKGND));
                         frect.left += _font_extent.cx;
@@ -1669,7 +1669,7 @@ public:
     //}
 
 
-    void draw_margin(HDC hdc, const CRect &rect, int lineIndex) const
+    void draw_margin(HDC hdc, const CRect &rect, int y) const
     {
         FillSolidRect(hdc, rect, GetColor(m_bSelMargin ? IHighlight::COLORINDEX_SELMARGIN : IHighlight::COLORINDEX_BKGND));
     }

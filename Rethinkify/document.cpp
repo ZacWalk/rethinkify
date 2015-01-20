@@ -14,6 +14,8 @@ const TCHAR crlf [] = _T("\r\n");
 static auto s_textHighlighter = std::make_shared<TextHighight>();
 static auto s_cppHighlighter = std::make_shared<CppSyntax>();
 
+const text_location text_location::null(INT_MIN, INT_MIN);
+
 document::document(IView &view, const std::wstring &text, int nCrlfStyle) : _highlight(s_textHighlighter), _view(view)
 {
     _modified = false;
@@ -41,20 +43,20 @@ document::~document()
 {
 }
 
-DWORD document::highlight_cookie(int lineIndex) const
+DWORD document::highlight_cookie(int y) const
 {
     int line_count = _lines.size();
 
-    if (lineIndex < 0 || lineIndex >= line_count)
+    if (y < 0 || y >= line_count)
         return 0;
 
-    int i = lineIndex;
+    int i = y;
     while (i >= 0 && _lines[i]._parseCookie == invalid)
         i--;
     i++;
 
     int nBlocks;
-    while (i <= lineIndex && _lines[i]._parseCookie == invalid)
+    while (i <= y && _lines[i]._parseCookie == invalid)
     {
         auto dwCookie = 0;
 
@@ -68,7 +70,7 @@ DWORD document::highlight_cookie(int lineIndex) const
         i++;
     }
 
-    return _lines[lineIndex]._parseCookie;
+    return _lines[y]._parseCookie;
 }
 
 DWORD document::highlight_line(DWORD cookie, const document_line &line, IHighlight::TEXTBLOCK *pBuf, int &nBlocks) const
@@ -158,9 +160,9 @@ void document::update_max_line_length(int i) const
         m_nMaxLineLength = len;
 }
 
-int document::expanded_line_length(int lineIndex) const
+int document::expanded_line_length(int y) const
 {
-    const auto &line = _lines[lineIndex];
+    const auto &line = _lines[y];
 
     if (line._expanded_length == -1)
     {
@@ -266,13 +268,13 @@ std::wstring document::expanded_chars(const std::wstring &text, int nOffset, int
     return result;
 }
 
-int document::calc_offset(int lineIndex, int nCharIndex) const
+int document::calc_offset(int y, int nCharIndex) const
 {
     int result = 0;
 
-    if (lineIndex >= 0 && lineIndex < _lines.size())
+    if (y >= 0 && y < _lines.size())
     {
-        const auto &line = _lines[lineIndex];
+        const auto &line = _lines[y];
         const auto tabSize = tab_size();
         const auto limit = line.size();
 
@@ -292,12 +294,12 @@ int document::calc_offset(int lineIndex, int nCharIndex) const
     return result;
 }
 
-int document::calc_offset_approx(int lineIndex, int nOffset) const
+int document::calc_offset_approx(int y, int nOffset) const
 {
     if (nOffset == 0)
         return 0;
 
-    const auto &line = _lines[lineIndex];
+    const auto &line = _lines[y];
     const auto nLength = line.size();
 
     int nCurrentOffset = 0;
@@ -497,7 +499,7 @@ text_selection document::find_previous(const std::wstring &what, text_location l
 
             wrap_search = false;
             loc = text_location(0, _lines.size() - 1);
-        }       
+        }
     }
 
     return result;
@@ -859,6 +861,274 @@ text_location document::WordToLeft(text_location pt) const
     }
     return pt;
 }
+
+static int opposite_brace(int ch)
+{
+    switch (ch)
+    {
+    case '(': return ')';
+    case ')': return '(';
+    case '[': return ']';
+    case ']': return '[';
+    case '{': return '}';
+    case '}': return '{';
+    case '<': return '>';
+    case '>': return '<';
+    default: break;
+    }
+
+    return 0;
+}
+
+
+text_location document::match_brace(const text_location &start_loc) const
+{
+    auto brace_char = char_at(start_loc);
+    auto end_char = opposite_brace(brace_char);
+    auto is_opening = (brace_char == '(' || brace_char == '[' || brace_char == '{' || brace_char == '<');
+
+    auto loc = next(start_loc, is_opening);
+    auto end_loc = end();
+    auto depth = 1;
+
+    while (loc < end_loc)
+    {
+        const auto c = char_at(loc);
+
+        if (c == brace_char)
+        {
+            depth++;
+        }
+        else if (c == end_char)
+        {
+            depth--;
+
+            if (depth == 0)
+            {
+                return loc;
+            }
+        }
+
+        loc = next(loc, is_opening);
+    }
+
+    return text_location::null;
+}
+
+text_location document::findBraceOpenLine(int y) const
+{
+    auto &line = _lines[y];
+    auto i = _lines.size() - 1;
+    auto offset = -1;
+    auto level = 0;
+
+    while (i >= 0)
+    {
+        if (line[i] == '}')
+        {
+            offset = i;
+            level++;
+        }
+        else if (line[i] == '{')
+        {
+            level--;
+            if (level <= 0)
+                offset = -1;
+        }
+        i--;
+    }
+
+    return (offset == -1) ? text_location::null : match_brace(text_location(offset, y));
+}
+
+int document::indentation(int y) const
+{
+    return 0;
+}
+
+text_location document::indentation(int y, int size)
+{
+    return text_location(0, y);
+}
+
+text_location document::indent_line(int y)
+{
+    /*
+    on trigger:
+    LineEmpty:		Happens after newline, adjust to previous line(s)
+    LineLabel:		Put it at 0 indent
+    LineCase:		'case' match brace+1
+    LineAccess:		'public/private' match brace
+    LineBraceOpen:	Match current indentation
+    LineBraceClose: Match opening brace indentation
+
+    The other LineTypes dont trigger indent, but they do exist
+    */
+
+
+    auto startLine = y;			//line to indent
+    auto line_index = y;					//line currently looking at for indent to set
+    auto startType = _lines[y].calc_line_type();		//Type of line with indent to set
+    auto prevType = document_line::LineEmpty;			//LineType history
+    auto startFlags = _lines[y].calc_line_flags(startType);	//Flags of line with indent to set
+    auto addIndent = false;					//true if we need to indent a level
+    auto outDent = false;					//true if line is outdenting (like closing brace)
+    auto forceSame = false;					//true if same indentation has to be kept
+    auto notFound = true;					//false if line is found which has indent to copy
+
+    auto firstOpenLine = -1;					//LineOpen lines need to be tracked
+    auto closingOpen = false;				//To keep track of LineOpen lines
+
+    auto possibleMatches = 0;				//Mask if which LineTypes can be used to match against
+
+    //Cannot match empty lines or labels, XOR them out
+    const int LineMatchable = document_line::LineMask ^ document_line::LineEmpty ^ document_line::LineLabel ^ document_line::LinePreprocessor ^ document_line::LineComment;
+
+    //First check if we can apply indent immediatly without looking (labels)
+    switch (startType)
+    {
+    case document_line::LineEmpty:
+        possibleMatches = LineMatchable;
+        break;
+    case document_line::LineLabel:
+    case document_line::LinePreprocessor:
+        return indentation(startLine, 0);
+    case document_line::LineCase:
+        possibleMatches = (document_line::LineBraceOpen | document_line::LineCase);
+        break;
+    case document_line::LineAccess:
+        possibleMatches = (document_line::LineBraceOpen);
+        forceSame = true;	//can only match with opening brace, which indents, so prevent that
+        break;
+    case document_line::LineBraceOpen:
+        possibleMatches = LineMatchable;
+        break;
+    case document_line::LineBraceClose:
+    {
+        forceSame = true;
+        auto matchline = findBraceOpenLine(line_index);
+
+        if (matchline != text_location::null)
+        {
+            line_index = matchline.y + 1;	//offset for following adjustment
+            possibleMatches = _lines[matchline.y].calc_line_type();	//match the line that was returned
+        }
+        else
+        {
+            return text_location(0, startLine);	//there is nothing to match, so just leave it as it is
+        }
+        break;
+    }
+    default:
+        //Everything else doesnt trigger indenting
+        return text_location(0, startLine);
+    }
+
+    //Start looking at lines above current line
+    line_index--;
+
+    //Then just start searching for the right indent
+    while (line_index >= 0 && notFound)
+    {		//keep looking up untill we definitly have found the right indent, or end of document
+        //auto &line = _lines[line_index];
+        auto currentType = _lines[line_index].calc_line_type();
+
+        if ((currentType & possibleMatches) == 0)
+        {
+            line_index--;
+            continue;	//ignore line
+        }
+
+        notFound = false;
+
+        switch (currentType)
+        {
+        case document_line::LineCase:
+            if (startType != document_line::LineCase)
+            {
+                addIndent = true;
+            }
+            break;
+        case document_line::LineAccess:
+            addIndent = true;
+            break;
+        case document_line::LineBraceOpen:
+            //Found section we belong to, grab indent and add
+            addIndent = true;
+            break;
+        case document_line::LineBraceClose:
+        {
+            //Found closing brace, search for opening brace and base off that
+            auto matchline = findBraceOpenLine(line_index);
+            if (matchline != text_location::null)
+            {
+                line_index = matchline.y;
+            }
+            break;
+        }
+        case document_line::LineClosed:
+        {
+            //Found regular line,
+            //If ending open section, unindent, otherwise keep level
+            int i = 1;
+            do
+            {
+                currentType = _lines[line_index - i].calc_line_type();
+                i--;
+            } while (currentType == document_line::LineEmpty && i <= line_index);
+
+            if (currentType == document_line::LineOpen)
+                outDent = true;
+            break;
+        }
+        case document_line::LineOpen:
+        {
+            int i = 1;
+            do
+            {
+                currentType = _lines[line_index - i].calc_line_type();
+                i++;
+            } while (currentType == document_line::LineEmpty && i <= line_index);
+
+            if (currentType != document_line::LineOpen)	//first open line, add indent
+            {
+                if (startType == document_line::LineBraceOpen && (startFlags & document_line::FlagBraceSingle))
+                {
+                    //In case of ANSI bracket style (new bracket on empty line)
+                    //Do not add indent but keep the same level
+                }
+                else
+                {
+                    addIndent = true;
+                }
+            }
+            break;
+        }
+        default:
+            //Unhandled type, ignore
+            notFound = true;
+            break;
+        }
+        if (notFound)
+            line_index--;
+    }
+
+    if (notFound)	//nothing usefull found, return (keeping current indent)
+        return text_location(0, startLine);
+
+    auto indent_size = indentation(line_index);
+
+    if (!forceSame)
+    {
+        if (addIndent)
+            indent_size += 1;		//add a tab
+        if (outDent)
+            indent_size -= 1;		//remove tab
+    }
+
+    return indentation(startLine, std::max(0, indent_size));
+}
+
 
 void document::Copy()
 {
@@ -1845,7 +2115,7 @@ text_location document::delete_text(const text_selection &selection)
             {
                 _lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
             }
-            
+
             if (result.x > line_start.size())
             {
                 result.x = line_start.size();

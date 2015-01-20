@@ -81,6 +81,7 @@ static inline wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
     return nullptr;
 }
 
+
 static inline const std::wstring &first_line_text(const std::vector<std::wstring> &lines)
 {
     static std::wstring empty;
@@ -195,4 +196,48 @@ public:
 	}
 
 	static const wchar_t *From(bool val) { return val ? L"true" : L"false"; };
+};
+
+// Case insensitive string equivalence test for collections
+struct ltstr
+{
+    bool operator()(const char* s1, const char* s2) const
+    {
+        return _stricmp(s1, s2) < 0;
+    }
+
+    bool operator()(const std::string& s1, const std::string& s2) const
+    {
+        return _stricmp(s1.c_str(), s2.c_str()) < 0;
+    }
+
+    bool operator()(const std::string& s1, const char * s2) const
+    {
+        return _stricmp(s1.c_str(), s2) < 0;
+    }
+
+    bool operator()(const char * s1, const std::string& s2) const
+    {
+        return _stricmp(s1, s2.c_str()) >= 0;
+    }
+
+    bool operator()(const wchar_t* s1, const wchar_t* s2) const
+    {
+        return _wcsicmp(s1, s2) < 0;
+    }
+
+    bool operator()(const std::wstring& s1, const std::wstring& s2) const
+    {
+        return _wcsicmp(s1.c_str(), s2.c_str()) < 0;
+    }
+
+    bool operator()(const std::wstring& s1, const wchar_t * s2) const
+    {
+        return _wcsicmp(s1.c_str(), s2) < 0;
+    }
+
+    bool operator()(const wchar_t * s1, const std::wstring& s2) const
+    {
+        return _wcsicmp(s1, s2.c_str()) >= 0;
+    }
 };
