@@ -179,17 +179,17 @@ public:
         _text = other._text;
         return *this;
     };
-
+    
     bool empty() const { return _text.empty(); };
     size_t size() const { return _text.size(); };
     const wchar_t *c_str() const { return _text.c_str(); };
     const wchar_t &operator[](int n) const { return _text[n]; };
 
     enum line_type {
-        LineEmpty = 0x001,		//empty line (whitespace or nothing)
-        LineLabel = 0x002,		//ends with colon
-        LineCase = 0x004,		//case
-        LineAccess = 0x008,		//public/private
+        LineEmpty = 0x001,		// empty line (whitespace or nothing)
+        LineLabel = 0x002,		// ends with colon
+        LineCase = 0x004,		// case
+        LineAccess = 0x008,		// public/private
         LineBraceOpen = 0x010,		//line with opening brace
         LineBraceClose = 0x020,		//line with closing brace
         LineClosed = 0x040,		//Regular line (semicolon)
@@ -199,12 +199,12 @@ public:
         LineMask = 0x3FF,		//All LineTypes
     };
 
-    enum line_flags {
-        FlagNone = 0x01,	//No special flags for the line
-        FlagBraceSingle = 0x02,	//The line only contains a brace		//These two are
-        FlagBraceText = 0x04,	//The line contains a brace and text	//mutex!
-        FlagMask = 0x07	//All LineFlags
-    };
+    //enum line_flags {
+    //    FlagNone = 0x01,	//No special flags for the line
+    //    FlagBraceSingle = 0x02,	//The line only contains a brace
+    //    FlagBraceText = 0x04,	//The line contains a brace and text
+    //    FlagMask = 0x07	//All LineFlags
+    //};
 
     static inline bool is_text(const wchar_t ch)
     {
@@ -218,33 +218,26 @@ public:
 
     line_type calc_line_type() const 
     {
-        /*
-        LineEmpty,			//empty line (whitespace or nothing)
-        LineLabel,			//ends with colon
-        LineBraceOpen,		//line with opening brace
-        LineBraceClose,		//line with closing brace
-        LineClosed,			//Regular line (semicolon)
-        LineOpen			//unfinished line (similar to statement)
-        */
         auto first = _text.find_first_not_of(L" \t\r\n");
         auto len = _text.size();
 
         if (_text.empty() || first == std::string::npos)
+        {
             return LineEmpty;
-
-        if (_text[first] == '#')
+        }
+        else if (_text[first] == '#')
         {
             return LinePreprocessor;
         }
-        else if (first < (len - 1) && _text[first] == '/' && _text[first + 1] == '/')	// '//' comment line
+        else if (first < (len - 1) && _text[first] == '/' && _text[first + 1] == '/')
         {
             return LineComment;
         }
 
         auto last = _text.find_last_not_of(L" \t\r\n");
 
-        //Trailing whitespace stripped, so can look at end of _text
-        switch (_text[last]) {
+        switch (_text[last]) 
+        {
         case ':': 
         {
             const int max_word_len = 64;
@@ -290,31 +283,7 @@ public:
             return LineOpen;
         }
     }
-
-    line_flags calc_line_flags(const line_type &current_line_type)
-    {
-        auto first = _text.find_first_not_of(L" \t\r\n");
-        auto len = _text.size();
-
-        if (_text.empty() || first == std::string::npos)
-            return FlagNone;
-
-        if (current_line_type == LineBraceOpen || current_line_type == LineBraceClose)
-        {
-            if (_text[first] != '{' && _text[first] != '}')
-            {
-                return FlagBraceText;
-            }
-            else 
-            {
-                return FlagBraceSingle;
-            }
-        }
-        return FlagNone;
-    }
 };
-
-
 
 class document
 {
@@ -327,7 +296,7 @@ private:
     text_location m_ptCursorPos;
     text_selection _selection;
     text_selection m_ptSavedSel;
-    bool m_bAutoIndent = false;
+    bool m_bAutoIndent = true;
     bool m_bViewTabs = false;
     int m_nIdealCharPos = 0;
     int m_tabSize = 4;
@@ -520,8 +489,6 @@ public:
     bool CanPaste();
     
     bool has_selection() const { return !_selection.empty(); };
-    bool GetAutoIndent() const;
-    bool GetOverwriteMode() const;
     bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message);
     bool QueryEditable();
 
@@ -534,8 +501,6 @@ public:
     void OnEditUndo();
     void OnEditUntab();
     void Paste();
-    void SetAutoIndent(bool bAutoIndent);
-    void SetOverwriteMode(bool bOvrMode = true);
     text_selection selection() const { return _selection.normalize(); };
     void MoveCtrlEnd(bool selecting);
     void MoveCtrlHome(bool selecting);
@@ -612,10 +577,12 @@ public:
     text_location WordToLeft(text_location pt) const;
     text_location WordToRight(text_location pt) const;
     text_location match_brace(const text_location &loc) const;
-    text_location findBraceOpenLine(int y) const;
-    text_location indent_line(int y);
-    text_location indentation(int y, int size);
-    int indentation(int y) const;
+    text_location auto_indent(const text_location &loc);
+    text_location auto_indent(const text_location &loc, int can_match);
+
+    text_location indent(int y, int size);
+    int indent(int y) const;
+    
     
     DWORD highlight_cookie(int y) const;
     DWORD highlight_line(DWORD dwCookie, const document_line &line, IHighlight::TEXTBLOCK *pBuf, int &nActualItems) const;
