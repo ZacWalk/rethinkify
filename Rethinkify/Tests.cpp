@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "document.h"
 #include "should.h"
+#include "crypto.h"
 
 
 class view_stub : public IView
@@ -221,6 +222,41 @@ static void ShouldCutAndPaste()
     should::Equal(expected, doc.str(), L"redo");
 }
 
+static void ShouldCalcSha256()
+{
+    unsigned char hash[32];
+
+    calc_sha256("", hash);
+    should::Equal(L"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", to_hex(hash, 32));
+
+    calc_sha256("rethinkify", hash);
+    should::Equal(L"4e1db41d24af3697130492433eed40034d973878360e87fa6fb77dd12d8cac2d", to_hex(hash, 32));
+}
+
+static void ShouldAES256()
+{
+    auto key = hex_to_data(L"08090A0B0D0E0F10121314151718191A1C1D1E1F21222324262728292B2C2D2E");
+    auto text = hex_to_data(L"069A007FC76A459F98BAF917FEDF9521");
+    auto expected = hex_to_data(L"080e9517eb1677719acf728086040ae3");
+
+    aes256 aes(key);
+    unsigned char text_raw[16];
+
+    std::copy(text.begin(), text.end(), text_raw);
+    aes.encrypt_ecb(text_raw);
+
+    should::Equal(to_hex(expected), to_hex(text_raw, 16));
+
+    //unsigned char key[32];
+    //unsigned char text[16] = { "test" };
+
+    //calc_sha256("rethinkify", key);
+
+    //aes256 aes(key);
+    //aes.encrypt_ecb(text);
+
+    //should::Equal(L"5851d271a15a75c3ca3767027b53b9d2", to_base64(text, 16));
+}
 
 
 std::wstring RunTests()
@@ -237,6 +273,8 @@ std::wstring RunTests()
     tests.Register(L"should insert selection", ShouldInsertSelection);
     tests.Register(L"should return selection", ShouldReturnSelection);
     tests.Register(L"should cut and paste", ShouldCutAndPaste);
+    tests.Register(L"should calc sha256", ShouldCalcSha256);
+    tests.Register(L"should aes256", ShouldAES256);
 
     std::wstringstream output;
     tests.Run(output);

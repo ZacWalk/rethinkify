@@ -111,7 +111,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="aes256.h" />
+    <ClInclude Include="crypto.h" />
     <ClInclude Include="platform.h" />
     <ClInclude Include="should.h" />
     <ClInclude Include="spell_check.h" />
@@ -125,7 +125,7 @@
     <ClInclude Include="util.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="aes256.cpp" />
+    <ClCompile Include="crypto.cpp" />
     <ClCompile Include="spell_check.cpp" />
     <ClCompile Include="utf.cpp" />
     <ClCompile Include="tests.cpp" />

@@ -48,7 +48,7 @@
     <ClInclude Include="document.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="aes256.h">
+    <ClInclude Include="crypto.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -74,7 +74,7 @@
     <ClCompile Include="document.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="aes256.cpp">
+    <ClCompile Include="crypto.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

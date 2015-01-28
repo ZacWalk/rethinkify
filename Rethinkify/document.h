@@ -296,7 +296,7 @@ private:
     text_location m_ptCursorPos;
     text_selection _selection;
     text_selection m_ptSavedSel;
-    bool m_bAutoIndent = true;
+    bool m_bAutoIndent = false;
     bool m_bViewTabs = false;
     int m_nIdealCharPos = 0;
     int m_tabSize = 4;

@@ -652,11 +652,11 @@ public:
     {
         if (_char_offset.cx != x)
         {
-            int nScrollChars = _char_offset.cx - x;
+            int dx = _char_offset.cx - x;
             _char_offset.cx = x;
             auto rcScroll = client_rect();
             rcScroll.left += margin_width();
-            ScrollWindowEx(0, nScrollChars * _font_extent.cx, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
+            ScrollWindowEx(dx * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
             RecalcHorzScrollBar();
         }
     }
@@ -665,9 +665,9 @@ public:
     {
         if (_char_offset.cy != y)
         {
-            int nScrollLines = _char_offset.cy - y;
+            int dy = _char_offset.cy - y;
             _char_offset.cy = y;
-            ScrollWindowEx(0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
+            ScrollWindowEx(0, dy * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
             RecalcVertScrollBar();
         }
     }
