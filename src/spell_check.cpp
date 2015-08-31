@@ -9,22 +9,20 @@
 #define HUNSPELL_STATIC
 #include "hunspell\hunspell.hxx"
 
-spell_check::spell_check(void)
-{
-}
+spell_check::spell_check(void) {}
 
 spell_check::~spell_check(void)
 {
 	// Make sure that we're not in the middle of loading
 	// or using the spell checker at this point
-	platform::Lock l(_cs);
+	platform::scope_lock l(_cs);
 	_psc = nullptr;
 }
 
 static std::wstring Language()
 {
 	wchar_t sz[17];
-	int ccBuf = GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_SISO639LANGNAME, sz, 8) - 1;
+	auto ccBuf = GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_SISO639LANGNAME, sz, 8) - 1;
 	sz[ccBuf++] = '_';
 	ccBuf += GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_SISO3166CTRYNAME, sz + ccBuf, 8);
 	return sz;
@@ -32,7 +30,7 @@ static std::wstring Language()
 
 void spell_check::Init()
 {
-	platform::Lock l(_cs);
+	platform::scope_lock l(_cs);
 
 	if (!_psc)
 	{
@@ -67,27 +65,27 @@ void spell_check::Init()
 	}
 }
 
-bool spell_check::is_word_valid(const wchar_t *wword, int wlen)
+bool spell_check::is_word_valid(const wchar_t* wword, int wlen)
 {
-	platform::Lock l(_cs);
+	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
 	auto size_needed = WideCharToMultiByte(CP_ACP, 0, wword, wlen, nullptr, 0, nullptr, nullptr);
-	auto aword = (char*)_alloca(size_needed + 1);
+	auto aword = static_cast<char*>(_alloca(size_needed + 1));
 	WideCharToMultiByte(CP_ACP, 0, wword, wlen, aword, size_needed, nullptr, nullptr);
 	aword[size_needed] = 0;
 	return _psc && _psc->spell(aword) != 0;
 }
 
-std::vector<std::wstring> spell_check::suggest(const std::wstring &wword)
+std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
 {
-	platform::Lock l(_cs);
+	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
 
-	auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], (int) wword.size(), nullptr, 0, nullptr, nullptr);
-	auto aword = (char*) _alloca(size_needed + 1);	
-	WideCharToMultiByte(CP_ACP, 0, &wword[0], (int) wword.size(), aword, size_needed, nullptr, nullptr);
+	auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), nullptr, 0, nullptr, nullptr);
+	auto aword = static_cast<char*>(_alloca(size_needed + 1));
+	WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), aword, size_needed, nullptr, nullptr);
 	aword[size_needed] = 0;
 
 	std::vector<std::wstring> results;
@@ -95,9 +93,9 @@ std::vector<std::wstring> spell_check::suggest(const std::wstring &wword)
 	if (_psc)
 	{
 		char** wordList;
-		int wordCount = _psc->suggest(&wordList, aword);
+		auto wordCount = _psc->suggest(&wordList, aword);
 
-		for (int i = 0; i < wordCount; i++)
+		for (auto i = 0; i < wordCount; i++)
 		{
 			results.push_back(AsciiToUtf16(wordList[i]));
 		}
@@ -108,9 +106,9 @@ std::vector<std::wstring> spell_check::suggest(const std::wstring &wword)
 	return results;
 }
 
-void spell_check::add_word(const std::wstring &wword)
+void spell_check::add_word(const std::wstring& wword)
 {
-	platform::Lock l(_cs);
+	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
 
@@ -118,9 +116,9 @@ void spell_check::add_word(const std::wstring &wword)
 	{
 		auto customPath = Path::AppData().Combine(L"custom.dic");
 
-		auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], (int) wword.size(), nullptr, 0, nullptr, nullptr);
-		auto aword = (char*) _alloca(size_needed + 1);
-		WideCharToMultiByte(CP_ACP, 0, &wword[0], (int) wword.size(), aword, size_needed, nullptr, nullptr);
+		auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), nullptr, 0, nullptr, nullptr);
+		auto aword = static_cast<char*>(_alloca(size_needed + 1));
+		WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), aword, size_needed, nullptr, nullptr);
 		aword[size_needed] = 0;
 
 		_psc->add(aword);

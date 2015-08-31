@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "rethinkify", "rethinkify\rethinkify.vcxproj", "{E22DE357-DF10-4EAD-8069-A2C780F5CACC}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "rethinkify", "src\rethinkify.vcxproj", "{E22DE357-DF10-4EAD-8069-A2C780F5CACC}"
 	ProjectSection(ProjectDependencies) = postProject
 		{C44DA243-F95C-49D3-8F93-5DD6E2960042} = {C44DA243-F95C-49D3-8F93-5DD6E2960042}
 	EndProjectSection

@@ -6,7 +6,7 @@ class should
 {
 public:
 
-	static void Equal(const wchar_t * expected, const wchar_t * actual, const wchar_t * message = L"Test")
+	static void Equal(const wchar_t* expected, const wchar_t* actual, const wchar_t* message = L"Test")
 	{
 		if (String::CompareNoCase(actual, expected) != 0)
 		{
@@ -14,12 +14,12 @@ public:
 		}
 	}
 
-	static void Equal(const std::wstring &expected, const std::wstring &actual, const wchar_t * message = L"Test")
+	static void Equal(const std::wstring& expected, const std::wstring& actual, const wchar_t* message = L"Test")
 	{
 		Equal(expected.c_str(), actual.c_str(), message);
 	}
 
-	static void Equal(int expected, int actual, const wchar_t * message = L"Test")
+	static void Equal(int expected, int actual, const wchar_t* message = L"Test")
 	{
 		static const int size = 64;
 		wchar_t expected_text[size], actual_text[size];
@@ -28,12 +28,12 @@ public:
 		Equal(expected_text, actual_text, message);
 	}
 
-	static void Equal(bool expected, bool actual, const wchar_t * message = L"Test")
+	static void Equal(bool expected, bool actual, const wchar_t* message = L"Test")
 	{
 		Equal(String::From(expected), String::From(actual), message);
 	}
 
-	static void EqualTrue(bool actual, const wchar_t * message = L"Test")
+	static void EqualTrue(bool actual, const wchar_t* message = L"Test")
 	{
 		Equal(true, actual, message);
 	}
@@ -48,7 +48,7 @@ private:
 		return std::chrono::high_resolution_clock::now();
 	};
 
-	static long long duration_in_microseconds(const std::chrono::high_resolution_clock::time_point &started)
+	static long long duration_in_microseconds(const std::chrono::high_resolution_clock::time_point& started)
 	{
 		auto dur = now() - started;
 		return std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
@@ -58,17 +58,17 @@ private:
 
 public:
 
-	inline void Register(const std::wstring &name, const std::function<void()> &f)
+	inline void Register(const std::wstring& name, const std::function<void()>& f)
 	{
 		_tests[name] = f;
 	}
 
-	void Run(std::wstringstream &output)
+	void Run(std::wstringstream& output) const
 	{
 		auto started = now();
 		auto count = 0;
 
-		for (auto &test : _tests)
+		for (auto& test : _tests)
 		{
 			output << "Running '" << test.first << "' ... ";
 			auto started = now();
@@ -78,12 +78,12 @@ public:
 				test.second();
 				output << L" success in " << duration_in_microseconds(started) << L" microseconds" << std::endl;
 			}
-			catch (const std::wstring &message)
+			catch (const std::wstring& message)
 			{
 				output << L" FAILED in " << duration_in_microseconds(started) << L" microseconds" << std::endl;
 				output << std::endl << message << std::endl << std::endl;
 			}
-			catch (const std::exception &e)
+			catch (const std::exception& e)
 			{
 				output << L" FAILED in " << duration_in_microseconds(started) << L" microseconds" << std::endl;
 				output << std::endl << e.what() << std::endl << std::endl;

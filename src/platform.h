@@ -1,24 +1,23 @@
-
 namespace platform
 {
 	extern size_t StaticMemoryUsage;
 
-	class CritSec
+	class crit_sec
 	{
 		mutable CRITICAL_SECTION _cs;
 
-		CritSec(const CritSec &other);
-		const CritSec& operator=(const CritSec &other);
+		crit_sec(const crit_sec& other) = delete;
+		const crit_sec& operator=(const crit_sec& other) = delete;
 
 	public:
 
-		inline CritSec()
+		inline crit_sec()
 		{
 			ZeroMemory(&_cs, sizeof(_cs));
 			InitializeCriticalSection(&_cs);
 		}
 
-		inline ~CritSec()
+		inline ~crit_sec()
 		{
 			DeleteCriticalSection(&_cs);
 		}
@@ -28,24 +27,24 @@ namespace platform
 			return &_cs;
 		}
 
-		friend class Lock;
+		friend class scope_lock;
 	};
 
-	class Lock
+	class scope_lock
 	{
-		const CritSec &_cs;
+		const crit_sec& _cs;
 
-		Lock(const Lock &other);
-		const Lock& operator=(const Lock &other);
+		scope_lock(const scope_lock& other) = delete;
+		const scope_lock& operator=(const scope_lock& other) = delete;
 
 	public:
 
-		inline Lock(const CritSec &cs) : _cs(cs)
+		inline scope_lock(const crit_sec& cs) : _cs(cs)
 		{
 			EnterCriticalSection(_cs);
 		}
 
-		inline ~Lock()
+		inline ~scope_lock()
 		{
 			LeaveCriticalSection(_cs);
 		}
@@ -58,17 +57,24 @@ class Path
 
 public:
 
-	Path(const wchar_t *path = L"") : _path(path) {};
-	Path(const Path &other) : _path(other._path) {};
-	Path(Path&& other) : _path(std::move(other._path)) {}
-	const Path& operator=(const Path &other) { _path = other._path; return *this; };
+	Path(const wchar_t* path = L"") : _path(path) { };
 
-	const wchar_t *c_str() const
+	Path(const Path& other) : _path(other._path) { };
+
+	Path(Path&& other) : _path(std::move(other._path)) { }
+
+	const Path& operator=(const Path& other)
+	{
+		_path = other._path;
+		return *this;
+	};
+
+	const wchar_t* c_str() const
 	{
 		return _path.c_str();
 	}
 
-	const std::wstring str() const
+	std::wstring str() const
 	{
 		return _path;
 	}
@@ -81,8 +87,8 @@ public:
 		return path;
 	}
 
-	inline Path Combine(const std::wstring &name, LPCWSTR extension) const
-	{		
+	inline Path Combine(const std::wstring& name, LPCWSTR extension) const
+	{
 		return Combine(name.c_str(), extension);
 	}
 
@@ -114,4 +120,3 @@ public:
 		return path;
 	}
 };
-

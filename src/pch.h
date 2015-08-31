@@ -46,5 +46,4 @@
 #undef min
 #undef max
 
-extern const wchar_t *g_szAppName;
-
+extern const wchar_t* g_szAppName;
