@@ -97,7 +97,7 @@ std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
 
 		for (auto i = 0; i < wordCount; i++)
 		{
-			results.push_back(AsciiToUtf16(wordList[i]));
+			results.emplace_back(AsciiToUtf16(wordList[i]));
 		}
 
 		_psc->free_list(&wordList, wordCount);
