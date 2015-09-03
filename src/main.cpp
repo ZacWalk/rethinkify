@@ -50,136 +50,6 @@ public:
 	}
 };
 
-class find_wnd : public CWindowImpl<find_wnd>
-{
-public:
-
-	const int editId = 101;
-	const int tbId = 102;
-	const int nextId = 103;
-	const int lastId = 104;
-
-	document& _doc;
-	CWindow _findText;
-	CWindow _findNext;
-
-	find_wnd(document& d) : _doc(d) { }
-
-	BEGIN_MSG_MAP(find_wnd)
-		MESSAGE_HANDLER(WM_CREATE, OnCreate)
-		MESSAGE_HANDLER(WM_SIZE, OnSize)
-		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
-		//MESSAGE_HANDLER(WM_PAINT, OnPaint)
-		COMMAND_ID_HANDLER(nextId, OnNext)
-		COMMAND_ID_HANDLER(lastId, OnLast)
-		COMMAND_HANDLER(editId, EN_CHANGE, OnEditChange)
-	END_MSG_MAP()
-
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
-	{
-		auto font = CreateFont(20, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
-
-		_findText.Create(L"EDIT", m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, editId);
-		_findText.SetFont(font);
-
-		auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN | CCS_NODIVIDER | CCS_ADJUSTABLE;
-
-		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, nextId);
-		_findNext.SetFont(font);
-
-		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
-		//	CCS_ADJUSTABLE | CCS_NODIVIDER | WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS,
-		//	0, 0, 0, 0, m_hwnd, (HMENU) IDR_TOOLBAR1, GetModuleHandle(NULL), 0);
-
-		_findNext.SendMessage(TB_BUTTONSTRUCTSIZE, static_cast<WPARAM>(sizeof(TBBUTTON)), 0);
-
-		const auto numButtons = 2;
-
-		auto hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
-		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));
-		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
-		_findNext.SendMessage(TB_SETIMAGELIST, static_cast<WPARAM>(0), reinterpret_cast<LPARAM>(hImageList));
-
-		TBBUTTON tbButtons[numButtons] =
-		{
-			{0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{0}, 0, 0},
-			{1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{0}, 0, 0},
-		};
-		_findNext.SendMessage(TB_ADDBUTTONS, numButtons, reinterpret_cast<LPARAM>(tbButtons));
-		_findNext.SendMessage(TB_AUTOSIZE, 0, 0);
-
-		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_RETHINKIFY), IMAGE_ICON, 32, 32, NULL);
-		//_findNext.SendMessage(BM_SETIMAGE, (WPARAM) IMAGE_ICON, (LPARAM) nextIcon);
-
-		return 0;
-	}
-
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
-	{
-		CRect r;
-		GetClientRect(r);
-
-		r.left += 4;
-		r.right -= 54;
-		r.top += 4;
-		r.bottom -= 4;
-
-		_findText.MoveWindow(r);
-
-		r.left = r.right + 4;
-		r.right += 50;
-
-		_findNext.MoveWindow(r);
-
-		return 0;
-	}
-
-	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/) const
-	{
-		CRect r;
-		GetClientRect(r);
-		FillSolidRect(reinterpret_cast<HDC>(wParam), r, RGB(100, 100, 100));
-		return 1;
-	}
-
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
-	{
-		CRect r;
-		GetClientRect(r);
-
-		PAINTSTRUCT ps = { 0 };
-		auto hdc = BeginPaint(&ps);
-		FillSolidRect(hdc, r, RGB(100, 100, 100));
-		EndPaint(&ps);
-		return 0;
-	}
-
-	std::wstring Text() const
-	{
-		const auto bufferSize = 200;
-		wchar_t text[bufferSize];
-		_findText.GetWindowText(text, bufferSize);
-		return text;
-	}
-
-	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
-	{
-		_doc.find(Text(), 0);
-		return 0;
-	}
-
-	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-	{
-		_doc.find(Text(), FIND_DIRECTION_UP);
-		return 0;
-	}
-
-	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-	{
-		_doc.find(Text(), 0);
-		return 0;
-	}
-};
 
 class main_win : public CWindowImpl<main_win>
 {
@@ -189,7 +59,7 @@ public:
 	document _doc;
 	find_wnd _find;
 
-	main_win() : _view(_doc), _doc(_view), _find(_doc) { }
+	main_win() : _view(_doc, _find), _doc(_view), _find(_doc) { }
 
 	BEGIN_MSG_MAP(main_win)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
@@ -361,9 +231,21 @@ public:
 
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
-		bool isVisible = _find.IsWindowVisible() != 0;
-		_find.ShowWindow(isVisible ? SW_HIDE : SW_SHOW);
-		if (!isVisible) _find._findText.SetFocus();
+		_find.ShowWindow(SW_SHOW);
+
+		if (_doc.has_selection())
+		{
+			auto sel = _doc.selection();
+
+			if (sel.line_count() == 1 && !sel.empty())
+			{
+				auto text = Combine(_doc.text(sel));
+				_find.Text(text);
+			}
+
+			_find._findText.SetFocus();
+		}
+
 		return 0;
 	}
 

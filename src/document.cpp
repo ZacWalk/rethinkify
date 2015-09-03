@@ -456,34 +456,6 @@ void document::find(const std::wstring& text, uint32_t flags)
 	//	pApp->WriteProfileString(REG_FIND_SUBKEY, REG_FIND_WHAT, dlg.m_sText);
 }
 
-void document::find_next()
-{
-	//if (m_bLastSearch)
-	//{
-	//	text_location ptFoundPos;
-	//	if (! FindText(_find_text, m_ptCursorPos, _find_flags, true, &ptFoundPos))
-	//	{
-	//		std::wstring prompt;
-	//		prompt.Format(IDS_EDIT_TEXT_NOT_FOUND, _find_text);
-	//		AfxMessageBox(prompt);
-	//		return;
-	//	}
-	//	HighlightText(ptFoundPos, lstrlen(_find_text));
-	//	m_bMultipleSearch = true;       // More search       
-	//}
-}
-
-void document::find_previous()
-{
-	auto dwSaveSearchFlags = _find_flags;
-
-	if ((_find_flags & FIND_DIRECTION_UP) != 0)
-		_find_flags &= ~FIND_DIRECTION_UP;
-	else
-		_find_flags |= FIND_DIRECTION_UP;
-	find_next();
-	_find_flags = dwSaveSearchFlags;
-}
 
 bool document::find(const std::wstring& what, const text_location& ptStartPos, const text_selection& selection, uint32_t dwFlags, bool bWrapSearch, text_location* pptFoundPos)
 {

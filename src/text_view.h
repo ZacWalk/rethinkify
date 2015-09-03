@@ -4,6 +4,143 @@
 #include "resource.h"
 #include "ui.h"
 
+
+class find_wnd : public CWindowImpl<find_wnd>
+{
+public:
+
+	const int editId = 101;
+	const int tbId = 102;
+	const int nextId = 103;
+	const int lastId = 104;
+
+	document& _doc;
+	CWindow _findText;
+	CWindow _findNext;
+
+	find_wnd(document& d) : _doc(d) { }
+
+	BEGIN_MSG_MAP(find_wnd)
+		MESSAGE_HANDLER(WM_CREATE, OnCreate)
+		MESSAGE_HANDLER(WM_SIZE, OnSize)
+		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
+		//MESSAGE_HANDLER(WM_PAINT, OnPaint)
+		COMMAND_ID_HANDLER(nextId, OnNext)
+		COMMAND_ID_HANDLER(lastId, OnLast)
+		COMMAND_HANDLER(editId, EN_CHANGE, OnEditChange)
+	END_MSG_MAP()
+
+	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		auto font = CreateFont(20, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
+
+		_findText.Create(L"EDIT", m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, editId);
+		_findText.SetFont(font);
+
+		auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN | CCS_NODIVIDER | CCS_ADJUSTABLE;
+
+		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, nextId);
+		_findNext.SetFont(font);
+
+		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
+		//	CCS_ADJUSTABLE | CCS_NODIVIDER | WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS,
+		//	0, 0, 0, 0, m_hwnd, (HMENU) IDR_TOOLBAR1, GetModuleHandle(NULL), 0);
+
+		_findNext.SendMessage(TB_BUTTONSTRUCTSIZE, static_cast<WPARAM>(sizeof(TBBUTTON)), 0);
+
+		const auto numButtons = 2;
+
+		auto hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
+		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));
+		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
+		_findNext.SendMessage(TB_SETIMAGELIST, static_cast<WPARAM>(0), reinterpret_cast<LPARAM>(hImageList));
+
+		TBBUTTON tbButtons[numButtons] =
+		{
+			{ 0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{ 0 }, 0, 0 },
+			{ 1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{ 0 }, 0, 0 },
+		};
+		_findNext.SendMessage(TB_ADDBUTTONS, numButtons, reinterpret_cast<LPARAM>(tbButtons));
+		_findNext.SendMessage(TB_AUTOSIZE, 0, 0);
+
+		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_RETHINKIFY), IMAGE_ICON, 32, 32, NULL);
+		//_findNext.SendMessage(BM_SETIMAGE, (WPARAM) IMAGE_ICON, (LPARAM) nextIcon);
+
+		return 0;
+	}
+
+	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	{
+		CRect r;
+		GetClientRect(r);
+
+		r.left += 4;
+		r.right -= 54;
+		r.top += 4;
+		r.bottom -= 4;
+
+		_findText.MoveWindow(r);
+
+		r.left = r.right + 4;
+		r.right += 50;
+
+		_findNext.MoveWindow(r);
+
+		return 0;
+	}
+
+	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/) const
+	{
+		CRect r;
+		GetClientRect(r);
+		FillSolidRect(reinterpret_cast<HDC>(wParam), r, RGB(100, 100, 100));
+		return 1;
+	}
+
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	{
+		CRect r;
+		GetClientRect(r);
+
+		PAINTSTRUCT ps = { 0 };
+		auto hdc = BeginPaint(&ps);
+		FillSolidRect(hdc, r, RGB(100, 100, 100));
+		EndPaint(&ps);
+		return 0;
+	}
+
+	std::wstring Text() const
+	{
+		const auto bufferSize = 200;
+		wchar_t text[bufferSize];
+		_findText.GetWindowText(text, bufferSize);
+		return text;
+	}
+
+	void Text(const std::wstring &s)
+	{
+		_findText.SetWindowText(s.c_str());
+	}
+
+	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	{
+		_doc.find(Text(), 0);
+		return 0;
+	}
+
+	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		_doc.find(Text(), FIND_DIRECTION_UP);
+		return 0;
+	}
+
+	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		_doc.find(Text(), 0);
+		return 0;
+	}
+};
+
 static FORMATETC plainTextFormat = {CF_TEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
 static FORMATETC plainTextWFormat = {CF_UNICODETEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
 static FORMATETC file_drop_format = {CF_HDROP, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
@@ -13,6 +150,7 @@ class text_view : public CWindowImpl<text_view>, public IDropTarget, public IVie
 private:
 
 	document& _doc;
+	find_wnd& _find;
 
 	volatile unsigned long m_cRef = 0;
 	text_location m_ptDropPos;
@@ -39,8 +177,7 @@ private:
 
 public:
 
-	text_view(document& d) : _doc(d) { }
-
+	text_view(document& d, find_wnd &f) : _doc(d), _find(f) { }
 	~text_view() { }
 
 
@@ -339,9 +476,9 @@ public:
 		case ID_EDIT_SELECT_ALL: _doc.select(_doc.all());
 			break;
 			//case ID_EDIT_FIND: _doc.find(); break;
-		case ID_EDIT_REPEAT: _doc.find_next();
+		case ID_EDIT_REPEAT: _doc.find(_find.Text(), 0);
 			break;
-		case ID_EDIT_FIND_PREVIOUS: _doc.find_previous();
+		case ID_EDIT_FIND_PREVIOUS: _doc.find(_find.Text(), FIND_DIRECTION_UP);
 			break;
 		case ID_EDIT_CHAR_LEFT: _doc.MoveLeft(false);
 			break;
@@ -1498,53 +1635,46 @@ public:
 	{
 		if (nCount > 0)
 		{
-			if (m_bFocused)
+			auto sel = _doc.selection();
+			auto nSelBegin = 0, nSelEnd = 0;
+
+			if (sel._start.y > ptTextPos.y)
 			{
-				auto sel = _doc.selection();
-				auto nSelBegin = 0, nSelEnd = 0;
-
-				if (sel._start.y > ptTextPos.y)
-				{
-					nSelBegin = nCount;
-				}
-				else if (sel._start.y == ptTextPos.y)
-				{
-					nSelBegin = Clamp(sel._start.x - ptTextPos.x, 0, nCount);
-				}
-				if (sel._end.y > ptTextPos.y)
-				{
-					nSelEnd = nCount;
-				}
-				else if (sel._end.y == ptTextPos.y)
-				{
-					nSelEnd = Clamp(sel._end.x - ptTextPos.x, 0, nCount);
-				}
-
-				assert(nSelBegin >= 0 && nSelBegin <= nCount);
-				assert(nSelEnd >= 0 && nSelEnd <= nCount);
-				assert(nSelBegin <= nSelEnd);
-
-				//	Draw part of the text before selection
-				if (nSelBegin > 0)
-				{
-					draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nSelBegin);
-				}
-				if (nSelBegin < nSelEnd)
-				{
-					auto crOldBk = SetBkColor(pdc, GetColor(color_index::COLORINDEX_SELBKGND));
-					auto crOldText = SetTextColor(pdc, GetColor(color_index::COLORINDEX_SELTEXT));
-					draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
-					SetBkColor(pdc, crOldBk);
-					SetTextColor(pdc, crOldText);
-				}
-				if (nSelEnd < nCount)
-				{
-					draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelEnd, nCount - nSelEnd);
-				}
+				nSelBegin = nCount;
 			}
-			else
+			else if (sel._start.y == ptTextPos.y)
 			{
-				draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nCount);
+				nSelBegin = Clamp(sel._start.x - ptTextPos.x, 0, nCount);
+			}
+			if (sel._end.y > ptTextPos.y)
+			{
+				nSelEnd = nCount;
+			}
+			else if (sel._end.y == ptTextPos.y)
+			{
+				nSelEnd = Clamp(sel._end.x - ptTextPos.x, 0, nCount);
+			}
+
+			assert(nSelBegin >= 0 && nSelBegin <= nCount);
+			assert(nSelEnd >= 0 && nSelEnd <= nCount);
+			assert(nSelBegin <= nSelEnd);
+
+			//	Draw part of the text before selection
+			if (nSelBegin > 0)
+			{
+				draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset, nSelBegin);
+			}
+			if (nSelBegin < nSelEnd)
+			{
+				auto crOldBk = SetBkColor(pdc, GetColor(color_index::COLORINDEX_SELBKGND));
+				auto crOldText = SetTextColor(pdc, GetColor(color_index::COLORINDEX_SELTEXT));
+				draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
+				SetBkColor(pdc, crOldBk);
+				SetTextColor(pdc, crOldText);
+			}
+			if (nSelEnd < nCount)
+			{
+				draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelEnd, nCount - nSelEnd);
 			}
 		}
 	}
@@ -1568,7 +1698,7 @@ public:
 			{
 				//	Draw the empty line
 				CRect rect = rc;
-				if (m_bFocused && _doc.is_inside_selection(text_location(0, lineIndex)))
+				if (_doc.is_inside_selection(text_location(0, lineIndex)))
 				{
 					FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(color_index::COLORINDEX_SELBKGND));
 					rect.left += _font_extent.cx;
@@ -1633,7 +1763,7 @@ public:
 
 				if (frect.right > frect.left)
 				{
-					if (m_bFocused && _doc.is_inside_selection(text_location(nLength, lineIndex)))
+					if (_doc.is_inside_selection(text_location(nLength, lineIndex)))
 					{
 						FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(color_index::COLORINDEX_SELBKGND));
 						frect.left += _font_extent.cx;

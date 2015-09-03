@@ -208,6 +208,11 @@ public:
 
 		return result;
 	}
+
+	int line_count() const
+	{
+		return 1+  _end.y - _start.y;
+	}
 };
 
 class document_line
@@ -464,8 +469,6 @@ public:
 
 	bool find(const std::wstring& text, const text_location& ptStartPos, const text_selection& selection, uint32_t dwFlags, bool bWrapSearch, text_location* pptFoundPos);
 	void find(const std::wstring& text, uint32_t flags);
-	void find_next();
-	void find_previous();
 
 	bool can_find_next() const
 	{
