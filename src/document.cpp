@@ -1863,6 +1863,8 @@ text_location document::delete_text(const text_selection& selection)
 			after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
 			li._text = after;
 
+			if (end() < _cursor_loc) _cursor_loc = end();
+
 			_view.invalidate_line(selection._start.y);
 		}
 		else
@@ -1878,9 +1880,13 @@ text_location document::delete_text(const text_selection& selection)
 				_lines.erase(_lines.begin() + selection._start.y + 1, _lines.begin() + selection._end.y + 1);
 			}
 
+			if (end() < _cursor_loc) _cursor_loc = end();
+
 			_view.invalidate_view();
 		}
 	}
+
+	
 
 	return selection._start;
 }

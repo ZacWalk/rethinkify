@@ -209,6 +209,7 @@ public:
 		COMMAND_ID_HANDLER(ID_FILE_NEW, OnNew)
 		COMMAND_ID_HANDLER(ID_EDIT_FIND, OnEditFind)
 		COMMAND_ID_HANDLER(ID_EDIT_REFORMAT, OnEditReformat)
+		COMMAND_ID_HANDLER(ID_EDIT_SORTANDREMOVEDUPLICATES, OnEditRemoveDuplicates)		
 
 		MESSAGE_HANDLER(WM_COMMAND, OnCommand)
 	END_MSG_MAP()
@@ -377,19 +378,25 @@ public:
 			std::stringstream lines;
 			writer.write(lines, root);
 
-			_doc.clear();
-			std::string line;
-
-			while (std::getline(lines, line))
-			{
-				_doc.append_line(UTF8ToUtf16(line));
-			}
-
-			_view.invalidate_view();
+			undo_group ug(_doc);
+			_doc.select(_doc.replace_text(ug, _doc.all(), UTF8ToUtf16(lines.str())));
 		}
 
 		return 0;
 	}
+
+	LRESULT OnEditRemoveDuplicates(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	{
+		auto lines = _doc.text();
+
+		std::sort(lines.begin(), lines.end());
+		lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
+
+		undo_group ug(_doc);
+		_doc.select(_doc.replace_text(ug, _doc.all(), Combine(lines)));
+
+		return 0;
+	}	
 
 
 	LRESULT OnInitMenuPopup(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
