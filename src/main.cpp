@@ -18,9 +18,35 @@
 
 //#pragma comment(lib, "Comdlg32")
 #pragma comment(lib, "Comctl32")
-
 #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+// allow for different calling conventions in Linux and Windows
+#ifdef _WIN32
+#define STDCALL __stdcall
+#else
+#define STDCALL
+#endif
+
+// functions to call AStyleMain
+extern "C" const char* STDCALL AStyleGetVersion(void);
+extern "C" char* STDCALL AStyleMain(const char* sourceIn,
+	const char* optionsIn,
+	void (STDCALL* fpError)(int, const char*),
+	char* (STDCALL* fpAlloc)(unsigned long));
+
+// Error handler for the Artistic Style formatter.
+void  STDCALL ASErrorHandler(int errorNumber, const char* errorMessage)
+{
+	std::cout << "astyle error " << errorNumber << "\n"
+		<< errorMessage << std::endl;
+}
+
+// Allocate memory for the Artistic Style formatter.
+char* STDCALL ASMemoryAlloc(unsigned long memoryNeeded)
+{   // error condition is checked after return from AStyleMain
+	char* buffer = new(std::nothrow) char[memoryNeeded];
+	return buffer;
+}
 
 const wchar_t* g_szAppName = L"Rethinkify";
 
@@ -255,13 +281,30 @@ public:
 		Json::Reader reader;
 		Json::StyledStreamWriter writer;
 
-		if (reader.parse(UTF16ToUtf8(Combine(_doc.text())), root))
+		auto text = UTF16ToUtf8(Combine(_doc.text()));
+
+		if (reader.parse(text, root))
 		{
 			std::stringstream lines;
 			writer.write(lines, root);
 
 			undo_group ug(_doc);
 			_doc.select(_doc.replace_text(ug, _doc.all(), UTF8ToUtf16(lines.str())));
+		}
+		else
+		{
+			auto options = "-A1tOP";
+
+			// call the Artistic Style formatting function
+			auto textOut = AStyleMain(text.c_str(),
+				options,
+				ASErrorHandler,
+				ASMemoryAlloc);
+
+			undo_group ug(_doc);
+			_doc.select(_doc.replace_text(ug, _doc.all(), UTF8ToUtf16(textOut)));
+
+			delete[] textOut;
 		}
 
 		return 0;
