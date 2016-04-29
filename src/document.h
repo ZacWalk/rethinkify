@@ -48,10 +48,10 @@ enum class color_index
 	//	Expandable: custom elements are allowed.
 };
 
-class IHighlight
+class highlighter
 {
 public:
-	virtual ~IHighlight() {}
+	virtual ~highlighter() {}
 	
 
 	struct text_block
@@ -71,7 +71,7 @@ public:
 	virtual void add_word(const std::wstring& word) const { };
 };
 
-class CppSyntax : public IHighlight
+class cpp_highlight : public highlighter
 {
 	uint32_t parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf, int& nActualItems) const override;
 
@@ -81,7 +81,7 @@ class CppSyntax : public IHighlight
 	};
 };
 
-class TextHighight : public IHighlight
+class text_highight : public highlighter
 {
 	mutable spell_check _check;
 
@@ -109,7 +109,7 @@ public:
 	virtual void update_caret() = 0;
 	virtual void recalc_horz_scrollbar() = 0;
 	virtual void recalc_vert_scrollbar() = 0;
-	virtual void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) = 0;
+	virtual void invalidate_lines(int start, int end) = 0;
 	virtual void invalidate_line(int index) = 0;
 	virtual void invalidate_view() = 0;
 	virtual void layout() = 0;
@@ -272,7 +272,7 @@ private:
 	std::wstring _path;
 	uint32_t _find_flags = 0;
 	std::wstring _find_text;
-	std::shared_ptr<IHighlight> _highlight;
+	std::shared_ptr<highlighter> _highlight;
 
 	mutable bool _modified = false;
 	line_endings _line_ending = line_endings::CRLF_STYLE_AUTOMATIC;
@@ -394,6 +394,10 @@ private:
 	};
 
 
+	text_location insert_text(const text_location& location, const std::wstring& text);
+	text_location insert_text(const text_location& location, const wchar_t& c);
+	text_location delete_text(const text_selection& selection);
+	text_location delete_text(const text_location& location);
 
 public:
 
@@ -456,10 +460,7 @@ public:
 	text_location delete_text(undo_group& ug, const text_selection& selection);
 	text_location delete_text(undo_group& ug, const text_location& location);
 
-	text_location insert_text(const text_location& location, const std::wstring& text);
-	text_location insert_text(const text_location& location, const wchar_t& c);
-	text_location delete_text(const text_selection& selection);
-	text_location delete_text(const text_location& location);
+	
 
 	bool can_undo() const;
 	bool can_redo() const;
@@ -540,7 +541,7 @@ public:
 	text_location WordToRight(text_location pt) const;
 
 	uint32_t highlight_cookie(int lineIndex) const;
-	uint32_t highlight_line(uint32_t dwCookie, const document_line& line, IHighlight::text_block* pBuf, int& nActualItems) const;
+	uint32_t highlight_line(uint32_t dwCookie, const document_line& line, highlighter::text_block* pBuf, int& nActualItems) const;
 
 	bool view_tabs() const;
 	bool HighlightText(const text_location& ptStartPos, int nLength);

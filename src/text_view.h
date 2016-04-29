@@ -342,15 +342,14 @@ public:
 
 	LRESULT OnChar(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
 	{
-		auto nChar = wParam;
-		auto nRepCnt = 0xFF & lParam;
-		auto nFlags = lParam;
+		auto c = wParam;
+		auto flags = lParam;
 
 		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
 			(::GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0)
 			return 0;
 
-		if (nChar == VK_RETURN)
+		if (c == VK_RETURN)
 		{
 			if (_doc.QueryEditable())
 			{
@@ -359,13 +358,13 @@ public:
 				_doc.select(_doc.insert_text(ug, pos, L'\n'));
 			}
 		}
-		else if (nChar > 31)
+		else if (c > 31)
 		{
 			if (_doc.QueryEditable())
 			{
 				undo_group ug(_doc);
 				auto pos = _doc.delete_text(ug, _doc.selection());
-				_doc.select(_doc.insert_text(ug, pos, nChar));
+				_doc.select(_doc.insert_text(ug, pos, c));
 			}
 		}
 
@@ -1450,32 +1449,24 @@ public:
 		return result;
 	}
 
-	void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) override
+	void invalidate_lines(int start, int end) override
 	{
-		bInvalidateMargin = true;
-
 		auto rcInvalid = client_rect();
 		auto top = top_offset();
 
-		if (nLine2 == -1)
-		{
-			if (!bInvalidateMargin)
-				rcInvalid.left += margin_width();
-
-			rcInvalid.top = line_offset(nLine1) - top;
+		if (end == -1)
+		{			
+			rcInvalid.top = line_offset(start) - top;
 		}
 		else
 		{
-			if (nLine2 < nLine1)
+			if (end < start)
 			{
-				std::swap(nLine1, nLine2);
+				std::swap(start, end);
 			}
 
-			if (!bInvalidateMargin)
-				rcInvalid.left += margin_width();
-
-			rcInvalid.top = line_offset(nLine1) - top;
-			rcInvalid.bottom = line_offset(nLine2) + line_height(nLine2) - top;
+			rcInvalid.top = line_offset(start) - top;
+			rcInvalid.bottom = line_offset(end) + line_height(end) - top;
 		}
 
 		invalidate(rcInvalid);
@@ -1487,7 +1478,7 @@ public:
 		line._expanded_length = -1;
 		line._parse_cookie = -1;
 
-		invalidate_lines(index, index + 1, true);
+		invalidate_lines(index, index + 1);
 
 		_doc.update_max_line_length(index);
 
@@ -1697,7 +1688,8 @@ public:
 			if (line.empty())
 			{
 				//	Draw the empty line
-				CRect rect = rc;
+				auto rect = rc;
+
 				if (_doc.is_inside_selection(text_location(0, lineIndex)))
 				{
 					FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(color_index::COLORINDEX_SELBKGND));
@@ -1710,7 +1702,7 @@ public:
 			{
 				//	Parse the line
 				auto nLength = line.size();
-				auto pBuf = static_cast<IHighlight::text_block*>(_malloca(sizeof(IHighlight::text_block) * nLength * 3));
+				auto pBuf = static_cast<highlighter::text_block*>(_malloca(sizeof(highlighter::text_block) * nLength * 3));
 				auto nBlocks = 0;
 				auto cookie = _doc.highlight_cookie(lineIndex - 1);
 

@@ -4,8 +4,8 @@
 
 const TCHAR crlf [] = _T("\r\n");
 
-static auto s_textHighlighter = std::make_shared<TextHighight>();
-static auto s_cppHighlighter = std::make_shared<CppSyntax>();
+static auto s_textHighlighter = std::make_shared<text_highight>();
+static auto s_cppHighlighter = std::make_shared<cpp_highlight>();
 
 document::document(IView& view, const std::wstring& text, line_endings nCrlfStyle) : _view(view), _highlight(s_textHighlighter)
 {
@@ -62,7 +62,7 @@ uint32_t document::highlight_cookie(int lineIndex) const
 	return _lines[lineIndex]._parse_cookie;
 }
 
-uint32_t document::highlight_line(uint32_t cookie, const document_line& line, IHighlight::text_block* pBuf, int& nBlocks) const
+uint32_t document::highlight_line(uint32_t cookie, const document_line& line, highlighter::text_block* pBuf, int& nBlocks) const
 {
 	return _highlight->parse_line(cookie, line, pBuf, nBlocks);
 }
@@ -1735,7 +1735,7 @@ text_selection document::replace_text(undo_group& ug, const text_selection& sele
 
 text_location document::insert_text(const text_location& location, const std::wstring& text)
 {
-	text_location resultLocation = location;
+	auto resultLocation = location;
 
 	for (const auto& c : text)
 	{
@@ -1749,7 +1749,7 @@ text_location document::insert_text(const text_location& location, const std::ws
 
 text_location document::insert_text(undo_group& ug, const text_location& location, const std::wstring& text)
 {
-	text_location resultLocation = location;
+	auto resultLocation = location;
 
 	for (const auto& c : text)
 	{

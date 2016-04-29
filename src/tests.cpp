@@ -25,7 +25,7 @@ public:
 
 	void recalc_vert_scrollbar() override { };
 
-	void invalidate_lines(int nLine1, int nLine2, bool bInvalidateMargin = false) override { };
+	void invalidate_lines(int start, int end) override { };
 
 	void invalidate_line(int index) override { };
 
@@ -38,7 +38,7 @@ public:
 
 static view_stub null_view;
 
-static void InsertChars(document& doc, const wchar_t* chars, text_location location = text_location(0, 0))
+static void insert_chars(document& doc, const wchar_t* chars, text_location location = text_location(0, 0))
 {
 	auto p = chars;
 	undo_group ug(doc);
@@ -56,10 +56,10 @@ static void ShouldInsertSingleChars()
 	auto text2 = L"Line\n";
 
 	document doc(null_view);
-	InsertChars(doc, text1);
+	insert_chars(doc, text1);
 	should::Equal(text1, doc.str());
 
-	InsertChars(doc, text2);
+	insert_chars(doc, text2);
 	should::Equal(std::wstring(text2) + text1, doc.str());
 }
 

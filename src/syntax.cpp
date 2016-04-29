@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "document.h"
 
-struct caseInsensitiveCompare : public std::binary_function<const wchar_t *, const wchar_t *, bool>
+struct icmp : public std::binary_function<const wchar_t *, const wchar_t *, bool>
 {
 	bool operator()(const wchar_t* lhs, const wchar_t* rhs) const
 	{
@@ -9,9 +9,9 @@ struct caseInsensitiveCompare : public std::binary_function<const wchar_t *, con
 	}
 };
 
-static bool IsKeyword(const wchar_t* pszChars, int len)
+static bool is_keyword(const wchar_t* pszChars, int len)
 {
-	static const wchar_t* raw_keywords [] =
+	static std::set<const wchar_t *, icmp> keywords =
 		{
 			L"__asm",
 			L"__based",
@@ -132,19 +132,8 @@ static bool IsKeyword(const wchar_t* pszChars, int len)
 			L"wmain",
 			L"xalloc",
 			L"xor",
-			L"xor_eq",
-			nullptr
+			L"xor_eq"
 		};
-
-	static std::set<const wchar_t *, caseInsensitiveCompare> keywords;
-
-	if (keywords.empty())
-	{
-		for (auto i = raw_keywords; *i != nullptr; i++)
-		{
-			keywords.insert(*i);
-		}
-	}
 
 	const auto bufferLen = 100;
 	wchar_t sz[bufferLen];
@@ -153,7 +142,7 @@ static bool IsKeyword(const wchar_t* pszChars, int len)
 	return keywords.find(sz) != keywords.end();
 }
 
-static bool IsNumber(const wchar_t* pszChars, int len)
+static bool is_number(const wchar_t* pszChars, int len)
 {
 	if (len > 2 && pszChars[0] == '0' && pszChars[1] == 'x')
 	{
@@ -184,7 +173,7 @@ static const int COOKIE_EXT_COMMENT = 0x0004;
 static const int COOKIE_STRING = 0x0008;
 static const int COOKIE_CHAR = 0x0010;
 
-static void add_block(IHighlight::text_block* pBuf, int& nActualItems, int pos, color_index colorindex)
+static void add_block(highlighter::text_block* pBuf, int& nActualItems, int pos, color_index colorindex)
 {
 	if (pBuf != nullptr)
 	{
@@ -197,7 +186,7 @@ static void add_block(IHighlight::text_block* pBuf, int& nActualItems, int pos, 
 	}
 }
 
-uint32_t CppSyntax::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf, int& nActualItems) const
+uint32_t cpp_highlight::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf, int& nActualItems) const
 {
 	if (line.empty())
 	{
@@ -352,11 +341,11 @@ uint32_t CppSyntax::parse_line(uint32_t dwCookie, const document_line& line, tex
 			{
 				auto pszChars = line.c_str();
 
-				if (IsKeyword(pszChars + block_start, i - block_start))
+				if (is_keyword(pszChars + block_start, i - block_start))
 				{
 					add_block(pBuf, nActualItems, block_start, color_index::COLORINDEX_KEYWORD);
 				}
-				else if (IsNumber(pszChars + block_start, i - block_start))
+				else if (is_number(pszChars + block_start, i - block_start))
 				{
 					add_block(pBuf, nActualItems, block_start, color_index::COLORINDEX_NUMBER);
 				}
@@ -372,11 +361,11 @@ uint32_t CppSyntax::parse_line(uint32_t dwCookie, const document_line& line, tex
 	{
 		auto pszChars = line.c_str();
 
-		if (IsKeyword(pszChars + block_start, i - block_start))
+		if (is_keyword(pszChars + block_start, i - block_start))
 		{
 			add_block(pBuf, nActualItems, block_start, color_index::COLORINDEX_KEYWORD);
 		}
-		else if (IsNumber(pszChars + block_start, i - block_start))
+		else if (is_number(pszChars + block_start, i - block_start))
 		{
 			add_block(pBuf, nActualItems, block_start, color_index::COLORINDEX_NUMBER);
 		}
@@ -387,7 +376,7 @@ uint32_t CppSyntax::parse_line(uint32_t dwCookie, const document_line& line, tex
 	return dwCookie;
 }
 
-uint32_t TextHighight::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf, int& nActualItems) const
+uint32_t text_highight::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf, int& nActualItems) const
 {
 	if (pBuf)
 	{
@@ -408,7 +397,7 @@ uint32_t TextHighight::parse_line(uint32_t dwCookie, const document_line& line, 
 				{
 					auto pszChars = line.c_str();
 
-					if (IsNumber(pszChars + block_start, i - block_start))
+					if (is_number(pszChars + block_start, i - block_start))
 					{
 						add_block(pBuf, nActualItems, block_start, color_index::COLORINDEX_NUMBER);
 					}
@@ -430,7 +419,7 @@ uint32_t TextHighight::parse_line(uint32_t dwCookie, const document_line& line, 
 	return 0;
 }
 
-std::vector<std::wstring> TextHighight::suggest(const std::wstring& wword) const
+std::vector<std::wstring> text_highight::suggest(const std::wstring& wword) const
 {
 	return _check.suggest(wword);
 }
