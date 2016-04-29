@@ -157,6 +157,9 @@
     <Image Include="res\rethinkify.ico" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Libraries\astyle\AStyleLib.vcxproj">
+      <Project>{3d0e5f57-72fe-4915-a6a7-f36f74844d38}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\Libraries\hunspell\hunspell.vcxproj">
       <Project>{18527041-f416-114c-500f-5856431d553a}</Project>
     </ProjectReference>

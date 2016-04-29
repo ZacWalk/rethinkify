@@ -826,7 +826,7 @@ public:
 			_char_offset.cx = x;
 			auto rcScroll = client_rect();
 			rcScroll.left += margin_width();
-			ScrollWindowEx(0, nScrollChars * _font_extent.cx, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
+			ScrollWindowEx(nScrollChars * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
 			recalc_horz_scrollbar();
 		}
 	}
