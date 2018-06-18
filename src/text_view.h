@@ -913,14 +913,16 @@ public:
 			update_caret();
 		}
 
+		auto margin_width = m_bSelMargin ? 3 : 0;
+
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
 		si.nMin = 0;
-		si.nMax = _doc.max_line_length() - 1;
+		si.nMax = _doc.max_line_length() + margin_width;
 		si.nPage = m_nScreenChars;
 		si.nPos = _char_offset.cx;
-
+				
 		SetScrollInfo(SB_HORZ, &si);
 	}
 

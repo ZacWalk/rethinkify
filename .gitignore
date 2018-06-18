@@ -17,7 +17,9 @@
 *.so
 *.suo
 *.user
-/intermediate/*
 *.pdb
 *.sdf
-/Exe/*.ilk
+/.vs
+/intermediate/*
+/exe/*.ilk
+Rethinkify.VC.db
