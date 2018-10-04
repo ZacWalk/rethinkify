@@ -278,15 +278,19 @@ public:
 	LRESULT OnEditReformat(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 	{
 		Json::Value root; // will contains the root value after parsing.
-		Json::Reader reader;
-		Json::StyledStreamWriter writer;
+		Json::CharReaderBuilder reader_builder;
+		std::unique_ptr<Json::CharReader> reader(reader_builder.newCharReader());
+
+		Json::StreamWriterBuilder builder;
+		std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
 
 		auto text = UTF16ToUtf8(Combine(_doc.text()));
+		std::string errors;
 
-		if (reader.parse(text, root))
+		if (reader->parse(text.c_str(), text.c_str() + text.size(), &root, &errors))
 		{
 			std::stringstream lines;
-			writer.write(lines, root);
+			writer->write(root, &lines);
 
 			undo_group ug(_doc);
 			_doc.select(_doc.replace_text(ug, _doc.all(), UTF8ToUtf16(lines.str())));

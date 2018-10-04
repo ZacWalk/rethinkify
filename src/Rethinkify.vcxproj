@@ -14,7 +14,7 @@
     <ProjectGuid>{E22DE357-DF10-4EAD-8069-A2C780F5CACC}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>rethinkify</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -60,7 +60,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <FloatingPointModel>Fast</FloatingPointModel>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>..\Libraries;..\Libraries\Jsoncpp\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\dependencies\hunspell\src\hunspell;..\dependencies\Jsoncpp\include</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <MinimalRebuild>false</MinimalRebuild>
       <FunctionLevelLinking>false</FunctionLevelLinking>
@@ -95,7 +95,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <FloatingPointModel>Fast</FloatingPointModel>
-      <AdditionalIncludeDirectories>..\Libraries;..\Libraries\Jsoncpp\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\dependencies\hunspell\src\hunspell;..\dependencies\Jsoncpp\include</AdditionalIncludeDirectories>
       <StringPooling>true</StringPooling>
       <SmallerTypeCheck>false</SmallerTypeCheck>
       <EnableParallelCodeGeneration>false</EnableParallelCodeGeneration>
@@ -158,13 +158,13 @@
     <Image Include="res\rethinkify.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Libraries\astyle\AStyleLib.vcxproj">
+    <ProjectReference Include="..\dependencies\AStyle\AStyleLib.vcxproj">
       <Project>{3d0e5f57-72fe-4915-a6a7-f36f74844d38}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\Libraries\hunspell\hunspell.vcxproj">
+    <ProjectReference Include="..\dependencies\hunspell\hunspell.vcxproj">
       <Project>{18527041-f416-114c-500f-5856431d553a}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\Libraries\Jsoncpp\Jsoncpp.vcxproj">
+    <ProjectReference Include="..\dependencies\jsoncpp\Jsoncpp.vcxproj">
       <Project>{c44da243-f95c-49d3-8f93-5dd6e2960042}</Project>
     </ProjectReference>
   </ItemGroup>

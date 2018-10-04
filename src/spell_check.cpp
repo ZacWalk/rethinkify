@@ -7,7 +7,7 @@
 #endif
 
 #define HUNSPELL_STATIC
-#include "hunspell\hunspell.hxx"
+#include "hunspell.hxx"
 
 spell_check::spell_check(void) {}
 
@@ -70,11 +70,7 @@ bool spell_check::is_word_valid(const wchar_t* wword, int wlen)
 	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
-	auto size_needed = WideCharToMultiByte(CP_ACP, 0, wword, wlen, nullptr, 0, nullptr, nullptr);
-	auto aword = static_cast<char*>(_alloca(size_needed + 1));
-	WideCharToMultiByte(CP_ACP, 0, wword, wlen, aword, size_needed, nullptr, nullptr);
-	aword[size_needed] = 0;
-	return _psc && _psc->spell(aword) != 0;
+	return _psc && _psc->spell(UTF16ToAscii(wword, wlen)) != 0;
 }
 
 std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
@@ -92,15 +88,10 @@ std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
 
 	if (_psc)
 	{
-		char** wordList;
-		auto wordCount = _psc->suggest(&wordList, aword);
-
-		for (auto i = 0; i < wordCount; i++)
+		for (auto r : _psc->suggest(aword))
 		{
-			results.emplace_back(AsciiToUtf16(wordList[i]));
+			results.emplace_back(AsciiToUtf16(r));
 		}
-
-		_psc->free_list(&wordList, wordCount);
 	}
 
 	return results;

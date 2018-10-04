@@ -26,6 +26,14 @@ inline std::string UTF16ToAscii(const std::wstring& wstr)
 	return result;
 }
 
+inline std::string UTF16ToAscii(const wchar_t* wword, int wlen)
+{
+	auto size_needed = WideCharToMultiByte(CP_ACP, 0, wword, wlen, nullptr, 0, nullptr, nullptr);
+	std::string result(size_needed, 0);
+	WideCharToMultiByte(CP_ACP, 0, wword, wlen, &result[0], size_needed, nullptr, nullptr);
+	return result;
+}
+
 inline std::wstring AsciiToUtf16(const std::string& str)
 {
 	auto size_needed = MultiByteToWideChar(CP_ACP, 0, &str[0], static_cast<int>(str.size()), nullptr, 0);
