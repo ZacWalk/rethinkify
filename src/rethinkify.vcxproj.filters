@@ -45,12 +45,6 @@
     <ClInclude Include="document.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="aes256.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sha.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -71,10 +65,7 @@
     <ClCompile Include="document.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="aes256.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sha.cpp">
+    <ClCompile Include="util.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

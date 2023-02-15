@@ -1,4 +1,4 @@
-#include "util.h" 
+#include "util.h"
 
 namespace platform
 {
@@ -75,7 +75,6 @@ public:
 		return _path;
 	}
 
-	
 
 	static constexpr std::wstring_view::size_type find_ext(const std::wstring_view path)
 	{
@@ -91,27 +90,27 @@ public:
 		return last + 1;
 	}
 
-	std::wstring_view without_extension() const
-	{		
+	std::wstring without_extension() const
+	{
 		return _path.substr(0, find_ext(_path));
 	}
 
-	std::wstring_view extension() const
+	std::wstring extension() const
 	{
 		return _path.substr(find_ext(_path));
 	}
 
 	file_path Combine(std::wstring name, std::wstring extension) const
 	{
-		auto with_name = Combine(name);
-		std::wstring result = std::wstring { with_name.without_extension() };
+		const auto with_name = Combine(name);
+		auto result = std::wstring{with_name.without_extension()};
 
 		if (!extension.empty())
 		{
 			if (extension[0] != L'.') result += L'.';
 			result += extension;
 		}
-		return { result };
+		return {result};
 	}
 
 	static constexpr bool is_path_sep(const wchar_t c)
@@ -128,13 +127,13 @@ public:
 			if (!is_path_sep(str::last_char(result)) && !is_path_sep(part[0])) result += '\\';
 			result += part;
 		}
-		return { result };
+		return {result};
 	}
 
 	bool exists() const
 	{
 		const auto attribs = ::GetFileAttributes(_path.c_str());
-		
+
 		return (attribs != INVALID_FILE_ATTRIBUTES &&
 			(attribs & FILE_ATTRIBUTE_DIRECTORY) == 0);
 	}
@@ -168,6 +167,46 @@ public:
 
 		auto result = file_path(raw_path).Combine(g_app_name);
 		if (!result.exists()) ::CreateDirectory(raw_path, nullptr);
-		return { result };
+		return {result};
+	}
+};
+
+
+struct ihash
+{
+	size_t operator()(const file_path path) const
+	{
+		return fnv1a_i(path.view());
+	}
+
+	size_t operator()(const std::wstring_view s) const
+	{
+		return fnv1a_i(s);
+	}
+};
+
+struct iless
+{
+	bool operator()(const file_path l, const file_path r) const
+	{
+		return str::icmp(l.view(), r.view()) < 0;
+	}
+
+	bool operator()(const std::wstring_view l, const std::wstring_view r) const
+	{
+		return str::icmp(l, r) < 0;
+	}
+};
+
+struct ieq
+{
+	bool operator()(const file_path l, const file_path r) const
+	{
+		return str::icmp(l.view(), r.view()) == 0;
+	}
+
+	bool operator()(const std::wstring_view l, const std::wstring_view r) const
+	{
+		return str::icmp(l, r) == 0;
 	}
 };

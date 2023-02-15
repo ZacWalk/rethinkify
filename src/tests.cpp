@@ -35,7 +35,7 @@ static void insert_chars(document& doc, std::wstring_view chars, text_location l
 {
 	undo_group ug(doc);
 
-	for(const auto c : chars)
+	for (const auto c : chars)
 	{
 		location = doc.insert_text(ug, location, c);
 	}
@@ -207,6 +207,17 @@ static void should_return_selection()
 	should::is_equal(L"e\ntwo\nth", str::combine(doc.text(text_selection(2, 0, 2, 2))));
 }
 
+static void should_find()
+{
+	document doc(null_view, L"one\ntwo\nthree");
+
+	doc.find(L"ne", 0);
+	should::is_equal(3, doc.cursor_pos().x);
+
+	doc.find(L"ne", 0);
+	should::is_equal(3, doc.cursor_pos().x);
+}
+
 static void should_cut_and_paste()
 {
 	const auto text = L"one\ntwo\nthree";
@@ -228,6 +239,12 @@ static void should_cut_and_paste()
 	should::is_equal(expected, doc.str(), L"redo");
 }
 
+static void should_calc_sha256()
+{
+	const auto text = "hello world";
+	const auto output = calc_sha256(text);
+	should::is_equal(L"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9", to_hex(output));
+}
 
 std::wstring run_all_tests()
 {
@@ -243,8 +260,11 @@ std::wstring run_all_tests()
 	tests.register_test(L"should insert selection", should_insert_selection);
 	tests.register_test(L"should return selection", should_return_selection);
 	tests.register_test(L"should cut and paste", should_cut_and_paste);
+	tests.register_test(L"should find", should_find);
+	tests.register_test(L"should calc sha256", should_calc_sha256);
 
 	std::wstringstream output;
+	output << "# Test results" << std::endl << std::endl;
 	tests.run_all(output);
 	return output.str();
 }

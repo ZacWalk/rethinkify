@@ -346,13 +346,13 @@ bool document::highlight_text(const text_location& ptStartPos, int nLength)
 }
 
 
-static size_t find_in_line(std::wstring_view line, std::wstring_view what, bool whole_word)
+static size_t find_in_line(std::wstring_view line, std::wstring_view what, const bool whole_word)
 {
 	size_t cur = 0;
 
 	for (;;)
 	{
-		const auto found_pos = str::wcsistr(line.substr(cur), what);
+		const auto found_pos = str::find_in_text(line.substr(cur), what);
 
 		if (found_pos == std::wstring_view::npos)
 		{
@@ -381,176 +381,115 @@ static size_t find_in_line(std::wstring_view line, std::wstring_view what, bool 
 }
 
 
-void document::find(std::wstring_view text, uint32_t flags)
+void document::find(const std::wstring_view what, const uint32_t flags)
 {
-	text_location loc;
+	text_location found_loc;
 
-	if (find(text, _cursor_loc, all(), flags, true, &loc))
+	const auto start_pos = (flags & find_start_selection) ? _selection._start : _cursor_loc;
+
+	if (find(what, start_pos, all(), flags, true, found_loc))
 	{
-		_find_text = text;
-		_find_flags = flags;
+		_find_text = what;
 
-		auto end = loc;
-		end.x += text.size();
-		select(text_selection(loc, end));
+		auto found_end = found_loc;
+		found_end.x += what.size();
+		select(text_selection(found_loc, found_end));
 	}
-	//	CWinApp *pApp = AfxGetApp();
-	//	assert(pApp != nullptr);
-	//
-	//	CFindTextDlg dlg(this);
-	//	if (m_bLastSearch)
-	//	{
-	//		//	Get the latest search parameters
-	//		dlg.m_bMatchCase = (_find_flags & FIND_MATCH_CASE) != 0;
-	//		dlg.m_bWholeWord = (_find_flags & FIND_WHOLE_WORD) != 0;
-	//		dlg.m_nDirection = (_find_flags & FIND_DIRECTION_UP) != 0 ? 0 : 1;
-	//		if (_find_text != nullptr)
-	//			dlg.m_sText = _find_text;
-	//	}
-	//	else
-	//	{
-	//		//	Take search parameters from registry
-	//		dlg.m_bMatchCase = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_MATCH_CASE, false);
-	//		dlg.m_bWholeWord = pApp->GetProfileInt(REG_FIND_SUBKEY, REG_WHOLE_WORD, false);
-	//		dlg.m_nDirection = 1;		//	Search down
-	//		dlg.m_sText = pApp->GetProfileString(REG_FIND_SUBKEY, REG_FIND_WHAT, _T(""));
-	//	}
-	//
-	//	//	Take the current selection, if any
-	//	if (has_selection())
-	//	{
-	//		text_location ptSelStart, ptSelEnd;
-	//		selection(ptSelStart, ptSelEnd);		if (ptSelStart.y == ptSelEnd.y)
-	//		{
-	//			const wchar_t * pszChars = GetLineChars(ptSelStart.y);
-	//			int nChars = ptSelEnd.x - ptSelStart.x;
-	//			lstrcpyn(dlg.m_sText.GetBuffer(nChars + 1), pszChars + ptSelStart.x, nChars + 1);
-	//			dlg.m_sText.ReleaseBuffer();
-	//		}
-	//	}
-	//
-	//	//	Execute Find dialog
-	//	dlg.m_ptCurrentPos = m_ptCursorPos;		//	Search from cursor position
-	//	m_bShowInactiveSelection = true;
-	//	dlg.DoModal();
-	//	m_bShowInactiveSelection = false;
-	//
-	//	//	Save search parameters for 'F3' command
-	//	m_bLastSearch = true;
-	//	if (_find_text != nullptr)
-	//		free(_find_text);
-	//	_find_text = _wcsdup(dlg.m_sText);
-	//
-	//	_find_flags = 0;
-	//	if (dlg.m_bMatchCase)
-	//		_find_flags |= FIND_MATCH_CASE;
-	//	if (dlg.m_bWholeWord)
-	//		_find_flags |= FIND_WHOLE_WORD;
-	//	if (dlg.m_nDirection == 0)
-	//		_find_flags |= FIND_DIRECTION_UP;
-	//
-	//	//	Save search parameters to registry
-	//	pApp->WriteProfileInt(REG_FIND_SUBKEY, REG_MATCH_CASE, dlg.m_bMatchCase);
-	//	pApp->WriteProfileInt(REG_FIND_SUBKEY, REG_WHOLE_WORD, dlg.m_bWholeWord);
-	//	pApp->WriteProfileString(REG_FIND_SUBKEY, REG_FIND_WHAT, dlg.m_sText);
 }
 
 
-bool document::find(std::wstring_view what, const text_location& ptStartPos, const text_selection& selection,
-                    uint32_t dwFlags, bool bWrapSearch, text_location* pptFoundPos) const
+bool document::find(std::wstring_view what, 
+	const text_location& start_pos, 
+	const text_selection& selection,
+	const uint32_t flags, 
+	bool wrap_search, 
+	text_location& found_pos) const
 {
-	auto ptCurrentPos = ptStartPos;
+	auto current_pos = start_pos;
 
-	if (selection.empty())
+	if (selection.empty() || what.empty())
 		return false;
 
-	if (ptCurrentPos < selection._start)
+	if (current_pos < selection._start)
 	{
-		ptCurrentPos = selection._start;
+		current_pos = selection._start;
 	}
 
-	auto matchCase = (dwFlags & FIND_MATCH_CASE) != 0;
-	const auto wholeWord = (dwFlags & FIND_WHOLE_WORD) != 0;
+	const auto match_case = (flags & find_match_case) != 0;
+	const auto whole_word = (flags & find_whole_word) != 0;
 
-	if (dwFlags & FIND_DIRECTION_UP)
+	if (flags & find_direction_up)
 	{
-		//	Let's check if we deal with whole text.
-		//	At this point, we cannot search *up* in selection
-		//	Proceed as if we have whole text search.
-
 		for (;;)
 		{
-			if (ptCurrentPos.x == 0)
+			if (current_pos.x == 0)
 			{
-				ptCurrentPos.y--;
+				current_pos.y--;
 			}
 
-			while (ptCurrentPos.y >= 0)
+			while (current_pos.y >= 0)
 			{
-				const auto& line = _lines[ptCurrentPos.y];
-				const auto nLineLength = line._text.size() - ptCurrentPos.x;
+				const auto& line = _lines[current_pos.y];
 
-				if (nLineLength > 0)
+				if (current_pos.x < line._text.size())
 				{
-					const auto nPos = find_in_line(line._text.substr(ptCurrentPos.x), what, wholeWord);
+					const auto found_x = find_in_line(line._text.substr(current_pos.x), what, whole_word);
 
-					if (nPos != std::wstring_view::npos) //	Found text!
+					if (found_x != std::wstring_view::npos) //	Found text!
 					{
-						ptCurrentPos.x += nPos;
-						*pptFoundPos = ptCurrentPos;
+						current_pos.x += found_x;
+						found_pos = current_pos;
 						return true;
 					}
 				}
 
-				ptCurrentPos.x = 0;
-				ptCurrentPos.y--;
+				current_pos.x = 0;
+				current_pos.y--;
 			}
 
 			//	Beginning of text reached
-			if (!bWrapSearch)
+			if (!wrap_search)
 				return false;
 
 			//	Start again from the end of text
-			bWrapSearch = false;
-			ptCurrentPos = text_location(0, _lines.size() - 1);
+			wrap_search = false;
+			current_pos = text_location(0, _lines.size() - 1);
 		}
 	}
 	for (;;)
 	{
-		while (ptCurrentPos.y <= selection._end.y)
+		while (current_pos.y <= selection._end.y)
 		{
-			const auto& line = _lines[ptCurrentPos.y];
-			const auto nLineLength = line._text.size() - ptCurrentPos.x;
+			const auto& line = _lines[current_pos.y];
 
-			if (nLineLength > 0)
+			if (current_pos.x < line._text.size())
 			{
-				const auto nPos = find_in_line(line._text.substr(ptCurrentPos.x), what, wholeWord);
+				const auto found_x = find_in_line(line._text.substr(current_pos.x), what, whole_word);
 
-				if (nPos != std::wstring_view::npos)
+				if (found_x != std::wstring_view::npos)
 				{
-					ptCurrentPos.x += nPos;
-					//	Check of the text found is outside the block.
-					if (selection._end < ptCurrentPos)
+					current_pos.x += found_x;
+
+					if (selection._end < current_pos)
 						break;
 
-					*pptFoundPos = ptCurrentPos;
+					found_pos = current_pos;
 					return true;
 				}
 			}
 
-			//	Go further, text was not found
-			ptCurrentPos.x = 0;
-			ptCurrentPos.y++;
+			current_pos.x = 0;
+			current_pos.y++;
 		}
 
-		//	End of text reached
-		if (!bWrapSearch)
+		if (!wrap_search)
 			return false;
 
-		//	Start from the beginning
-		bWrapSearch = false;
-		ptCurrentPos = selection._start;
+		wrap_search = false;
+		current_pos = selection._start;
 	}
+
+	return false;
 }
 
 bool document::view_tabs() const
@@ -1296,13 +1235,13 @@ static line_endings detect_line_endings(const uint8_t* buffer, const int len)
 	{
 		if (i > 0 && buffer[i - 1] == 0x0d)
 		{
-			return line_endings::CRLF_STYLE_DOS;
+			return line_endings::crlf_style_dos;
 		}
 
-		return (i < len - 1 && buffer[i + 1] == 0x0d) ? line_endings::CRLF_STYLE_UNIX : line_endings::CRLF_STYLE_MAC;
+		return (i < len - 1 && buffer[i + 1] == 0x0d) ? line_endings::crlf_style_unix : line_endings::crlf_style_mac;
 	}
 
-	return line_endings::CRLF_STYLE_DOS; // guess
+	return line_endings::crlf_style_dos; // guess
 }
 
 bool document::load_from_file(file_path path)
@@ -1343,7 +1282,7 @@ bool document::load_from_file(file_path path)
 
 					if ((last_char == 0x0A && c == 0x0D) || (last_char == 0x0A && c != 0x0D))
 					{
-						append_line((encoding == Encoding::ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
+						append_line((encoding == Encoding::ASCII) ? str::AsciiToUtf16(line) : str::UTF8ToUtf16(line));
 						line.clear();
 					}
 
@@ -1369,7 +1308,7 @@ bool document::load_from_file(file_path path)
 					last_char = c;
 				}
 
-				append_line((encoding == Encoding::ASCII) ? AsciiToUtf16(line) : UTF8ToUtf16(line));
+				append_line((encoding == Encoding::ASCII) ? str::AsciiToUtf16(line) : str::UTF8ToUtf16(line));
 			}
 			else if (encoding == Encoding::UTF16BE || encoding == Encoding::UTF16)
 			{
@@ -1425,7 +1364,7 @@ bool document::load_from_file(file_path path)
 			highlight_from_extension(path.extension());
 
 			_path = path;
-			invalidate(invalid::view | invalid::title);			
+			invalidate(invalid::view | invalid::title);
 		}
 
 		if (hFile != nullptr)
@@ -1496,7 +1435,7 @@ bool document::save_to_file(file_path path, line_endings nCrlfStyle /*= CRLF_STY
 		for (const auto& line : _lines)
 		{
 			if (!first) stream << std::endl;
-			stream << UTF16ToUtf8(line._text);
+			stream << str::UTF16ToUtf8(line._text);
 			first = false;
 		}
 
@@ -1515,88 +1454,6 @@ bool document::save_to_file(file_path path, line_endings nCrlfStyle /*= CRLF_STY
 			MessageBox(GetActiveWindow(), last_error_message().c_str(), L"Diffractor", MB_OK);
 		}
 	}
-
-	//assert(nCrlfStyle == CRLF_STYLE_AUTOMATIC || nCrlfStyle == CRLF_STYLE_DOS ||
-	//	nCrlfStyle == CRLF_STYLE_UNIX || nCrlfStyle == CRLF_STYLE_MAC);
-
-	//TCHAR szTempFileDir[_MAX_PATH + 1];
-	//TCHAR szTempFileName[_MAX_PATH + 1];
-	//TCHAR szBackupFileName[_MAX_PATH + 1];
-	//auto success = false;
-
-	//TCHAR drive[_MAX_PATH], dir[_MAX_PATH], name[_MAX_PATH], ext[_MAX_PATH];
-	//_wsplitpath_s(pszFileName, drive, dir, name, ext);
-
-	//lstrcpy(szTempFileDir, drive);
-	//lstrcat(szTempFileDir, dir);
-	//lstrcpy(szBackupFileName, pszFileName);
-	//lstrcat(szBackupFileName, _T(".bak"));
-
-	//if (::GetTempFileName(szTempFileDir, _T("CRE"), 0, szTempFileName) != 0)
-	//{
-	//	auto hTempFile = ::CreateFile(szTempFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-
-	//	if (hTempFile != INVALID_HANDLE_VALUE)
-	//	{
-	//		if (nCrlfStyle == CRLF_STYLE_AUTOMATIC)
-	//			nCrlfStyle = m_nCRLFMode;
-
-	//		assert(nCrlfStyle >= 0 && nCrlfStyle <= 2);
-
-	//		auto pszCRLF = crlfs[nCrlfStyle];
-	//		auto nCRLFLength = strlen(pszCRLF);
-	//		auto first = true;
-
-	//		for (const auto &line : _lines)
-	//		{
-	//			auto len = line._text.size();
-	//			uint32_t dwWrittenBytes;
-
-	//			if (!first)
-	//			{
-	//				::WriteFile(hTempFile, pszCRLF, nCRLFLength, &dwWrittenBytes, nullptr);
-	//			}
-	//			else
-	//			{
-	//				first = false;
-	//			}
-
-	//			if (!line._text.empty())
-	//			{
-	//				auto utf8 = ToUtf8(line._text);
-	//				::WriteFile(hTempFile, utf8.c_str(), utf8.size(), &dwWrittenBytes, nullptr);
-	//			}
-	//		}
-
-	//		::CloseHandle(hTempFile);
-	//		hTempFile = INVALID_HANDLE_VALUE;
-
-	//		if (m_bCreateBackupFile)
-	//		{
-	//			WIN32_FIND_DATA wfd;
-	//			auto hSearch = ::FindFirstFile(pszFileName, &wfd);
-	//			if (hSearch != INVALID_HANDLE_VALUE)
-	//			{
-	//				//	File exist - create backup file
-	//				::DeleteFile(szBackupFileName);
-	//				::MoveFile(pszFileName, szBackupFileName);
-	//				::FindClose(hSearch);
-	//			}
-	//		}
-	//		else
-	//		{
-	//			::DeleteFile(pszFileName);
-	//		}
-
-	//		//	Move temporary file to target name
-	//		success = ::MoveFile(szTempFileName, pszFileName) != 0;
-
-	//		if (bClearModifiedFlag)
-	//		{
-	//			_modified = false;
-	//		}
-	//	}
-	//}
 
 	return success;
 }

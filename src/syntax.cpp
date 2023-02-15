@@ -1,14 +1,6 @@
 #include "pch.h"
 #include "document.h"
 
-struct iless
-{
-	bool operator()(std::wstring_view lhs, std::wstring_view rhs) const
-	{
-		return str::icmp(lhs, rhs) < 0;
-	}
-};
-
 static bool is_keyword(std::wstring_view text)
 {
 	static std::set<std::wstring_view, iless> keywords =
@@ -185,7 +177,7 @@ static void add_block(highlighter::text_block* pBuf, int& nActualItems, int pos,
 }
 
 uint32_t cpp_highlight::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf,
-	int& nActualItems) const
+                                   int& nActualItems) const
 {
 	if (line.empty())
 	{
@@ -377,7 +369,7 @@ uint32_t cpp_highlight::parse_line(uint32_t dwCookie, const document_line& line,
 }
 
 uint32_t text_highight::parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf,
-	int& nActualItems) const
+                                   int& nActualItems) const
 {
 	if (pBuf)
 	{

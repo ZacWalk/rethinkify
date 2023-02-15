@@ -33,6 +33,7 @@ namespace invalid
 
 enum class style
 {
+	main_wnd_clr,
 	white_space,
 	normal_bkgnd,
 	normal_text,
@@ -40,7 +41,7 @@ enum class style
 	sel_margin,
 	sel_bkgnd,
 	sel_text,
-	
+
 	error_bkgnd,
 	error_text,
 
@@ -119,18 +120,27 @@ public:
 	virtual void invalidate_lines(int start, int end) = 0;
 };
 
-enum class line_endings
+class IEvents
 {
-	CRLF_STYLE_AUTOMATIC = -1,
-	CRLF_STYLE_DOS = 0,
-	CRLF_STYLE_UNIX = 1,
-	CRLF_STYLE_MAC = 2
+public:
+	virtual ~IEvents() = default;
+
+	virtual void path_selected(const file_path& path) = 0;
 };
 
-const auto FIND_MATCH_CASE = 0x0001;
-const auto FIND_WHOLE_WORD = 0x0002;
-const auto FIND_DIRECTION_UP = 0x0010;
-const auto REPLACE_SELECTION = 0x0100;
+enum class line_endings
+{
+	crlf_style_automatic = -1,
+	crlf_style_dos = 0,
+	crlf_style_unix = 1,
+	crlf_style_mac = 2
+};
+
+const auto find_match_case = 1 << 0;
+const auto find_whole_word = 1 << 1;
+const auto find_direction_up = 1 << 2;
+const auto find_start_selection = 1 << 3;
+const auto replace_selection = 1 << 4;
 
 class text_location
 {
@@ -138,10 +148,8 @@ public:
 	int x = 0;
 	int y = 0;
 
-	text_location(int xx = 0, int yy = 0)
+	text_location(const int xx = 0, const int yy = 0) : x(xx), y(yy)
 	{
-		x = xx;
-		y = yy;
 	}
 
 	bool operator==(const text_location& other) const
@@ -233,7 +241,7 @@ class document_line
 public:
 	std::wstring _text;
 	uint32_t _flags = 0;
-	
+
 	mutable int _expanded_length = invalid_length;
 	mutable int _parse_cookie = invalid_length;
 
@@ -302,12 +310,11 @@ private:
 	std::atomic<uint32_t> _invalid = 0;
 
 	file_path _path;
-	uint32_t _find_flags = 0;
 	std::wstring _find_text;
 	std::shared_ptr<highlighter> _highlight;
 
 	mutable bool _modified = false;
-	line_endings _line_ending = line_endings::CRLF_STYLE_AUTOMATIC;
+	line_endings _line_ending = line_endings::crlf_style_automatic;
 	bool _create_backup_file = false;
 
 	std::vector<document_line> _lines;
@@ -325,10 +332,10 @@ private:
 
 	public:
 		undo_step() = default;
-		undo_step(const undo_step &) = default;
+		undo_step(const undo_step&) = default;
 		undo_step(undo_step&&) = default;
-		undo_step &operator=(const undo_step&) = default;
-		undo_step &operator=(undo_step&&) = default;
+		undo_step& operator=(const undo_step&) = default;
+		undo_step& operator=(undo_step&&) = default;
 
 		undo_step(const text_location& location, const wchar_t& c, bool insert) : _selection(location, location),
 			_insert(insert), _text(1, c)
@@ -391,7 +398,7 @@ private:
 		std::vector<undo_step> _steps;
 
 	public:
-		undo_item() = default;		
+		undo_item() = default;
 		undo_item(const undo_item&) = default;
 		undo_item(undo_item&&) = default;
 		undo_item& operator=(const undo_item&) = default;
@@ -430,11 +437,11 @@ private:
 
 public:
 	document(IView& view, const std::wstring& text = std::wstring(),
-	         line_endings nCrlfStyle = line_endings::CRLF_STYLE_DOS);
+	         line_endings nCrlfStyle = line_endings::crlf_style_dos);
 	~document();
 
 	bool load_from_file(file_path path);
-	bool save_to_file(file_path path, line_endings nCrlfStyle = line_endings::CRLF_STYLE_AUTOMATIC,
+	bool save_to_file(file_path path, line_endings nCrlfStyle = line_endings::crlf_style_automatic,
 	                  bool bClearModifiedFlag = true) const;
 	void clear();
 
@@ -465,7 +472,7 @@ public:
 
 	std::vector<std::wstring> text(const text_selection& selection) const;
 
-	static std::wstring combine_line_text(const std::vector<document_line> &lines)
+	static std::wstring combine_line_text(const std::vector<document_line>& lines)
 	{
 		std::wostringstream result;
 		auto first = true;
@@ -518,9 +525,9 @@ public:
 	text_location redo();
 	void record_undo(const undo_item& ui);
 
-	bool find(std::wstring_view text, const text_location& ptStartPos, const text_selection& selection,
-	          uint32_t dwFlags, bool bWrapSearch, text_location* pptFoundPos) const;
-	void find(std::wstring_view text, uint32_t flags);
+	bool find(std::wstring_view what, const text_location& start_pos, const text_selection& selection,
+	          uint32_t flags, bool wrap_search, text_location& found_pos) const;
+	void find(std::wstring_view what, uint32_t flags);
 
 	bool can_find_next() const
 	{

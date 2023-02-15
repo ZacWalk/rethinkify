@@ -4,19 +4,19 @@
 #include "resource.h"
 #include "ui.h"
 
+COLORREF style_to_color(style style_index);
 
-class find_wnd : public win_impl
+class find_wnd : public ui::win_impl
 {
 public:
 	const int editId = 101;
-	const int tbId = 102;
 	const int nextId = 103;
 	const int lastId = 104;
 
 	HFONT _font = nullptr;
 	document& _doc;
-	win_impl _find_text;
-	win_impl _find_next;
+	win _find_edit;
+	win _find_button;
 
 	find_wnd(document& d) : _doc(d)
 	{
@@ -25,66 +25,41 @@ public:
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
 		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
-			if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
-			if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
-			//if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
-			//if (id ==nextId) return OnNext(uMsg, wParam, lParam);
-			//if (id ==lastId) return OnLast(uMsg, wParam, lParam);
-			//COMMAND_HANDLER(editId, EN_CHANGE) return OnEditChange(uMsg, wParam, lParam);
-			return DefWindowProc(hWnd, uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
+		if (uMsg == WM_COMMAND) return OnCommand(uMsg, wParam, lParam);
+		//if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
+		//if (id ==nextId) return OnNext(uMsg, wParam, lParam);
+		//if (id ==lastId) return OnLast(uMsg, wParam, lParam);
+		//COMMAND_HANDLER(editId, EN_CHANGE) return OnEditChange(uMsg, wParam, lParam);
+		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
-	{		
-		_find_text.create_control(L"EDIT", m_hWnd, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0,
-			editId);
+	{
+		_find_edit.create_control(L"EDIT", m_hWnd, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0,
+		                          editId);
 
-		const auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN |
-			CCS_NODIVIDER | CCS_ADJUSTABLE;
+		const auto button_style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_FLAT;
 
-		_find_next.create_control(TOOLBARCLASSNAME, m_hWnd, tbStyle, 0, nextId);
-		
-
-		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
-		//	CCS_ADJUSTABLE | CCS_NODIVIDER | WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS,
-		//	0, 0, 0, 0, m_hwnd, (HMENU) IDR_TOOLBAR1, GetModuleHandle(NULL), 0);
-
-		SendMessage(_find_next.m_hWnd, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
-
-		const auto numButtons = 2;
-
-		//auto hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
-		//ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));
-		//ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
-		//SendMessage(_find_next.m_hWnd, TB_SETIMAGELIST, static_cast<WPARAM>(0), reinterpret_cast<LPARAM>(hImageList));
-
-		TBBUTTON tbButtons[numButtons] =
-		{
-			{0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE, {0}, 0, 0},
-			{1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE, {0}, 0, 0},
-		};
-		SendMessage(_find_next.m_hWnd, TB_ADDBUTTONS, numButtons, reinterpret_cast<LPARAM>(tbButtons));
-		SendMessage(_find_next.m_hWnd, TB_AUTOSIZE, 0, 0);
-
-		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APP), IMAGE_ICON, 32, 32, NULL);
-		//_findNext.SendMessage(BM_SETIMAGE, (WPARAM) IMAGE_ICON, (LPARAM) nextIcon);
-
-		//update_font(1.0);
+		_find_button.create_control(L"BUTTON", m_hWnd, button_style, 0, nextId);
+		SetWindowText(_find_button.m_hWnd, L"Find");
 
 		return 0;
 	}
 
 	void update_font(const double scale_factor)
 	{
-		_font = CreateFont(20 * scale_factor, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
-			CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
+		_font = CreateFont(20 * scale_factor, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+		                   OUT_OUTLINE_PRECIS,
+		                   CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
 
-		SetFont(_find_text.m_hWnd, _font);
-		SetFont(_find_next.m_hWnd, _font);
-		SetFont(m_hWnd, _font);
+		ui::set_font(_find_edit.m_hWnd, _font);
+		ui::set_font(_find_button.m_hWnd, _font);
+		ui::set_font(m_hWnd, _font);
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		auto r = GetClientRect();
 
@@ -93,12 +68,12 @@ public:
 		r.top += 4;
 		r.bottom -= 4;
 
-		_find_text.MoveWindow(r);
+		_find_edit.MoveWindow(r);
 
 		r.left = r.right + 4;
 		r.right += 50;
 
-		_find_text.MoveWindow(r);
+		_find_button.MoveWindow(r);
 
 		return 0;
 	}
@@ -106,62 +81,51 @@ public:
 	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		auto r = GetClientRect();
-		FillSolidRect(reinterpret_cast<HDC>(wParam), r, RGB(100, 100, 100));
+		ui::fill_solid_rect(reinterpret_cast<HDC>(wParam), r, style_to_color(style::main_wnd_clr));
 		return 1;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		auto r = GetClientRect();
 
-		PAINTSTRUCT ps = { nullptr };
+		PAINTSTRUCT ps = {nullptr};
 		const auto hdc = BeginPaint(m_hWnd, &ps);
-		FillSolidRect(hdc, r, RGB(100, 100, 100));
+		ui::fill_solid_rect(hdc, r, style_to_color(style::main_wnd_clr));
 		EndPaint(m_hWnd, &ps);
 		return 0;
 	}
 
-	std::wstring Text() const
+	std::wstring find_text() const
 	{
-		const auto bufferSize = 200;
-		wchar_t text[bufferSize];
-		GetWindowText(_find_text.m_hWnd, text, bufferSize);
-		return text;
+		return ui::window_text(_find_edit.m_hWnd);
 	}
 
-	void Text(std::wstring s)
+	void Text(std::wstring s) const
 	{
-		SetWindowText(_find_text.m_hWnd, s.c_str());
+		SetWindowText(_find_edit.m_hWnd, s.c_str());
 	}
 
-	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled) const
+	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		_doc.find(Text(), 0);
-		return 0;
-	}
-
-	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/) const
-	{
-		_doc.find(Text(), FIND_DIRECTION_UP);
-		return 0;
-	}
-
-	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/) const
-	{
-		_doc.find(Text(), 0);
-		return 0;
+		const auto id = LOWORD(wParam);
+		const auto code = HIWORD(wParam);
+		if (id == nextId) _doc.find(find_text(), 0);
+		if (id == editId && code == EN_CHANGE) _doc.find(find_text(), find_start_selection);
+		return DefWindowProc(m_hWnd, WM_COMMAND, wParam, lParam);
 	}
 };
 
-static FORMATETC ascii_text_format = { CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
-static FORMATETC utf16_text_format = { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
-static FORMATETC file_drop_format = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+static FORMATETC ascii_text_format = {CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+static FORMATETC utf16_text_format = {CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+static FORMATETC file_drop_format = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
 
-class text_view : public win_impl, public IDropTarget, public IView
+class text_view : public ui::win_impl, public IDropTarget, public IView
 {
 private:
 	document& _doc;
 	find_wnd& _find;
+	IEvents& _events;
 
 	volatile unsigned long m_cRef = 0;
 	text_location m_ptDropPos;
@@ -185,9 +149,10 @@ private:
 
 	int m_nScreenLines = 0;
 	int m_nScreenChars = 0;
+	
 
 public:
-	text_view(document& d, find_wnd& f) : _doc(d), _find(f)
+	text_view(document& d, find_wnd& f, IEvents &events) : _doc(d), _find(f), _events(events)
 	{
 	}
 
@@ -230,7 +195,7 @@ public:
 		lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
 		wcscpy_s(lf.lfFaceName, L"Consolas");
 
-		if (_font) ::DeleteObject(_font);
+		if (_font) DeleteObject(_font);
 		_font = ::CreateFontIndirect(&lf);
 
 		_doc.invalidate(invalid::layout);
@@ -248,11 +213,10 @@ public:
 		return 0;
 	}
 
-	
 
 	LRESULT OnSize(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		const win_dc hdc(m_hWnd);
+		const ui::win_dc hdc(m_hWnd);
 		const auto old_font = hdc.SelectFont(_font);
 
 		CSize font_extent;
@@ -265,7 +229,9 @@ public:
 		m_nCharWidth -= tm.tmOverhang;
 		*/
 
-		_extent = CSize(LOWORD(lParam), HIWORD(lParam));
+		const auto xPos = GET_X_LPARAM(lParam);
+		const auto yPos = GET_Y_LPARAM(lParam);
+		_extent = CSize(xPos, yPos);
 		_font_extent = font_extent;
 
 		layout();
@@ -276,9 +242,9 @@ public:
 		return 0;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		PAINTSTRUCT ps = { nullptr };
+		PAINTSTRUCT ps = {nullptr};
 		const auto hdc = BeginPaint(m_hWnd, &ps);
 		draw(hdc);
 		EndPaint(m_hWnd, &ps);
@@ -296,7 +262,7 @@ public:
 		return 0;
 	}
 
-	LRESULT OnSysColorChange(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
+	LRESULT OnSysColorChange(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/) const
 	{
 		invalidate();
 		return 0;
@@ -499,10 +465,10 @@ public:
 			break;
 		case ID_EDIT_SELECT_ALL: _doc.select(_doc.all());
 			break;
-			//case ID_EDIT_FIND: _doc.find(); break;
-		case ID_EDIT_REPEAT: _doc.find(_find.Text(), 0);
+		//case ID_EDIT_FIND: _doc.find(); break;
+		case ID_EDIT_REPEAT: _doc.find(_find.find_text(), 0);
 			break;
-		case ID_EDIT_FIND_PREVIOUS: _doc.find(_find.Text(), FIND_DIRECTION_UP);
+		case ID_EDIT_FIND_PREVIOUS: _doc.find(_find.find_text(), find_direction_up);
 			break;
 		case ID_EDIT_CHAR_LEFT: _doc.MoveLeft(false);
 			break;
@@ -568,7 +534,7 @@ public:
 			break;
 		case ID_EDIT_TAB: _doc.OnEditTab();
 			break;
-			//case ID_EDIT_REPLACE: _doc.OnEditReplace(); break;
+		//case ID_EDIT_REPLACE: _doc.OnEditReplace(); break;
 		case ID_EDIT_UNDO: _doc.OnEditUndo();
 			break;
 		case ID_EDIT_REDO: _doc.OnEditRedo();
@@ -723,10 +689,19 @@ public:
 		}
 	}
 
+	bool can_scroll() const
+	{
+		const auto line_count = _doc.size() - 1;
+		return m_nScreenChars < line_count;
+	}
+
 	void OnMouseWheel(const CPoint& point, int zDelta)
 	{
-		ScrollToLine(clamp(_char_offset.cy + zDelta, 0, _doc.size()));
-		update_caret();
+		if (can_scroll())
+		{
+			ScrollToLine(clamp(_char_offset.cy + zDelta, 0, _doc.size()));
+			update_caret();
+		}
 	}
 
 	void OnMouseMove(const CPoint& point, UINT nFlags)
@@ -851,7 +826,8 @@ public:
 			_char_offset.cx = x;
 			auto rcScroll = client_rect();
 			rcScroll.left += margin_width();
-			ScrollWindowEx(m_hWnd, nScrollChars * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
+			ScrollWindowEx(m_hWnd, nScrollChars * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr,
+			               SW_INVALIDATE);
 			recalc_horz_scrollbar();
 		}
 	}
@@ -862,7 +838,8 @@ public:
 		{
 			const int nScrollLines = _char_offset.cy - y;
 			_char_offset.cy = y;
-			ScrollWindowEx(m_hWnd, 0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
+			ScrollWindowEx(m_hWnd, 0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr,
+			               SW_INVALIDATE);
 			recalc_vert_scrollbar();
 		}
 	}
@@ -1010,8 +987,8 @@ public:
 		static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
 
 		CPoint pt;
-		::GetCursorPos(&pt);
-		::ScreenToClient(m_hWnd , &pt);
+		GetCursorPos(&pt);
+		ScreenToClient(m_hWnd, &pt);
 
 		if (pt.x < margin_width())
 		{
@@ -1027,14 +1004,14 @@ public:
 		}
 	}
 
-	void update_caret()
+	void update_caret() const
 	{
 		const auto pos = _doc.cursor_pos();
 
 		if (m_bFocused && !m_bCursorHidden &&
 			_doc.calc_offset(pos.y, pos.x) >= _char_offset.cx)
 		{
-			::CreateCaret(m_hWnd, nullptr, 2, _font_extent.cy);
+			CreateCaret(m_hWnd, nullptr, 2, _font_extent.cy);
 
 			const auto pt = text_to_client(pos);
 			SetCaretPos(pt.x, pt.y);
@@ -1206,7 +1183,7 @@ public:
 		{
 			//ascii text
 			const auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
-			text = AsciiToUtf16(data);
+			text = str::AsciiToUtf16(data);
 			GlobalUnlock(stgmed.hGlobal);
 			ReleaseStgMedium(&stgmed);
 		}
@@ -1215,15 +1192,10 @@ public:
 			const auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
 			const auto files = reinterpret_cast<const DROPFILES*>(data);
 			text = reinterpret_cast<const wchar_t*>(data + files->pFiles);
-
-			if (_doc.load_from_file(text))
-			{
-				_doc.invalidate(invalid::title);
-			}
-
 			GlobalUnlock(stgmed.hGlobal);
 			ReleaseStgMedium(&stgmed);
-
+			
+			_events.path_selected({ text });
 			return true;
 		}
 
@@ -1246,7 +1218,7 @@ public:
 			//HideCursor();
 			m_ptSavedCaretPos = _doc.cursor_pos();
 			m_bDropPosVisible = true;
-			::CreateCaret(m_hWnd, reinterpret_cast<HBITMAP>(1), 2, _font_extent.cy);
+			CreateCaret(m_hWnd, reinterpret_cast<HBITMAP>(1), 2, _font_extent.cy);
 		}
 		m_ptDropPos = client_to_text(point);
 		if (m_ptDropPos.x >= _char_offset.cx)
@@ -1334,7 +1306,7 @@ public:
 		return success;
 	}
 
-	void invalidate(CRect r = {})
+	void invalidate(CRect r = {}) const
 	{
 		InvalidateRect(m_hWnd, r.Width() > 0 ? static_cast<LPCRECT>(r) : nullptr, FALSE);
 	}
@@ -1602,7 +1574,7 @@ public:
 	}
 
 	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip,
-		std::wstring_view pszChars, int nOffset, int nCount) const
+	               std::wstring_view pszChars, int nOffset, int nCount) const
 	{
 		if (nCount > 0)
 		{
@@ -1632,7 +1604,7 @@ public:
 	}
 
 	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip, style nColorIndex,
-		std::wstring_view pszChars, int nOffset, int nCount, const text_location& ptTextPos) const
+	               std::wstring_view pszChars, int nOffset, int nCount, const text_location& ptTextPos) const
 	{
 		if (nCount > 0)
 		{
@@ -1685,7 +1657,7 @@ public:
 		if (lineIndex == -1)
 		{
 			//	Draw line beyond the text
-			FillSolidRect(hdc, rc, style_to_color(style::white_space));
+			ui::fill_solid_rect(hdc, rc, style_to_color(style::white_space));
 		}
 		else
 		{
@@ -1702,12 +1674,12 @@ public:
 
 				if (_doc.is_inside_selection(text_location(0, lineIndex)))
 				{
-					FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(),
-						style_to_color(style::sel_bkgnd));
+					ui::fill_solid_rect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(),
+					                    style_to_color(style::sel_bkgnd));
 					rect.left += _font_extent.cx;
 				}
 
-				FillSolidRect(hdc, rect, draw_whitespace ? bg_color : style_to_color(style::white_space));
+				ui::fill_solid_rect(hdc, rect, draw_whitespace ? bg_color : style_to_color(style::white_space));
 			}
 			else
 			{
@@ -1732,7 +1704,7 @@ public:
 
 					SetTextColor(hdc, style_to_color(style::normal_text));
 					draw_line(hdc, origin, rc, style::normal_text, line_view, 0, pBuf[0]._char_pos,
-						text_location(0, lineIndex));
+					          text_location(0, lineIndex));
 
 					for (auto i = 0; i < nBlocks - 1; i++)
 					{
@@ -1741,8 +1713,8 @@ public:
 						SetTextColor(hdc, style_to_color(pBuf[i]._color));
 
 						draw_line(hdc, origin, rc, pBuf[i]._color, line_view,
-							pBuf[i]._char_pos, pBuf[i + 1]._char_pos - pBuf[i]._char_pos,
-							text_location(pBuf[i]._char_pos, lineIndex));
+						          pBuf[i]._char_pos, pBuf[i + 1]._char_pos - pBuf[i]._char_pos,
+						          text_location(pBuf[i]._char_pos, lineIndex));
 					}
 
 					assert(pBuf[nBlocks - 1]._char_pos >= 0 && pBuf[nBlocks - 1]._char_pos <= nLength);
@@ -1750,14 +1722,14 @@ public:
 					SetTextColor(hdc, style_to_color(pBuf[nBlocks - 1]._color));
 
 					draw_line(hdc, origin, rc, pBuf[nBlocks - 1]._color, line_view,
-						pBuf[nBlocks - 1]._char_pos, nLength - pBuf[nBlocks - 1]._char_pos,
-						text_location(pBuf[nBlocks - 1]._char_pos, lineIndex));
+					          pBuf[nBlocks - 1]._char_pos, nLength - pBuf[nBlocks - 1]._char_pos,
+					          text_location(pBuf[nBlocks - 1]._char_pos, lineIndex));
 				}
 				else
 				{
 					SetTextColor(hdc, style_to_color(style::normal_text));
 					draw_line(hdc, origin, rc, style::normal_text, line_view, 0, nLength,
-						text_location(0, lineIndex));
+					          text_location(0, lineIndex));
 				}
 
 				//	Draw whitespaces to the left of the text
@@ -1770,15 +1742,15 @@ public:
 				{
 					if (_doc.is_inside_selection(text_location(nLength, lineIndex)))
 					{
-						FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(),
-							style_to_color(style::sel_bkgnd));
+						ui::fill_solid_rect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(),
+						                    style_to_color(style::sel_bkgnd));
 						frect.left += _font_extent.cx;
 					}
 					if (frect.right > frect.left)
 					{
-						FillSolidRect(hdc, frect, draw_whitespace
-							? bg_color
-							: style_to_color(style::white_space));
+						ui::fill_solid_rect(hdc, frect, draw_whitespace
+							                                ? bg_color
+							                                : style_to_color(style::white_space));
 					}
 				}
 
@@ -1787,71 +1759,10 @@ public:
 		}
 	}
 
-	static COLORREF style_to_color(style nColorIndex)
-	{
-		switch (nColorIndex)
-		{
-		case style::white_space:
-		case style::normal_bkgnd:
-			return RGB(30, 30, 30);
-		case style::normal_text:
-			return RGB(222, 222, 222);
-		case style::sel_margin:
-			return RGB(44, 44, 44);
-		case style::code_preprocessor:
-			return RGB(133, 133, 211);
-		case style::code_comment:
-			return RGB(128, 222, 128);
-		case style::code_number:
-			return RGB(244, 244, 144);
-		case style::code_string:
-			return RGB(244, 244, 144);
-		case style::code_operator:
-			return RGB(128, 255, 128);
-		case style::code_keyword:
-			return RGB(128, 128, 255);
-		case style::sel_bkgnd:
-			return RGB(88, 88, 88);
-		case style::sel_text:
-			return RGB(255, 255, 255);
-		}
-		return RGB(222, 222, 222);
-	}
-
-	//COLORREF document::GetColor(int nColorIndex)
-	//{
-	//	switch (nColorIndex)
-	//	{
-	//	case IHighlight::COLORINDEX_WHITESPACE:
-	//	case IHighlight::COLORINDEX_BKGND:
-	//		return ::GetSysColor(COLOR_WINDOW);
-	//	case IHighlight::COLORINDEX_NORMALTEXT:
-	//		return ::GetSysColor(COLOR_WINDOWTEXT);
-	//	case IHighlight::COLORINDEX_SELMARGIN:
-	//		return ::GetSysColor(COLOR_SCROLLBAR);
-	//	case IHighlight::COLORINDEX_PREPROCESSOR:
-	//		return RGB(0, 128, 192);
-	//	case IHighlight::COLORINDEX_COMMENT:
-	//		return RGB(128, 128, 128);
-	//		//	[JRT]: Enabled Support For Numbers...
-	//	case IHighlight::COLORINDEX_NUMBER:
-	//		return RGB(0x80, 0x00, 0x00);
-	//	case IHighlight::COLORINDEX_OPERATOR:
-	//		return RGB(0x00, 0x00, 0x00);
-	//	case IHighlight::COLORINDEX_KEYWORD:
-	//		return RGB(0, 0, 255);
-	//	case IHighlight::COLORINDEX_SELBKGND:
-	//		return RGB(0, 0, 0);
-	//	case IHighlight::COLORINDEX_SELTEXT:
-	//		return RGB(255, 255, 255);
-	//	}
-	//	return RGB(255, 0, 0);
-	//}
-
-
+	
 	void draw_margin(HDC hdc, const CRect& rect, int lineIndex) const
 	{
-		FillSolidRect(
+		ui::fill_solid_rect(
 			hdc, rect, style_to_color(m_bSelMargin ? style::sel_margin : style::normal_bkgnd));
 	}
 
@@ -1894,7 +1805,7 @@ public:
 	void move_page(bool down, bool selecting)
 	{
 		const int y = clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0,
-			_doc.size() - 1);
+		                    _doc.size() - 1);
 
 		if (_char_offset.cy != y)
 		{

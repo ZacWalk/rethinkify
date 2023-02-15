@@ -44,6 +44,7 @@
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <span>
 
 #include <OleIdl.h>
 #include <Shlobj.h>

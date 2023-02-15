@@ -238,9 +238,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="aes256.h" />
     <ClInclude Include="platform.h" />
-    <ClInclude Include="sha.h" />
     <ClInclude Include="should.h" />
     <ClInclude Include="spell_check.h" />
     <ClInclude Include="document.h" />
@@ -252,8 +250,6 @@
     <ClInclude Include="util.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="aes256.cpp" />
-    <ClCompile Include="sha.cpp" />
     <ClCompile Include="spell_check.cpp" />
     <ClCompile Include="tests.cpp" />
     <ClCompile Include="document.cpp" />
@@ -287,6 +283,7 @@
       <StringPooling Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</StringPooling>
       <StringPooling Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</StringPooling>
     </ClCompile>
+    <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />
