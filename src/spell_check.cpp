@@ -7,9 +7,9 @@
 #endif
 
 #define HUNSPELL_STATIC
-#include "hunspell.hxx"
+#include "hunspell\hunspell.hxx"
 
-spell_check::spell_check(void) {}
+spell_check::spell_check(void) = default;
 
 spell_check::~spell_check(void)
 {
@@ -34,20 +34,20 @@ void spell_check::Init()
 
 	if (!_psc)
 	{
-		auto language = Language();
-		auto folder = Path::ModuleFolder();
+		const auto language = Language();
+		const auto folder = file_path::module_folder();
 		auto affPath = folder.Combine(language, L".aff");
 		auto dicPath = folder.Combine(language, L".dic");
-		auto extPath = Path::AppData().Combine(L"custom.dic");
+		const auto extPath = file_path::app_data_folder().Combine(L"custom.dic");
 
-		if (!affPath.Exists())
+		if (!affPath.exists())
 		{
-			auto defaulLang = L"en_US";
+			const auto defaulLang = L"en_US";
 			affPath = folder.Combine(defaulLang, L".aff");
 			dicPath = folder.Combine(defaulLang, L".dic");
 		}
 
-		_psc = std::make_shared<Hunspell>(UTF16ToAscii(affPath.str()).c_str(), UTF16ToAscii(dicPath.str()).c_str());
+		_psc = std::make_shared<Hunspell>(UTF16ToAscii(affPath.view()).c_str(), UTF16ToAscii(dicPath.view()).c_str());
 
 		std::ifstream f(extPath.c_str());
 
@@ -58,37 +58,34 @@ void spell_check::Init()
 			while (f.good())
 			{
 				std::getline(f, line);
-				_psc->add(line.c_str());
+				_psc->add(line);
 			}
 			f.close();
 		}
 	}
 }
 
-bool spell_check::is_word_valid(const wchar_t* wword, int wlen)
+bool spell_check::is_word_valid(std::wstring_view word)
 {
 	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
-	return _psc && _psc->spell(UTF16ToAscii(wword, wlen)) != 0;
+	return _psc && _psc->spell(UTF16ToAscii(word)) != 0;
 }
 
-std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
+std::vector<std::wstring> spell_check::suggest(std::wstring_view word)
 {
 	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
 
-	auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), nullptr, 0, nullptr, nullptr);
-	auto aword = static_cast<char*>(_alloca(size_needed + 1));
-	WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), aword, size_needed, nullptr, nullptr);
-	aword[size_needed] = 0;
+	const auto word_utf8 = UTF16ToUtf8(word);
 
 	std::vector<std::wstring> results;
 
 	if (_psc)
 	{
-		for (auto r : _psc->suggest(aword))
+		for (const auto& r : _psc->suggest(word_utf8))
 		{
 			results.emplace_back(AsciiToUtf16(r));
 		}
@@ -97,7 +94,7 @@ std::vector<std::wstring> spell_check::suggest(const std::wstring& wword)
 	return results;
 }
 
-void spell_check::add_word(const std::wstring& wword)
+void spell_check::add_word(std::wstring_view word)
 {
 	platform::scope_lock l(_cs);
 
@@ -105,16 +102,12 @@ void spell_check::add_word(const std::wstring& wword)
 
 	if (_psc)
 	{
-		auto customPath = Path::AppData().Combine(L"custom.dic");
+		const auto customPath = file_path::app_data_folder().Combine(L"custom.dic");
+		const auto word_utf8 = UTF16ToUtf8(word);
 
-		auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), nullptr, 0, nullptr, nullptr);
-		auto aword = static_cast<char*>(_alloca(size_needed + 1));
-		WideCharToMultiByte(CP_ACP, 0, &wword[0], static_cast<int>(wword.size()), aword, size_needed, nullptr, nullptr);
-		aword[size_needed] = 0;
-
-		_psc->add(aword);
+		_psc->add(word_utf8);
 
 		std::ofstream f(customPath.c_str(), std::ios::out | std::ios::app);
-		f << aword << std::endl;
+		f << word_utf8 << std::endl;
 	}
 }

@@ -13,11 +13,10 @@ private:
 	void Init();
 
 public:
-
 	spell_check(void);
 	~spell_check(void);
 
-	bool is_word_valid(const wchar_t* wword, int wlen);
-	std::vector<std::wstring> suggest(const std::wstring& szWord);
-	void add_word(const std::wstring& szWord);
+	bool is_word_valid(std::wstring_view word);
+	std::vector<std::wstring> suggest(std::wstring_view word);
+	void add_word(std::wstring_view word);
 };

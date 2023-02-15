@@ -8,6 +8,12 @@
 #include "targetver.h"
 
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#define NOMINMAX 
+#define NOKERNEL
+#define NOSERVICE
+#define NOSOUND
+#define NOMCX
+
 // Windows Header Files:
 #include <windows.h>
 
@@ -35,15 +41,13 @@
 #include <memory>
 #include <functional>
 #include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <fstream>
 
-#include <Commdlg.h>
 #include <OleIdl.h>
 #include <Shlobj.h>
+#include <Shlwapi.h>
+#include <commdlg.h>
 
-#include <atlbase.h>
-#include <atlwin.h>
-
-#undef min
-#undef max
-
-extern const wchar_t* g_szAppName;
+extern const wchar_t* g_app_name;

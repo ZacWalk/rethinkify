@@ -1,48 +1,41 @@
 #pragma once
 
 
-inline std::string UTF16ToUtf8(const std::wstring& wstr)
+inline std::string UTF16ToUtf8(std::wstring_view wstr)
 {
-	auto size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
+	const auto size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
+		nullptr, nullptr);
 	std::string result(size_needed, 0);
-	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], static_cast<int>(wstr.size()), &result[0], size_needed, nullptr, nullptr);
+	WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), size_needed, nullptr, nullptr);
 	return result;
 }
 
-inline std::wstring UTF8ToUtf16(const std::string& str)
+inline std::wstring UTF8ToUtf16(std::string_view str)
 {
-	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], static_cast<int>(str.size()), nullptr, 0);
+	const int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
 	std::wstring result(size_needed, 0);
-	MultiByteToWideChar(CP_UTF8, 0, &str[0], static_cast<int>(str.size()), &result[0], size_needed);
+	MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), size_needed);
 	return result;
 }
 
-
-inline std::string UTF16ToAscii(const std::wstring& wstr)
+inline std::string UTF16ToAscii(std::wstring_view wstr)
 {
-	auto size_needed = WideCharToMultiByte(CP_ACP, 0, &wstr[0], static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
+	const auto size_needed = WideCharToMultiByte(CP_ACP, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
+		nullptr, nullptr);
 	std::string result(size_needed, 0);
-	WideCharToMultiByte(CP_ACP, 0, &wstr[0], static_cast<int>(wstr.size()), &result[0], size_needed, nullptr, nullptr);
+	WideCharToMultiByte(CP_ACP, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), size_needed, nullptr, nullptr);
 	return result;
 }
 
-inline std::string UTF16ToAscii(const wchar_t* wword, int wlen)
+inline std::wstring AsciiToUtf16(std::string_view str)
 {
-	auto size_needed = WideCharToMultiByte(CP_ACP, 0, wword, wlen, nullptr, 0, nullptr, nullptr);
-	std::string result(size_needed, 0);
-	WideCharToMultiByte(CP_ACP, 0, wword, wlen, &result[0], size_needed, nullptr, nullptr);
-	return result;
-}
-
-inline std::wstring AsciiToUtf16(const std::string& str)
-{
-	auto size_needed = MultiByteToWideChar(CP_ACP, 0, &str[0], static_cast<int>(str.size()), nullptr, 0);
+	const auto size_needed = MultiByteToWideChar(CP_ACP, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
 	std::wstring result(size_needed, 0);
-	MultiByteToWideChar(CP_ACP, 0, &str[0], static_cast<int>(str.size()), &result[0], size_needed);
+	MultiByteToWideChar(CP_ACP, 0, str.data(), static_cast<int>(str.size()), result.data(), size_needed);
 	return result;
 }
 
-inline int Clamp(int v, int l, int r)
+inline int clamp(int v, int l, int r)
 {
 	if (v < l) return l;
 	if (r < l) return l;
@@ -50,52 +43,92 @@ inline int Clamp(int v, int l, int r)
 	return v;
 }
 
-inline std::wstring UnQuote(const std::wstring& text)
+namespace str
 {
-	if (text.size() > 1 && *text.begin() == '"' && *text.rbegin() == '"')
+	constexpr int to_lower(const int c)
 	{
-		return text.substr(1, text.length() - 2);
-	}
-	else if (text.size() > 1 && *text.begin() == '\'' && *text.rbegin() == '\'')
-	{
-		return text.substr(1, text.length() - 2);
+		if (c < 128) return ((c >= L'A') && (c <= L'Z')) ? c - L'A' + L'a' : c;
+		if (c > USHRT_MAX) return c;
+		return towlower(c);
 	}
 
-	return text;
-}
-
-static inline wchar_t* wcsistr(wchar_t const* s1, wchar_t const* s2)
-{
-	auto s = s1;
-	auto p = s2;
-
-	do
+	inline std::wstring_view unquote(std::wstring_view text)
 	{
-		if (!*p) return const_cast<wchar_t*>(s1);
-		if ((*p == *s) || (towlower(*p) == towlower(*s)))
+		if (text.size() > 1 && *text.begin() == '"' && *text.rbegin() == '"')
 		{
-			++p;
-			++s;
+			return text.substr(1, text.length() - 2);
 		}
-		else
+		if (text.size() > 1 && *text.begin() == '\'' && *text.rbegin() == '\'')
 		{
-			p = s2;
-			if (!*s) return nullptr;
-			s = ++s1;
+			return text.substr(1, text.length() - 2);
 		}
-	}
-	while (1);
-}
 
-static inline std::wstring Combine(const std::vector<std::wstring>& lines, const wchar_t* endl = L"\n")
-{
-	if (lines.size() == 1)
-	{
-		return lines[0];
+		return text;
 	}
-	else
+
+	constexpr int icmp(const std::wstring_view ll, const std::wstring_view rr)
 	{
-		std::wstringstream result;
+		if (ll.data() == rr.data() || (ll.empty() && rr.empty())) return 0;
+		if (ll.empty()) return 1;
+		if (rr.empty()) return -1;
+
+		auto cl = 0;
+		auto cr = 0;
+
+		auto il = ll.begin();
+		auto ir = rr.begin();
+		const auto el = ll.end();
+		const auto er = rr.end();
+
+		while (il < el && ir < er)
+		{
+			cl = to_lower(*il++);
+			cr = to_lower(*ir++);
+			if (cl < cr) return -1;
+			if (cl > cr) return 1;
+		}
+
+		if (il == el) cl = 0;
+		if (ir == er) cr = 0;
+		return cl - cr;
+	}
+
+	static inline size_t wcsistr(std::wstring_view text, std::wstring_view pattern)
+	{
+		auto t = text.begin();
+		auto p = pattern.begin();
+		size_t pos = 0;
+
+		if (text.empty()) return std::wstring_view::npos;
+		if (pattern.empty()) return std::wstring_view::npos;
+
+		do
+		{
+			if (p == pattern.end()) return pos;
+
+			if ((*p == *t) || (towlower(*p) == towlower(*t)))
+			{
+				++p;
+				++t;
+			}
+			else
+			{
+				p = pattern.begin();
+				text = text.substr(1);
+				pos += 1;
+				if (text.empty()) return {};
+				t = text.begin();
+			}
+		} while (true);
+	}
+
+	static inline std::wstring combine(const std::vector<std::wstring>& lines, std::wstring_view endl = L"\n")
+	{
+		if (lines.size() == 1)
+		{
+			return lines[0];
+		}
+		std::wostringstream result;
 		auto first = true;
 
 		for (const auto& line : lines)
@@ -107,29 +140,41 @@ static inline std::wstring Combine(const std::vector<std::wstring>& lines, const
 			}
 			else
 			{
-				result << endl << line;
+				result << std::endl << line;
 			}
 		}
 
 		return result.str();
 	}
-}
 
-static inline std::wstring Replace(__in const std::wstring& s, __in_z const wchar_t* find, __in_z const wchar_t* replacement)
-{
-	auto result = s;
-	size_t pos = 0;
-	auto findLength = wcslen(find);
-	auto replacementLength = wcslen(replacement);
-
-	while ((pos = result.find(find, pos)) != std::wstring::npos)
+	static inline std::wstring replace(std::wstring_view s, std::wstring_view find, std::wstring_view replacement)
 	{
-		result.replace(pos, findLength, replacement);
-		pos += replacementLength;
+		std::wstring result(s);
+		size_t pos = 0;
+		const auto findLength = find.size();
+		const auto replacementLength = replacement.size();
+
+		while ((pos = result.find(find, pos)) != std::wstring::npos)
+		{
+			result.replace(pos, findLength, replacement);
+			pos += replacementLength;
+		}
+
+		return result;
 	}
 
-	return result;
-}
+	static std::wstring_view From(bool val)
+	{
+		return val ? L"true" : L"false";
+	}
+
+	constexpr int last_char(const std::wstring_view sv)
+	{
+		if (sv.empty()) return 0;
+		return sv.back();
+	}
+};
+
 
 class CPoint : public POINT
 {
@@ -218,30 +263,5 @@ public:
 	}
 };
 
-class String
-{
-public:
-	static int CompareNoCase(const wchar_t* left, const wchar_t* right)
-	{
-		return _wcsicmp(left, right);
-	}
 
-	static std::wstring Format(const wchar_t* format, ...)
-	{
-		va_list argList;
-		va_start(argList, format);
 
-		auto length = _vscwprintf(format, argList);
-		auto sz = static_cast<wchar_t*>(_alloca((length + 1) * sizeof(wchar_t)));
-		if (sz == nullptr) return L"";
-		vswprintf_s(sz, length + 1, format, argList);
-		va_end(argList);
-		sz[length] = 0;
-		return sz;
-	}
-
-	static const wchar_t* From(bool val)
-	{
-		return val ? L"true" : L"false";
-	};
-};

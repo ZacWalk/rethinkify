@@ -1,8 +1,5 @@
 #include "pch.h"
 
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 #include "sha.h"
 
@@ -55,12 +52,12 @@ void sha1::update(const uint8_t* input, size_t len)
 void sha1::final(uint8_t* digest_result)
 {
 	// Total number of hashed bits 
-	uint64_t total_bits = (transforms * BLOCK_BYTES + buffer.size()) * 8;
+	const uint64_t total_bits = (transforms * BLOCK_BYTES + buffer.size()) * 8;
 
 	// Padding 
 	buffer.emplace_back(0x80);
 
-	auto orig_size = buffer.size();
+	const auto orig_size = buffer.size();
 	while (buffer.size() < BLOCK_BYTES)
 	{
 		buffer.emplace_back(0x00);
@@ -83,9 +80,9 @@ void sha1::final(uint8_t* digest_result)
 	block[BLOCK_INTS - 2] = static_cast<uint32_t>(total_bits >> 32);
 	transform(block);
 
-	for (int i = 0; i < DIGEST_INTS; i++)
+	for (unsigned int& i : digest)
 	{
-		digest[i] = _byteswap_ulong(digest[i]);
+		i = _byteswap_ulong(i);
 	}
 
 	memcpy_s(digest_result, DIGEST_SIZE, digest, DIGEST_SIZE);
@@ -249,7 +246,8 @@ void sha1::buffer_to_block(const std::vector<uint8_t>& buffer, uint32_t block[BL
 }
 
 const unsigned int sha256::sha256_k[64] = //UL = uint32
-{0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+{
+	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
 	0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -264,20 +262,18 @@ const unsigned int sha256::sha256_k[64] = //UL = uint32
 	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
 	0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
 	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
 
 void sha256::transform(const uint8_t* message, unsigned int block_nb)
 {
 	uint32_t w[64];
 	uint32_t wv[8];
-	uint32_t t1, t2;
 
-	const uint8_t* sub_block;
-	int i;
 	int j;
-	for (i = 0; i < static_cast<int>(block_nb); i++)
+	for (int i = 0; i < static_cast<int>(block_nb); i++)
 	{
-		sub_block = message + (i << 6);
+		const uint8_t* sub_block = message + (i << 6);
 		for (j = 0; j < 16; j++)
 		{
 			SHA2_PACK32(&sub_block[j << 2], &w[j]);
@@ -292,9 +288,9 @@ void sha256::transform(const uint8_t* message, unsigned int block_nb)
 		}
 		for (j = 0; j < 64; j++)
 		{
-			t1 = wv[7] + SHA256_F2(wv[4]) + SHA2_CH(wv[4], wv[5], wv[6])
+			const uint32_t t1 = wv[7] + SHA256_F2(wv[4]) + SHA2_CH(wv[4], wv[5], wv[6])
 				+ sha256_k[j] + w[j];
-			t2 = SHA256_F1(wv[0]) + SHA2_MAJ(wv[0], wv[1], wv[2]);
+			const uint32_t t2 = SHA256_F1(wv[0]) + SHA2_MAJ(wv[0], wv[1], wv[2]);
 			wv[7] = wv[6];
 			wv[6] = wv[5];
 			wv[5] = wv[4];
@@ -332,7 +328,7 @@ void sha256::reset()
 
 void sha256::update(const uint8_t* input, size_t len)
 {
-	auto tmp_len = SHA224_256_BLOCK_SIZE - m_len;
+	const auto tmp_len = SHA224_256_BLOCK_SIZE - m_len;
 	auto rem_len = len < tmp_len ? len : tmp_len;
 
 	memcpy(&m_block[m_len], input, rem_len);
@@ -343,9 +339,9 @@ void sha256::update(const uint8_t* input, size_t len)
 		return;
 	}
 
-	auto new_len = len - rem_len;
-	auto block_nb = new_len / SHA224_256_BLOCK_SIZE;
-	auto shifted_message = static_cast<const uint8_t*>(input) + rem_len;
+	const auto new_len = len - rem_len;
+	const auto block_nb = new_len / SHA224_256_BLOCK_SIZE;
+	const auto shifted_message = input + rem_len;
 
 	transform(m_block, 1);
 	transform(shifted_message, block_nb);
@@ -359,9 +355,9 @@ void sha256::update(const uint8_t* input, size_t len)
 
 void sha256::final(uint8_t* digest)
 {
-	auto block_nb = (1 + ((SHA224_256_BLOCK_SIZE - 9) < (m_len % SHA224_256_BLOCK_SIZE)));
-	auto len_b = (m_tot_len + m_len) << 3;
-	auto pm_len = block_nb << 6;
+	const auto block_nb = (1 + ((SHA224_256_BLOCK_SIZE - 9) < (m_len % SHA224_256_BLOCK_SIZE)));
+	const auto len_b = (m_tot_len + m_len) << 3;
+	const auto pm_len = block_nb << 6;
 
 	memset(m_block + m_len, 0, pm_len - m_len);
 	m_block[m_len] = 0x80;
@@ -369,7 +365,7 @@ void sha256::final(uint8_t* digest)
 	SHA2_UNPACK32(len_b, m_block + pm_len - 4);
 	transform(m_block, block_nb);
 
-	memset(digest, 0, sha256::DIGEST_SIZE);
+	memset(digest, 0, DIGEST_SIZE);
 
 	for (auto i = 0; i < 8; i++)
 	{

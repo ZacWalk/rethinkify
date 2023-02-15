@@ -1,19 +1,17 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28010.2041
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33318.248
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "rethinkify", "src\rethinkify.vcxproj", "{E22DE357-DF10-4EAD-8069-A2C780F5CACC}"
-	ProjectSection(ProjectDependencies) = postProject
+	ProjectSection(Projectthird-party) = postProject
 		{18527041-F416-114C-500F-5856431D553A} = {18527041-F416-114C-500F-5856431D553A}
 		{C44DA243-F95C-49D3-8F93-5DD6E2960042} = {C44DA243-F95C-49D3-8F93-5DD6E2960042}
 		{3D0E5F57-72FE-4915-A6A7-F36F74844D38} = {3D0E5F57-72FE-4915-A6A7-F36F74844D38}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "astyle", "dependencies\AStyle\AStyleLib.vcxproj", "{3D0E5F57-72FE-4915-A6A7-F36F74844D38}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "astyle", "third-party\AStyle\AStyleLib.vcxproj", "{3D0E5F57-72FE-4915-A6A7-F36F74844D38}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hunspell", "dependencies\hunspell\hunspell.vcxproj", "{18527041-F416-114C-500F-5856431D553A}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Jsoncpp", "dependencies\jsoncpp\Jsoncpp.vcxproj", "{C44DA243-F95C-49D3-8F93-5DD6E2960042}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hunspell", "third-party\hunspell\hunspell.vcxproj", "{18527041-F416-114C-500F-5856431D553A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,10 +23,12 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Debug|Win32.ActiveCfg = Debug|Win32
 		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Debug|Win32.Build.0 = Debug|Win32
-		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Debug|x64.ActiveCfg = Debug|Win32
+		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Debug|x64.ActiveCfg = Debug|x64
+		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Debug|x64.Build.0 = Debug|x64
 		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Release|Win32.ActiveCfg = Release|Win32
 		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Release|Win32.Build.0 = Release|Win32
-		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Release|x64.ActiveCfg = Release|Win32
+		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Release|x64.ActiveCfg = Release|x64
+		{E22DE357-DF10-4EAD-8069-A2C780F5CACC}.Release|x64.Build.0 = Release|x64
 		{3D0E5F57-72FE-4915-A6A7-F36F74844D38}.Debug|Win32.ActiveCfg = Debug|Win32
 		{3D0E5F57-72FE-4915-A6A7-F36F74844D38}.Debug|Win32.Build.0 = Debug|Win32
 		{3D0E5F57-72FE-4915-A6A7-F36F74844D38}.Debug|x64.ActiveCfg = Debug|x64
@@ -45,12 +45,6 @@ Global
 		{18527041-F416-114C-500F-5856431D553A}.Release|Win32.Build.0 = Release|Win32
 		{18527041-F416-114C-500F-5856431D553A}.Release|x64.ActiveCfg = Release|x64
 		{18527041-F416-114C-500F-5856431D553A}.Release|x64.Build.0 = Release|x64
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Debug|Win32.ActiveCfg = Debug|Win32
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Debug|Win32.Build.0 = Debug|Win32
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Debug|x64.ActiveCfg = Debug|Win32
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Release|Win32.ActiveCfg = Release|Win32
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Release|Win32.Build.0 = Release|Win32
-		{C44DA243-F95C-49D3-8F93-5DD6E2960042}.Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -5,107 +5,119 @@
 #include "ui.h"
 
 
-class find_wnd : public CWindowImpl<find_wnd>
+class find_wnd : public win_impl
 {
 public:
-
 	const int editId = 101;
 	const int tbId = 102;
 	const int nextId = 103;
 	const int lastId = 104;
 
+	HFONT _font = nullptr;
 	document& _doc;
-	CWindow _findText;
-	CWindow _findNext;
+	win_impl _find_text;
+	win_impl _find_next;
 
-	find_wnd(document& d) : _doc(d) { }
-
-	BEGIN_MSG_MAP(find_wnd)
-		MESSAGE_HANDLER(WM_CREATE, OnCreate)
-		MESSAGE_HANDLER(WM_SIZE, OnSize)
-		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
-		//MESSAGE_HANDLER(WM_PAINT, OnPaint)
-		COMMAND_ID_HANDLER(nextId, OnNext)
-		COMMAND_ID_HANDLER(lastId, OnLast)
-		COMMAND_HANDLER(editId, EN_CHANGE, OnEditChange)
-	END_MSG_MAP()
-
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	find_wnd(document& d) : _doc(d)
 	{
-		auto font = CreateFont(20, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
+	}
 
-		_findText.Create(L"EDIT", m_hWnd, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, editId);
-		_findText.SetFont(font);
+	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
+	{
+		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
+			if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
+			if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
+			//if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
+			//if (id ==nextId) return OnNext(uMsg, wParam, lParam);
+			//if (id ==lastId) return OnLast(uMsg, wParam, lParam);
+			//COMMAND_HANDLER(editId, EN_CHANGE) return OnEditChange(uMsg, wParam, lParam);
+			return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	}
 
-		auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN | CCS_NODIVIDER | CCS_ADJUSTABLE;
+	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	{		
+		_find_text.create_control(L"EDIT", m_hWnd, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0,
+			editId);
 
-		_findNext.Create(TOOLBARCLASSNAME, m_hWnd, nullptr, nullptr, tbStyle, 0, nextId);
-		_findNext.SetFont(font);
+		const auto tbStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TRANSPARENT | CCS_NOPARENTALIGN |
+			CCS_NODIVIDER | CCS_ADJUSTABLE;
+
+		_find_next.create_control(TOOLBARCLASSNAME, m_hWnd, tbStyle, 0, nextId);
+		
 
 		//HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, 0,
 		//	CCS_ADJUSTABLE | CCS_NODIVIDER | WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS,
 		//	0, 0, 0, 0, m_hwnd, (HMENU) IDR_TOOLBAR1, GetModuleHandle(NULL), 0);
 
-		_findNext.SendMessage(TB_BUTTONSTRUCTSIZE, static_cast<WPARAM>(sizeof(TBBUTTON)), 0);
+		SendMessage(_find_next.m_hWnd, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
 
 		const auto numButtons = 2;
 
-		auto hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
-		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));
-		ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
-		_findNext.SendMessage(TB_SETIMAGELIST, static_cast<WPARAM>(0), reinterpret_cast<LPARAM>(hImageList));
+		//auto hImageList = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, numButtons, 0);
+		//ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_LAST)));
+		//ImageList_AddIcon(hImageList, LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_NEXT)));
+		//SendMessage(_find_next.m_hWnd, TB_SETIMAGELIST, static_cast<WPARAM>(0), reinterpret_cast<LPARAM>(hImageList));
 
 		TBBUTTON tbButtons[numButtons] =
 		{
-			{ 0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{ 0 }, 0, 0 },
-			{ 1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE ,{ 0 }, 0, 0 },
+			{0, lastId, TBSTATE_ENABLED, BTNS_AUTOSIZE, {0}, 0, 0},
+			{1, nextId, TBSTATE_ENABLED, BTNS_AUTOSIZE, {0}, 0, 0},
 		};
-		_findNext.SendMessage(TB_ADDBUTTONS, numButtons, reinterpret_cast<LPARAM>(tbButtons));
-		_findNext.SendMessage(TB_AUTOSIZE, 0, 0);
+		SendMessage(_find_next.m_hWnd, TB_ADDBUTTONS, numButtons, reinterpret_cast<LPARAM>(tbButtons));
+		SendMessage(_find_next.m_hWnd, TB_AUTOSIZE, 0, 0);
 
-		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_RETHINKIFY), IMAGE_ICON, 32, 32, NULL);
+		//auto nextIcon = LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APP), IMAGE_ICON, 32, 32, NULL);
 		//_findNext.SendMessage(BM_SETIMAGE, (WPARAM) IMAGE_ICON, (LPARAM) nextIcon);
+
+		//update_font(1.0);
 
 		return 0;
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	void update_font(const double scale_factor)
 	{
-		CRect r;
-		GetClientRect(r);
+		_font = CreateFont(20 * scale_factor, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+			CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Calibri"));
+
+		SetFont(_find_text.m_hWnd, _font);
+		SetFont(_find_next.m_hWnd, _font);
+		SetFont(m_hWnd, _font);
+	}
+
+	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	{
+		auto r = GetClientRect();
 
 		r.left += 4;
 		r.right -= 54;
 		r.top += 4;
 		r.bottom -= 4;
 
-		_findText.MoveWindow(r);
+		_find_text.MoveWindow(r);
 
 		r.left = r.right + 4;
 		r.right += 50;
 
-		_findNext.MoveWindow(r);
+		_find_text.MoveWindow(r);
 
 		return 0;
 	}
 
-	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/) const
+	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		CRect r;
-		GetClientRect(r);
+		auto r = GetClientRect();
 		FillSolidRect(reinterpret_cast<HDC>(wParam), r, RGB(100, 100, 100));
 		return 1;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		CRect r;
-		GetClientRect(r);
+		auto r = GetClientRect();
 
-		PAINTSTRUCT ps = { 0 };
-		auto hdc = BeginPaint(&ps);
+		PAINTSTRUCT ps = { nullptr };
+		const auto hdc = BeginPaint(m_hWnd, &ps);
 		FillSolidRect(hdc, r, RGB(100, 100, 100));
-		EndPaint(&ps);
+		EndPaint(m_hWnd, &ps);
 		return 0;
 	}
 
@@ -113,42 +125,41 @@ public:
 	{
 		const auto bufferSize = 200;
 		wchar_t text[bufferSize];
-		_findText.GetWindowText(text, bufferSize);
+		GetWindowText(_find_text.m_hWnd, text, bufferSize);
 		return text;
 	}
 
-	void Text(const std::wstring &s)
+	void Text(std::wstring s)
 	{
-		_findText.SetWindowText(s.c_str());
+		SetWindowText(_find_text.m_hWnd, s.c_str());
 	}
 
-	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	LRESULT OnEditChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled) const
 	{
 		_doc.find(Text(), 0);
 		return 0;
 	}
 
-	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	LRESULT OnLast(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/) const
 	{
 		_doc.find(Text(), FIND_DIRECTION_UP);
 		return 0;
 	}
 
-	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+	LRESULT OnNext(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/) const
 	{
 		_doc.find(Text(), 0);
 		return 0;
 	}
 };
 
-static FORMATETC plainTextFormat = {CF_TEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
-static FORMATETC plainTextWFormat = {CF_UNICODETEXT, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
-static FORMATETC file_drop_format = {CF_HDROP, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+static FORMATETC ascii_text_format = { CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+static FORMATETC utf16_text_format = { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+static FORMATETC file_drop_format = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
 
-class text_view : public CWindowImpl<text_view>, public IDropTarget, public IView
+class text_view : public win_impl, public IDropTarget, public IView
 {
 private:
-
 	document& _doc;
 	find_wnd& _find;
 
@@ -176,177 +187,189 @@ private:
 	int m_nScreenChars = 0;
 
 public:
-
-	text_view(document& d, find_wnd &f) : _doc(d), _find(f) { }
-	~text_view() { }
-
-
-	BEGIN_MSG_MAP(text_view)
-		MESSAGE_HANDLER(WM_CREATE, OnCreate)
-		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
-		MESSAGE_HANDLER(WM_SIZE, OnSize)
-		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
-		MESSAGE_HANDLER(WM_KILLFOCUS, OnKillFocus)
-		MESSAGE_HANDLER(WM_PAINT, OnPaint)
-		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBackground)
-		MESSAGE_HANDLER(WM_VSCROLL, OnVScroll)
-		MESSAGE_HANDLER(WM_HSCROLL, OnHScroll)
-		MESSAGE_HANDLER(WM_TIMER, OnTimer)
-		MESSAGE_HANDLER(WM_SYSCOLORCHANGE, OnSysColorChange)
-		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDblClk)
-		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
-		MESSAGE_HANDLER(WM_LBUTTONUP, OnLButtonUp)
-		MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
-		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
-		MESSAGE_HANDLER(WM_CHAR, OnChar)
-		MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)
-		END_MSG_MAP()
-
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	text_view(document& d, find_wnd& f) : _doc(d), _find(f)
 	{
-		RegisterDragDrop(m_hWnd, this);
+	}
 
+	~text_view() override = default;
+
+
+	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
+	{
+		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
+		if (uMsg == WM_DESTROY) return OnDestroy(uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
+		if (uMsg == WM_SETFOCUS) return OnSetFocus(uMsg, wParam, lParam);
+		if (uMsg == WM_KILLFOCUS) return OnKillFocus(uMsg, wParam, lParam);
+		if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
+		if (uMsg == WM_VSCROLL) return OnVScroll(uMsg, wParam, lParam);
+		if (uMsg == WM_HSCROLL) return OnHScroll(uMsg, wParam, lParam);
+		if (uMsg == WM_TIMER) return OnTimer(uMsg, wParam, lParam);
+		if (uMsg == WM_SYSCOLORCHANGE) return OnSysColorChange(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDBLCLK) return OnLButtonDblClk(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDOWN) return OnLButtonDown(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONUP) return OnLButtonUp(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEMOVE) return OnMouseMove(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEWHEEL) return OnMouseWheel(uMsg, wParam, lParam);
+		if (uMsg == WM_CHAR) return OnChar(uMsg, wParam, lParam);
+		if (uMsg == WM_CONTEXTMENU) return OnContextMenu(uMsg, wParam, lParam);
+		return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	}
+
+	void update_font(const double scale_factor)
+	{
 		LOGFONT lf;
 		memset(&lf, 0, sizeof(lf));
+		lf.lfHeight = 24 * scale_factor;
 		lf.lfWeight = FW_NORMAL;
 		lf.lfCharSet = ANSI_CHARSET;
 		lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
 		lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
 		lf.lfQuality = CLEARTYPE_NATURAL_QUALITY;
-		lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE ;
+		lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
 		wcscpy_s(lf.lfFaceName, L"Consolas");
 
+		if (_font) ::DeleteObject(_font);
 		_font = ::CreateFontIndirect(&lf);
 
+		_doc.invalidate(invalid::layout);
+	}
+
+	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	{
+		RegisterDragDrop(m_hWnd, this);
 		return 0;
 	}
 
-	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		RevokeDragDrop(m_hWnd);
 		return 0;
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	
+
+	LRESULT OnSize(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		win_dc hdc(m_hWnd);
-		auto pOldFont = hdc.SelectFont(_font);
+		const win_dc hdc(m_hWnd);
+		const auto old_font = hdc.SelectFont(_font);
 
 		CSize font_extent;
 		GetTextExtentExPoint(hdc, _T("X"), 1, 1, nullptr, nullptr, &font_extent);
 		if (font_extent.cy < 1) font_extent.cy = 1;
 
 		/*
-        TEXTMETRIC tm;
-        if (hdc->GetTextMetrics(&tm))
-        m_nCharWidth -= tm.tmOverhang;
-        */
+		TEXTMETRIC tm;
+		if (hdc->GetTextMetrics(&tm))
+		m_nCharWidth -= tm.tmOverhang;
+		*/
 
 		_extent = CSize(LOWORD(lParam), HIWORD(lParam));
 		_font_extent = font_extent;
 
 		layout();
 
-		hdc.SelectFont(pOldFont);
+		hdc.SelectFont(old_font);
 
 
 		return 0;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		PAINTSTRUCT ps = {0};
-		auto hdc = BeginPaint(&ps);
+		PAINTSTRUCT ps = { nullptr };
+		const auto hdc = BeginPaint(m_hWnd, &ps);
 		draw(hdc);
-		EndPaint(&ps);
+		EndPaint(m_hWnd, &ps);
 		return 0;
 	}
 
-	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	static LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		return 1;
 	}
 
-	LRESULT OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	LRESULT OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
 		OnTimer(wParam);
 		return 0;
 	}
 
-	LRESULT OnSysColorChange(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& /*bHandled*/)
+	LRESULT OnSysColorChange(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
-		Invalidate(FALSE);
+		invalidate();
 		return 0;
 	}
 
-	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnSetFocus(reinterpret_cast<HWND>(wParam));
 		return 0;
 	}
 
-	LRESULT OnKillFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnKillFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnKillFocus(reinterpret_cast<HWND>(wParam));
 		return 0;
 	}
 
-	LRESULT OnVScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnVScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		auto nScrollCode = static_cast<int>(LOWORD(wParam));
-		auto y = static_cast<short int>(HIWORD(wParam));
-		auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
+		const auto nScrollCode = static_cast<int>(LOWORD(wParam));
+		const auto y = static_cast<short int>(HIWORD(wParam));
+		const auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
 		OnVScroll(nScrollCode, y, hwndScrollBar);
 		return 0;
 	}
 
-	LRESULT OnHScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnHScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		auto nScrollCode = static_cast<int>(LOWORD(wParam));
-		auto nPos = static_cast<short int>(HIWORD(wParam));
-		auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
+		const auto nScrollCode = static_cast<int>(LOWORD(wParam));
+		const auto nPos = static_cast<short int>(HIWORD(wParam));
+		const auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
 		OnHScroll(nScrollCode, nPos, hwndScrollBar);
 		return 0;
 	}
 
-	LRESULT OnLButtonDblClk(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnLButtonDblClk(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnLButtonDblClk(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnLButtonDown(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnLButtonDown(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnLButtonDown(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnLButtonUp(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnLButtonUp(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnLButtonUp(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnMouseMove(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnMouseMove(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnMouseMove(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		auto delta = static_cast<short>(HIWORD(wParam)) > 0 ? -2 : 2;
+		const auto delta = static_cast<short>(HIWORD(wParam)) > 0 ? -2 : 2;
 		OnMouseWheel(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), delta);
 		return 0;
 	}
 
-	LRESULT OnChar(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnChar(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		auto c = wParam;
+		const auto c = wParam;
 		auto flags = lParam;
 
-		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
-			(::GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0)
+		if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
+			(GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0)
 			return 0;
 
 		if (c == VK_RETURN)
@@ -354,7 +377,7 @@ public:
 			if (_doc.QueryEditable())
 			{
 				undo_group ug(_doc);
-				auto pos = _doc.delete_text(ug, _doc.selection());
+				const auto pos = _doc.delete_text(ug, _doc.selection());
 				_doc.select(_doc.insert_text(ug, pos, L'\n'));
 			}
 		}
@@ -363,7 +386,7 @@ public:
 			if (_doc.QueryEditable())
 			{
 				undo_group ug(_doc);
-				auto pos = _doc.delete_text(ug, _doc.selection());
+				const auto pos = _doc.delete_text(ug, _doc.selection());
 				_doc.select(_doc.insert_text(ug, pos, c));
 			}
 		}
@@ -371,28 +394,28 @@ public:
 		return 0;
 	}
 
-	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& /*bHandled*/)
+	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnCommand(LOWORD(wParam));
 		return 0;
 	}
 
-	LRESULT OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+	LRESULT OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		CPoint location(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		const CPoint location(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		CPoint clientLocation(location);
-		ScreenToClient(&clientLocation);
+		ScreenToClient(m_hWnd, &clientLocation);
 
-		auto menu = CreatePopupMenu();
+		const auto menu = CreatePopupMenu();
 
 		if (menu)
 		{
-			auto loc = client_to_text(clientLocation);
-			auto selection = _doc.is_inside_selection(loc) ? _doc.selection() : _doc.word_selection(loc, false);
+			const auto loc = client_to_text(clientLocation);
+			const auto selection = _doc.is_inside_selection(loc) ? _doc.selection() : _doc.word_selection(loc, false);
 
 			_doc.select(selection);
 
-			auto word = Combine(_doc.text(selection));
+			const auto word = str::combine(_doc.text(selection));
 
 			std::map<UINT, std::wstring> replacements;
 
@@ -403,7 +426,7 @@ public:
 
 				for (auto option : _doc.suggest(word))
 				{
-					auto title = Replace(option, L"&", L"&&");
+					auto title = str::replace(option, L"&", L"&&");
 					AppendMenu(menu, MF_ENABLED, id, title.c_str());
 					replacements[id] = option;
 					id++;
@@ -416,7 +439,7 @@ public:
 
 				if (_doc.can_add(word))
 				{
-					AppendMenu(menu, MF_ENABLED, ID_FILE_NEW, String::Format(L"Add '%s'", word.c_str()).c_str());
+					AppendMenu(menu, MF_ENABLED, ID_FILE_NEW, std::format(L"Add '{}'", word).c_str());
 					AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
 				}
 			}
@@ -434,7 +457,9 @@ public:
 			AppendMenu(menu, MF_SEPARATOR, 0, nullptr);
 			AppendMenu(menu, MF_ENABLED, ID_EDIT_SELECT_ALL, L"Select All");
 
-			auto result = TrackPopupMenu(menu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_NONOTIFY | TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_VERNEGANIMATION, location.x, location.y, 0, m_hWnd, nullptr);
+			const auto result = TrackPopupMenu(
+				menu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_NONOTIFY | TPM_RETURNCMD | TPM_RIGHTBUTTON |
+				TPM_VERNEGANIMATION, location.x, location.y, 0, m_hWnd, nullptr);
 			DestroyMenu(menu);
 
 			switch (result)
@@ -454,7 +479,7 @@ public:
 
 			default:
 
-				if (replacements.find(result) != replacements.end())
+				if (replacements.contains(result))
 				{
 					undo_group ug(_doc);
 					_doc.select(_doc.replace_text(ug, selection, replacements[result]));
@@ -553,20 +578,20 @@ public:
 
 	void invalidate_selection()
 	{
-		auto sel = _doc.selection();
+		const auto sel = _doc.selection();
 
 		if (!sel.empty())
 			invalidate_lines(sel._start.y, sel._end.y);
 	}
 
-	void OnSetFocus(CWindow oldWnd)
+	void OnSetFocus(HWND oldWnd)
 	{
 		m_bFocused = true;
 		invalidate_selection();
 		update_caret();
 	}
 
-	void OnKillFocus(CWindow newWnd)
+	void OnKillFocus(HWND newWnd)
 	{
 		m_bFocused = false;
 
@@ -576,24 +601,24 @@ public:
 		if (m_bDragSelection)
 		{
 			ReleaseCapture();
-			KillTimer(m_nDragSelTimer);
+			KillTimer(m_hWnd, m_nDragSelTimer);
 			m_bDragSelection = false;
 		}
 	}
 
 	void OnTimer(UINT nIDEvent)
 	{
-		if (nIDEvent == RETHINKIFY_TIMER_DRAGSEL)
+		if (nIDEvent == TIMER_DRAGSEL)
 		{
 			assert(m_bDragSelection);
 			CPoint pt;
-			::GetCursorPos(&pt);
-			ScreenToClient(&pt);
+			GetCursorPos(&pt);
+			ScreenToClient(m_hWnd, &pt);
 
-			auto rcClient = client_rect();
+			const auto rcClient = client_rect();
 			auto bChanged = false;
 			auto y = _char_offset.cy;
-			auto line_count = _doc.size();
+			const auto line_count = _doc.size();
 
 			if (pt.y < rcClient.top)
 			{
@@ -610,7 +635,7 @@ public:
 					y += 2;
 			}
 
-			y = Clamp(y, 0, line_count - 1);
+			y = clamp(y, 0, line_count - 1);
 
 			if (_char_offset.cy != y)
 			{
@@ -620,7 +645,7 @@ public:
 
 			//	Scroll horizontally, if necessary
 			auto x = _char_offset.cx;
-			auto nMaxLineLength = _doc.max_line_length();
+			const auto nMaxLineLength = _doc.max_line_length();
 
 			if (pt.x < rcClient.left)
 			{
@@ -631,7 +656,7 @@ public:
 				x++;
 			}
 
-			x = Clamp(x, 0, nMaxLineLength - 1);
+			x = clamp(x, 0, nMaxLineLength - 1);
 
 			if (_char_offset.cx != x)
 			{
@@ -650,10 +675,10 @@ public:
 
 	void OnLButtonDown(const CPoint& point, UINT nFlags)
 	{
-		bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-		bool bControl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+		const bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+		const bool bControl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 
-		SetFocus();
+		SetFocus(m_hWnd);
 
 		if (point.x < margin_width())
 		{
@@ -663,11 +688,11 @@ public:
 			}
 			else
 			{
-				auto sel = _doc.line_selection(client_to_text(point), bShift);
+				const auto sel = _doc.line_selection(client_to_text(point), bShift);
 				_doc.select(sel);
 
-				SetCapture();
-				m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
+				SetCapture(m_hWnd);
+				m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 				assert(m_nDragSelTimer != 0);
 				m_bWordSelection = false;
 				m_bLineSelection = true;
@@ -676,7 +701,7 @@ public:
 		}
 		else
 		{
-			auto ptText = client_to_text(point);
+			const auto ptText = client_to_text(point);
 
 			if (_doc.is_inside_selection(ptText))
 			{
@@ -684,12 +709,12 @@ public:
 			}
 			else
 			{
-				auto pos = client_to_text(point);
-				auto sel = bControl ? _doc.word_selection(pos, bShift) : _doc.pos_selection(pos, bShift);
+				const auto pos = client_to_text(point);
+				const auto sel = bControl ? _doc.word_selection(pos, bShift) : _doc.pos_selection(pos, bShift);
 				_doc.select(sel);
 
-				SetCapture();
-				m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
+				SetCapture(m_hWnd);
+				m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 				assert(m_nDragSelTimer != 0);
 				m_bWordSelection = bControl;
 				m_bLineSelection = false;
@@ -700,7 +725,7 @@ public:
 
 	void OnMouseWheel(const CPoint& point, int zDelta)
 	{
-		ScrollToLine(Clamp(_char_offset.cy + zDelta, 0, _doc.size()));
+		ScrollToLine(clamp(_char_offset.cy + zDelta, 0, _doc.size()));
 		update_caret();
 	}
 
@@ -708,14 +733,14 @@ public:
 	{
 		if (m_bDragSelection)
 		{
-			auto bOnMargin = point.x < margin_width();
-			auto pos = client_to_text(point);
+			const auto bOnMargin = point.x < margin_width();
+			const auto pos = client_to_text(point);
 
 			if (m_bLineSelection)
 			{
 				if (bOnMargin)
 				{
-					auto sel = _doc.line_selection(pos, true);
+					const auto sel = _doc.line_selection(pos, true);
 					_doc.select(sel);
 					return;
 				}
@@ -724,14 +749,14 @@ public:
 				update_cursor();
 			}
 
-			auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+			const auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
 			_doc.select(sel);
 		}
 
 		if (m_bPreparingToDrag)
 		{
 			m_bPreparingToDrag = false;
-			auto hData = PrepareDragData();
+			const auto hData = PrepareDragData();
 
 			if (hData != nullptr)
 			{
@@ -739,24 +764,24 @@ public:
 
 
 				/*COleDataSource ds;
-                ds.CacheGlobalData(CF_UNICODETEXT, hData);
-                m_bDraggingText = true;
-                DROPEFFECT de = ds.DoDragDrop(GetDropEffect());
-                if (de != DROPEFFECT_NONE)
-                if (m_bDraggingText && de == DROPEFFECT_MOVE)
-                {
-                undo_group ug(_doc.);
-                _doc.delete_text(ug, m_ptDraggedText);
-                }
-                m_bDraggingText = false;
+				ds.CacheGlobalData(CF_UNICODETEXT, hData);
+				m_bDraggingText = true;
+				DROPEFFECT de = ds.DoDragDrop(GetDropEffect());
+				if (de != DROPEFFECT_NONE)
+				if (m_bDraggingText && de == DROPEFFECT_MOVE)
+				{
+				undo_group ug(_doc.);
+				_doc.delete_text(ug, m_ptDraggedText);
+				}
+				m_bDraggingText = false;
 
-                if (_doc != nullptr)
-                _doc.FlushUndoGroup(this);*/
+				if (_doc != nullptr)
+				_doc.FlushUndoGroup(this);*/
 			}
 		}
 	}
 
-	DROPEFFECT GetDropEffect()
+	static DROPEFFECT GetDropEffect()
 	{
 		return DROPEFFECT_COPY | DROPEFFECT_MOVE;
 	}
@@ -765,21 +790,21 @@ public:
 	{
 		if (m_bDragSelection)
 		{
-			auto pos = client_to_text(point);
+			const auto pos = client_to_text(point);
 
 			if (m_bLineSelection)
 			{
-				auto sel = _doc.line_selection(pos, true);
+				const auto sel = _doc.line_selection(pos, true);
 				_doc.select(sel);
 			}
 			else
 			{
-				auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+				const auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
 				_doc.select(sel);
 			}
 
 			ReleaseCapture();
-			KillTimer(m_nDragSelTimer);
+			KillTimer(m_hWnd, m_nDragSelTimer);
 			m_bDragSelection = false;
 		}
 
@@ -794,11 +819,11 @@ public:
 	{
 		if (!m_bDragSelection)
 		{
-			bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+			const bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 			_doc.select(_doc.word_selection(client_to_text(point), bShift));
 
-			SetCapture();
-			m_nDragSelTimer = SetTimer(RETHINKIFY_TIMER_DRAGSEL, 100, nullptr);
+			SetCapture(m_hWnd);
+			m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 			assert(m_nDragSelTimer != 0);
 			m_bWordSelection = true;
 			m_bLineSelection = false;
@@ -808,7 +833,7 @@ public:
 
 	void OnRButtonDown(const CPoint& point, UINT nFlags)
 	{
-		auto pt = client_to_text(point);
+		const auto pt = client_to_text(point);
 
 		if (!_doc.is_inside_selection(pt))
 		{
@@ -822,11 +847,11 @@ public:
 	{
 		if (_char_offset.cx != x)
 		{
-			int nScrollChars = _char_offset.cx - x;
+			const int nScrollChars = _char_offset.cx - x;
 			_char_offset.cx = x;
 			auto rcScroll = client_rect();
 			rcScroll.left += margin_width();
-			ScrollWindowEx(nScrollChars * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
+			ScrollWindowEx(m_hWnd, nScrollChars * _font_extent.cx, 0, rcScroll, rcScroll, nullptr, nullptr, SW_INVALIDATE);
 			recalc_horz_scrollbar();
 		}
 	}
@@ -835,19 +860,19 @@ public:
 	{
 		if (_char_offset.cy != y)
 		{
-			int nScrollLines = _char_offset.cy - y;
+			const int nScrollLines = _char_offset.cy - y;
 			_char_offset.cy = y;
-			ScrollWindowEx(0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
+			ScrollWindowEx(m_hWnd, 0, nScrollLines * _font_extent.cy, nullptr, nullptr, nullptr, nullptr, SW_INVALIDATE);
 			recalc_vert_scrollbar();
 		}
 	}
 
-	void recalc_vert_scrollbar() override
+	void recalc_vert_scrollbar()
 	{
 		if (m_nScreenLines >= _doc.size() && _char_offset.cy > 0)
 		{
 			_char_offset.cy = 0;
-			Invalidate();
+			invalidate();
 			update_caret();
 		}
 
@@ -858,7 +883,7 @@ public:
 		si.nMax = _doc.size() - 1;
 		si.nPage = m_nScreenLines;
 		si.nPos = _char_offset.cy;
-		SetScrollInfo(SB_VERT, &si);
+		SetScrollInfo(m_hWnd, SB_VERT, &si, TRUE);
 	}
 
 	void OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
@@ -866,10 +891,10 @@ public:
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_ALL;
-		GetScrollInfo(SB_VERT, &si);
+		GetScrollInfo(m_hWnd, SB_VERT, &si);
 
-		int nPageLines = m_nScreenLines;
-		int line_count = _doc.size();
+		const int nPageLines = m_nScreenLines;
+		const int line_count = _doc.size();
 
 		int y;
 		switch (nSBCode)
@@ -900,20 +925,20 @@ public:
 			return;
 		}
 
-		ScrollToLine(Clamp(y, 0, line_count - 1));
+		ScrollToLine(clamp(y, 0, line_count - 1));
 		update_caret();
 	}
 
-	void recalc_horz_scrollbar() override
+	void recalc_horz_scrollbar()
 	{
 		if (m_nScreenChars >= _doc.max_line_length() && _char_offset.cx > 0)
 		{
 			_char_offset.cx = 0;
-			Invalidate();
+			invalidate();
 			update_caret();
 		}
 
-		auto margin_width = m_bSelMargin ? 3 : 0;
+		const auto margin_width = m_bSelMargin ? 3 : 0;
 
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
@@ -922,8 +947,8 @@ public:
 		si.nMax = _doc.max_line_length() + margin_width;
 		si.nPage = m_nScreenChars;
 		si.nPos = _char_offset.cx;
-				
-		SetScrollInfo(SB_HORZ, &si);
+
+		SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
 	}
 
 	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
@@ -931,10 +956,10 @@ public:
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_ALL;
-		GetScrollInfo(SB_HORZ, &si);
+		GetScrollInfo(m_hWnd, SB_HORZ, &si);
 
-		int nPageChars = m_nScreenChars;
-		int nMaxLineLength = _doc.max_line_length();
+		const int nPageChars = m_nScreenChars;
+		const int nMaxLineLength = _doc.max_line_length();
 
 		int nNewOffset;
 		switch (nSBCode)
@@ -965,11 +990,11 @@ public:
 			return;
 		}
 
-		ScrollToChar(Clamp(nNewOffset, 0, nMaxLineLength - 1));
+		ScrollToChar(clamp(nNewOffset, 0, nMaxLineLength - 1));
 		update_caret();
 	}
 
-	bool OnSetCursor(CWindow wnd, UINT nHitTest, UINT message)
+	bool OnSetCursor(HWND wnd, UINT nHitTest, UINT message) const
 	{
 		if (nHitTest == HTCLIENT)
 		{
@@ -979,45 +1004,45 @@ public:
 		return false;
 	}
 
-	void update_cursor()
+	void update_cursor() const
 	{
 		static auto arrow = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_ARROW));
 		static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
 
 		CPoint pt;
-		GetCursorPos(&pt);
-		ScreenToClient(&pt);
+		::GetCursorPos(&pt);
+		::ScreenToClient(m_hWnd , &pt);
 
 		if (pt.x < margin_width())
 		{
-			::SetCursor(arrow);
+			SetCursor(arrow);
 		}
 		else if (_doc.is_inside_selection(client_to_text(pt)))
 		{
-			::SetCursor(arrow);
+			SetCursor(arrow);
 		}
 		else
 		{
-			::SetCursor(beam);
+			SetCursor(beam);
 		}
 	}
 
-	void update_caret() override
+	void update_caret()
 	{
-		auto pos = _doc.cursor_pos();
+		const auto pos = _doc.cursor_pos();
 
 		if (m_bFocused && !m_bCursorHidden &&
 			_doc.calc_offset(pos.y, pos.x) >= _char_offset.cx)
 		{
-			CreateSolidCaret(2, _font_extent.cy);
+			::CreateCaret(m_hWnd, nullptr, 2, _font_extent.cy);
 
-			auto pt = text_to_client(pos);
+			const auto pt = text_to_client(pos);
 			SetCaretPos(pt.x, pt.y);
-			ShowCaret();
+			ShowCaret(m_hWnd);
 		}
 		else
 		{
-			HideCaret();
+			HideCaret(m_hWnd);
 		}
 	}
 
@@ -1048,10 +1073,10 @@ public:
 		return InterlockedDecrement(&m_cRef);
 	}
 
-	bool CanDrop(IDataObject* pDataObj) const
+	static bool CanDrop(IDataObject* pDataObj)
 	{
-		return pDataObj->QueryGetData(&plainTextFormat) == S_OK ||
-			pDataObj->QueryGetData(&plainTextWFormat) == S_OK ||
+		return pDataObj->QueryGetData(&ascii_text_format) == S_OK ||
+			pDataObj->QueryGetData(&utf16_text_format) == S_OK ||
 			pDataObj->QueryGetData(&file_drop_format) == S_OK;
 	}
 
@@ -1063,11 +1088,8 @@ public:
 			ShowDropIndicator(loc);
 			return (GetKeyState(VK_CONTROL) < 0) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;
 		}
-		else
-		{
-			HideDropIndicator();
-			return DROPEFFECT_NONE;
-		}
+		HideDropIndicator();
+		return DROPEFFECT_NONE;
 	}
 
 	HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
@@ -1095,11 +1117,11 @@ public:
 		return DropData(pDataObj, pt) ? S_OK : S_FALSE;
 	}
 
-	DROPEFFECT OnDragScroll(CWindow wnd, DWORD dwKeyState, CPoint point)
+	DROPEFFECT OnDragScroll(HWND wnd, DWORD dwKeyState, CPoint point)
 	{
-		assert(m_hWnd == wnd.m_hWnd);
+		assert(m_hWnd == wnd);
 
-		auto rcClientRect = client_rect();
+		const auto rcClientRect = client_rect();
 
 		if (point.y < rcClientRect.top + DRAG_BORDER_Y)
 		{
@@ -1167,36 +1189,36 @@ public:
 		}
 	}
 
-	bool DropData(IDataObject* pDataObject, const CPoint& ptClient)
+	bool DropData(IDataObject* pDataObject, const CPoint& ptClient) const
 	{
 		STGMEDIUM stgmed;
 		std::wstring text;
 
-		if (SUCCEEDED(pDataObject->GetData(&plainTextWFormat, &stgmed)))
+		if (SUCCEEDED(pDataObject->GetData(&utf16_text_format, &stgmed)))
 		{
 			//unicode text
-			auto data = static_cast<const wchar_t*>(GlobalLock(stgmed.hGlobal));
+			const auto data = static_cast<const wchar_t*>(GlobalLock(stgmed.hGlobal));
 			text = data;
 			GlobalUnlock(stgmed.hGlobal);
 			ReleaseStgMedium(&stgmed);
 		}
-		else if (SUCCEEDED(pDataObject->GetData(&plainTextFormat, &stgmed)))
+		else if (SUCCEEDED(pDataObject->GetData(&ascii_text_format, &stgmed)))
 		{
 			//ascii text
-			auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
+			const auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
 			text = AsciiToUtf16(data);
 			GlobalUnlock(stgmed.hGlobal);
 			ReleaseStgMedium(&stgmed);
 		}
 		else if (SUCCEEDED(pDataObject->GetData(&file_drop_format, &stgmed)))
 		{
-			auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
-			auto files = reinterpret_cast<const DROPFILES*>(data);
-			text = reinterpret_cast<const wchar_t *>(data + files->pFiles);
+			const auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
+			const auto files = reinterpret_cast<const DROPFILES*>(data);
+			text = reinterpret_cast<const wchar_t*>(data + files->pFiles);
 
 			if (_doc.load_from_file(text))
 			{
-				GetParent().SetWindowText(PathFindFileName(text.c_str()));
+				_doc.invalidate(invalid::title);
 			}
 
 			GlobalUnlock(stgmed.hGlobal);
@@ -1205,17 +1227,14 @@ public:
 			return true;
 		}
 
-		auto drop_loc = client_to_text(ptClient);
+		const auto drop_loc = client_to_text(ptClient);
 
 		if (m_bDraggingText && _doc.is_inside_selection(drop_loc))
 		{
 			return false;
 		}
-		else
-		{
-			undo_group ug(_doc);
-			_doc.select(_doc.insert_text(ug, drop_loc, text));
-		}
+		undo_group ug(_doc);
+		_doc.select(_doc.insert_text(ug, drop_loc, text));
 
 		return true;
 	}
@@ -1232,13 +1251,13 @@ public:
 		m_ptDropPos = client_to_text(point);
 		if (m_ptDropPos.x >= _char_offset.cx)
 		{
-			auto pt = text_to_client(m_ptDropPos);
+			const auto pt = text_to_client(m_ptDropPos);
 			SetCaretPos(pt.x, pt.y);
-			ShowCaret();
+			ShowCaret(m_hWnd);
 		}
 		else
 		{
-			HideCaret();
+			HideCaret(m_hWnd);
 		}
 	}
 
@@ -1267,15 +1286,15 @@ public:
 	std::wstring text_from_clipboard() const override
 	{
 		std::wstring result;
-		auto pThis = const_cast<text_view*>(this);
+		const auto pThis = const_cast<text_view*>(this);
 
-		if (pThis->OpenClipboard())
+		if (OpenClipboard(pThis->m_hWnd))
 		{
-			auto hData = GetClipboardData(CF_UNICODETEXT);
+			const auto hData = GetClipboardData(CF_UNICODETEXT);
 
 			if (hData != nullptr)
 			{
-				auto pszData = static_cast<const wchar_t *>(GlobalLock(hData));
+				const auto pszData = static_cast<const wchar_t*>(GlobalLock(hData));
 
 				if (pszData != nullptr)
 				{
@@ -1290,22 +1309,22 @@ public:
 		return result;
 	}
 
-	bool text_to_clipboard(const std::wstring& text) override
+	bool text_to_clipboard(std::wstring_view text) override
 	{
 		// TODO CWaitCursor wc;
 		auto success = false;
 
-		if (OpenClipboard())
+		if (OpenClipboard(m_hWnd))
 		{
 			EmptyClipboard();
 
-			auto len = text.size() + 1;
-			auto hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
+			const auto len = text.size() + 1;
+			const auto hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
 
 			if (hData != nullptr)
 			{
-				auto pszData = static_cast<wchar_t*>(::GlobalLock(hData));
-				wcscpy_s(pszData, len, text.c_str());
+				const auto pszData = static_cast<wchar_t*>(GlobalLock(hData));
+				wcsncpy_s(pszData, len, text.data(), text.size());
 				GlobalUnlock(hData);
 				success = SetClipboardData(CF_UNICODETEXT, hData) != nullptr;
 			}
@@ -1315,28 +1334,28 @@ public:
 		return success;
 	}
 
-	void invalidate(LPCRECT r = nullptr)
+	void invalidate(CRect r = {})
 	{
-		InvalidateRect(r, FALSE);
+		InvalidateRect(m_hWnd, r.Width() > 0 ? static_cast<LPCRECT>(r) : nullptr, FALSE);
 	}
 
 	HGLOBAL PrepareDragData()
 	{
-		auto sel = _doc.selection();
+		const auto sel = _doc.selection();
 
 		if (sel.empty())
 			return nullptr;
 
-		auto text = Combine(_doc.text(sel));
-		auto len = text.size() + 1;
-		auto hData = ::GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
+		const auto text = str::combine(_doc.text(sel));
+		const auto len = text.size() + 1;
+		const auto hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len * sizeof(wchar_t));
 
 		if (hData == nullptr)
 			return nullptr;
 
-		auto pszData = static_cast<wchar_t*>(::GlobalLock(hData));
+		const auto pszData = static_cast<wchar_t*>(GlobalLock(hData));
 		wcscpy_s(pszData, len, text.c_str());
-		::GlobalUnlock(hData);
+		GlobalUnlock(hData);
 
 		m_ptDraggedText = sel;
 
@@ -1346,24 +1365,24 @@ public:
 
 	int client_to_line(const CPoint& point) const
 	{
-		auto line_count = _doc.size();
+		const auto line_count = _doc.size();
 
-		auto result = (point.y / _font_extent.cy) + _char_offset.cy;
+		const auto result = (point.y / _font_extent.cy) + _char_offset.cy;
 		/*auto y = _char_offset.cy;
 
-        while (y < line_count)
-        {
-        auto const &line = _doc[y];
+		while (y < line_count)
+		{
+		auto const &line = _doc[y];
 
-        if (point.y >= line._y && point.y < (line._y + line._cy))
-        {
-        return y;
-        }
+		if (point.y >= line._y && point.y < (line._y + line._cy))
+		{
+		return y;
+		}
 
-        y += 1;
-        }*/
+		y += 1;
+		}*/
 
-		return Clamp(result, 0, line_count - 1);
+		return clamp(result, 0, line_count - 1);
 	}
 
 	text_location client_to_text(const CPoint& point) const
@@ -1403,7 +1422,7 @@ public:
 				i++;
 			}
 
-			pt.x = Clamp(i, 0, lineSize);
+			pt.x = clamp(i, 0, lineSize);
 		}
 
 		return pt;
@@ -1418,7 +1437,7 @@ public:
 			pt.y = line_offset(point.y) - top_offset();
 			pt.x = 0;
 
-			auto tabSize = _doc.tab_size();
+			const auto tabSize = _doc.tab_size();
 			const auto& line = _doc[point.y];
 
 			for (auto i = 0; i < point.x; i++)
@@ -1441,12 +1460,12 @@ public:
 
 	int top_offset() const
 	{
-		auto result = _char_offset.cy * _font_extent.cy;
+		const auto result = _char_offset.cy * _font_extent.cy;
 
 		/*if (!_doc.empty() || _char_offset.cy <= 0)
-        {
-        result = _doc[_char_offset.cy]._y;
-        }*/
+		{
+		result = _doc[_char_offset.cy]._y;
+		}*/
 
 		return result;
 	}
@@ -1454,10 +1473,10 @@ public:
 	void invalidate_lines(int start, int end) override
 	{
 		auto rcInvalid = client_rect();
-		auto top = top_offset();
+		const auto top = top_offset();
 
 		if (end == -1)
-		{			
+		{
 			rcInvalid.top = line_offset(start) - top;
 		}
 		else
@@ -1474,20 +1493,7 @@ public:
 		invalidate(rcInvalid);
 	}
 
-	void invalidate_line(int index) override
-	{
-		auto& line = _doc[index];
-		line._expanded_length = -1;
-		line._parse_cookie = -1;
-
-		invalidate_lines(index, index + 1);
-
-		_doc.update_max_line_length(index);
-
-		recalc_horz_scrollbar();
-	}
-
-	void invalidate_view() override
+	void invalidate_view()
 	{
 		m_nScreenChars = -1;
 
@@ -1499,22 +1505,22 @@ public:
 		invalidate();
 	}
 
-	void layout() override
+	void layout()
 	{
-		auto rect = client_rect();
+		const auto rect = client_rect();
 		auto line_count = _doc.size();
 		auto y = 0;
 		auto cy = _font_extent.cy;
 
 		/*for (int i = 0; i < line_count; i++)
-        {
-        auto &line = _doc[i];
+		{
+		auto &line = _doc[i];
 
-        line._y = y;
-        line._cy = cy;
+		line._y = y;
+		line._cy = cy;
 
-        y += cy;
-        }*/
+		y += cy;
+		}*/
 
 		m_nScreenLines = rect.Height() / _font_extent.cy;
 		m_nScreenChars = rect.Width() / _font_extent.cx;
@@ -1526,8 +1532,8 @@ public:
 	int line_offset(int lineIndex) const
 	{
 		/*auto max = _doc.size();
-        auto line = Clamp(lineIndex, 0, max - 1);
-        return _doc[line]._y;*/
+		auto line = clamp(lineIndex, 0, max - 1);
+		return _doc[line]._y;*/
 
 		return lineIndex * _font_extent.cy;
 	}
@@ -1540,7 +1546,7 @@ public:
 	void ensure_visible(const text_location& pt) override
 	{
 		//	Scroll vertically
-		int line_count = _doc.size();
+		const int line_count = _doc.size();
 		int y = _char_offset.cy;
 
 		if (pt.y >= y + m_nScreenLines)
@@ -1552,7 +1558,7 @@ public:
 			y = pt.y;
 		}
 
-		y = Clamp(y, 0, line_count - 1);
+		y = clamp(y, 0, line_count - 1);
 
 		if (_char_offset.cy != y)
 		{
@@ -1560,7 +1566,7 @@ public:
 		}
 
 		//	Scroll horizontally
-		auto nActualPos = _doc.calc_offset(pt.y, pt.x);
+		const auto nActualPos = _doc.calc_offset(pt.y, pt.x);
 		auto nNewOffset = _char_offset.cx;
 
 		if (nActualPos > nNewOffset + m_nScreenChars)
@@ -1595,28 +1601,29 @@ public:
 		return m_bSelMargin ? 20 : 1;
 	}
 
-	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip, const wchar_t* pszChars, int nOffset, int nCount) const
+	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip,
+		std::wstring_view pszChars, int nOffset, int nCount) const
 	{
 		if (nCount > 0)
 		{
-			auto line = _doc.expanded_chars(pszChars, nOffset, nCount);
-			auto nWidth = rcClip.right - ptOrigin.x;
+			const auto line = _doc.expanded_chars(pszChars, nOffset, nCount);
+			const auto nWidth = rcClip.right - ptOrigin.x;
 
 			if (nWidth > 0)
 			{
-				auto nCharWidth = _font_extent.cx;
+				const auto nCharWidth = _font_extent.cx;
 				auto nCount = line.size();
-				auto nCountFit = nWidth / nCharWidth + 1;
+				const auto nCountFit = nWidth / nCharWidth + 1;
 
 				if (nCount > nCountFit)
 					nCount = nCountFit;
 
 				/*
-                CRect rcBounds = rcClip;
-                rcBounds.left = ptOrigin.x;
-                rcBounds.right = rcBounds.left + _font_extent.cx * nCount;
-                pdc->ExtTextOut(rcBounds.left, rcBounds.top, ETO_OPAQUE, &rcBounds, nullptr, 0, nullptr);
-                */
+				CRect rcBounds = rcClip;
+				rcBounds.left = ptOrigin.x;
+				rcBounds.right = rcBounds.left + _font_extent.cx * nCount;
+				pdc->ExtTextOut(rcBounds.left, rcBounds.top, ETO_OPAQUE, &rcBounds, nullptr, 0, nullptr);
+				*/
 				::ExtTextOut(pdc, ptOrigin.x, ptOrigin.y, ETO_CLIPPED, &rcClip, line.c_str(), nCount, nullptr);
 			}
 
@@ -1624,11 +1631,12 @@ public:
 		}
 	}
 
-	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip, color_index nColorIndex, const wchar_t* pszChars, int nOffset, int nCount, const text_location& ptTextPos) const
+	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip, style nColorIndex,
+		std::wstring_view pszChars, int nOffset, int nCount, const text_location& ptTextPos) const
 	{
 		if (nCount > 0)
 		{
-			auto sel = _doc.selection();
+			const auto sel = _doc.selection();
 			auto nSelBegin = 0, nSelEnd = 0;
 
 			if (sel._start.y > ptTextPos.y)
@@ -1637,7 +1645,7 @@ public:
 			}
 			else if (sel._start.y == ptTextPos.y)
 			{
-				nSelBegin = Clamp(sel._start.x - ptTextPos.x, 0, nCount);
+				nSelBegin = clamp(sel._start.x - ptTextPos.x, 0, nCount);
 			}
 			if (sel._end.y > ptTextPos.y)
 			{
@@ -1645,7 +1653,7 @@ public:
 			}
 			else if (sel._end.y == ptTextPos.y)
 			{
-				nSelEnd = Clamp(sel._end.x - ptTextPos.x, 0, nCount);
+				nSelEnd = clamp(sel._end.x - ptTextPos.x, 0, nCount);
 			}
 
 			assert(nSelBegin >= 0 && nSelBegin <= nCount);
@@ -1659,8 +1667,8 @@ public:
 			}
 			if (nSelBegin < nSelEnd)
 			{
-				auto crOldBk = SetBkColor(pdc, GetColor(color_index::COLORINDEX_SELBKGND));
-				auto crOldText = SetTextColor(pdc, GetColor(color_index::COLORINDEX_SELTEXT));
+				const auto crOldBk = SetBkColor(pdc, style_to_color(style::sel_bkgnd));
+				const auto crOldText = SetTextColor(pdc, style_to_color(style::sel_text));
 				draw_line(pdc, ptOrigin, rcClip, pszChars, nOffset + nSelBegin, nSelEnd - nSelBegin);
 				SetBkColor(pdc, crOldBk);
 				SetTextColor(pdc, crOldText);
@@ -1677,13 +1685,13 @@ public:
 		if (lineIndex == -1)
 		{
 			//	Draw line beyond the text
-			FillSolidRect(hdc, rc, GetColor(color_index::COLORINDEX_WHITESPACE));
+			FillSolidRect(hdc, rc, style_to_color(style::white_space));
 		}
 		else
 		{
 			//	Acquire the background color for the current line
-			auto bDrawWhitespace = true;
-			auto crBkgnd = GetColor(color_index::COLORINDEX_BKGND);
+			const auto draw_whitespace = true;
+			const auto bg_color = style_to_color(style::normal_bkgnd);
 
 			const auto& line = _doc[lineIndex];
 
@@ -1694,59 +1702,62 @@ public:
 
 				if (_doc.is_inside_selection(text_location(0, lineIndex)))
 				{
-					FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(), GetColor(color_index::COLORINDEX_SELBKGND));
+					FillSolidRect(hdc, rect.left, rect.top, _font_extent.cx, rect.Height(),
+						style_to_color(style::sel_bkgnd));
 					rect.left += _font_extent.cx;
 				}
 
-				FillSolidRect(hdc, rect, bDrawWhitespace ? crBkgnd : GetColor(color_index::COLORINDEX_WHITESPACE));
+				FillSolidRect(hdc, rect, draw_whitespace ? bg_color : style_to_color(style::white_space));
 			}
 			else
 			{
 				//	Parse the line
-				auto nLength = line.size();
-				auto pBuf = static_cast<highlighter::text_block*>(_malloca(sizeof(highlighter::text_block) * nLength * 3));
+				const auto nLength = line.size();
+				const auto pBuf = static_cast<highlighter::text_block*>(_malloca(
+					sizeof(highlighter::text_block) * nLength * 3));
 				auto nBlocks = 0;
-				auto cookie = _doc.highlight_cookie(lineIndex - 1);
+				const auto cookie = _doc.highlight_cookie(lineIndex - 1);
 
 				line._parse_cookie = _doc.highlight_line(cookie, line, pBuf, nBlocks);
 
 				//	Draw the line text
 				text_location origin(rc.left - _char_offset.cx * _font_extent.cx, rc.top);
-				SetBkColor(hdc, crBkgnd);
+				SetBkColor(hdc, bg_color);
 
-				auto bColorSet = false;
-				auto pszChars = line.c_str();
+				const auto line_view = line.view();
 
 				if (nBlocks > 0)
 				{
 					assert(pBuf[0]._char_pos >= 0 && pBuf[0]._char_pos <= nLength);
 
-					SetTextColor(hdc, GetColor(color_index::COLORINDEX_NORMALTEXT));
-					draw_line(hdc, origin, rc, color_index::COLORINDEX_NORMALTEXT, pszChars, 0, pBuf[0]._char_pos, text_location(0, lineIndex));
+					SetTextColor(hdc, style_to_color(style::normal_text));
+					draw_line(hdc, origin, rc, style::normal_text, line_view, 0, pBuf[0]._char_pos,
+						text_location(0, lineIndex));
 
 					for (auto i = 0; i < nBlocks - 1; i++)
 					{
 						assert(pBuf[i]._char_pos >= 0 && pBuf[i]._char_pos <= nLength);
 
-						SetTextColor(hdc, GetColor(pBuf[i]._color));
+						SetTextColor(hdc, style_to_color(pBuf[i]._color));
 
-						draw_line(hdc, origin, rc, pBuf[i]._color, pszChars,
-						          pBuf[i]._char_pos, pBuf[i + 1]._char_pos - pBuf[i]._char_pos,
-						          text_location(pBuf[i]._char_pos, lineIndex));
+						draw_line(hdc, origin, rc, pBuf[i]._color, line_view,
+							pBuf[i]._char_pos, pBuf[i + 1]._char_pos - pBuf[i]._char_pos,
+							text_location(pBuf[i]._char_pos, lineIndex));
 					}
 
 					assert(pBuf[nBlocks - 1]._char_pos >= 0 && pBuf[nBlocks - 1]._char_pos <= nLength);
 
-					SetTextColor(hdc, GetColor(pBuf[nBlocks - 1]._color));
+					SetTextColor(hdc, style_to_color(pBuf[nBlocks - 1]._color));
 
-					draw_line(hdc, origin, rc, pBuf[nBlocks - 1]._color, pszChars,
-					          pBuf[nBlocks - 1]._char_pos, nLength - pBuf[nBlocks - 1]._char_pos,
-					          text_location(pBuf[nBlocks - 1]._char_pos, lineIndex));
+					draw_line(hdc, origin, rc, pBuf[nBlocks - 1]._color, line_view,
+						pBuf[nBlocks - 1]._char_pos, nLength - pBuf[nBlocks - 1]._char_pos,
+						text_location(pBuf[nBlocks - 1]._char_pos, lineIndex));
 				}
 				else
 				{
-					SetTextColor(hdc, GetColor(color_index::COLORINDEX_NORMALTEXT));
-					draw_line(hdc, origin, rc, color_index::COLORINDEX_NORMALTEXT, pszChars, 0, nLength, text_location(0, lineIndex));
+					SetTextColor(hdc, style_to_color(style::normal_text));
+					draw_line(hdc, origin, rc, style::normal_text, line_view, 0, nLength,
+						text_location(0, lineIndex));
 				}
 
 				//	Draw whitespaces to the left of the text
@@ -1759,11 +1770,16 @@ public:
 				{
 					if (_doc.is_inside_selection(text_location(nLength, lineIndex)))
 					{
-						FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(), GetColor(color_index::COLORINDEX_SELBKGND));
+						FillSolidRect(hdc, frect.left, frect.top, _font_extent.cx, frect.Height(),
+							style_to_color(style::sel_bkgnd));
 						frect.left += _font_extent.cx;
 					}
 					if (frect.right > frect.left)
-						FillSolidRect(hdc, frect, bDrawWhitespace ? crBkgnd : GetColor(color_index::COLORINDEX_WHITESPACE));
+					{
+						FillSolidRect(hdc, frect, draw_whitespace
+							? bg_color
+							: style_to_color(style::white_space));
+					}
 				}
 
 				_freea(pBuf);
@@ -1771,33 +1787,35 @@ public:
 		}
 	}
 
-	COLORREF GetColor(color_index nColorIndex) const
+	static COLORREF style_to_color(style nColorIndex)
 	{
 		switch (nColorIndex)
 		{
-		case color_index::COLORINDEX_WHITESPACE:
-		case color_index::COLORINDEX_BKGND:
+		case style::white_space:
+		case style::normal_bkgnd:
 			return RGB(30, 30, 30);
-		case color_index::COLORINDEX_NORMALTEXT:
-			return RGB(240, 240, 240);
-		case color_index::COLORINDEX_SELMARGIN:
+		case style::normal_text:
+			return RGB(222, 222, 222);
+		case style::sel_margin:
 			return RGB(44, 44, 44);
-		case color_index::COLORINDEX_PREPROCESSOR:
-			return RGB(128, 128, 192);
-		case color_index::COLORINDEX_COMMENT:
-			return RGB(128, 128, 128);
-		case color_index::COLORINDEX_NUMBER:
-			return RGB(123, 234, 123);
-		case color_index::COLORINDEX_OPERATOR:
+		case style::code_preprocessor:
+			return RGB(133, 133, 211);
+		case style::code_comment:
+			return RGB(128, 222, 128);
+		case style::code_number:
+			return RGB(244, 244, 144);
+		case style::code_string:
+			return RGB(244, 244, 144);
+		case style::code_operator:
 			return RGB(128, 255, 128);
-		case color_index::COLORINDEX_KEYWORD:
+		case style::code_keyword:
 			return RGB(128, 128, 255);
-		case color_index::COLORINDEX_SELBKGND:
+		case style::sel_bkgnd:
 			return RGB(88, 88, 88);
-		case color_index::COLORINDEX_SELTEXT:
+		case style::sel_text:
 			return RGB(255, 255, 255);
 		}
-		return RGB(255, 0, 0);
+		return RGB(222, 222, 222);
 	}
 
 	//COLORREF document::GetColor(int nColorIndex)
@@ -1833,22 +1851,22 @@ public:
 
 	void draw_margin(HDC hdc, const CRect& rect, int lineIndex) const
 	{
-		FillSolidRect(hdc, rect, GetColor(m_bSelMargin ? color_index::COLORINDEX_SELMARGIN : color_index::COLORINDEX_BKGND));
+		FillSolidRect(
+			hdc, rect, style_to_color(m_bSelMargin ? style::sel_margin : style::normal_bkgnd));
 	}
 
 public:
-
-	void draw(HDC hdc)
+	void draw(HDC hdc) const
 	{
-		auto oldFont = SelectObject(hdc, _font);
-		auto rcClient = client_rect();
-		auto line_count = _doc.size();
+		const auto oldFont = SelectObject(hdc, _font);
+		const auto rcClient = client_rect();
+		const auto line_count = _doc.size();
 		auto y = 0;
 		auto nCurrentLine = _char_offset.cy;
 
 		while (y < rcClient.bottom)
 		{
-			auto nLineHeight = line_height(nCurrentLine);
+			const auto nLineHeight = line_height(nCurrentLine);
 			auto rcLine = rcClient;
 			rcLine.bottom = rcLine.top + nLineHeight;
 
@@ -1875,7 +1893,8 @@ public:
 
 	void move_page(bool down, bool selecting)
 	{
-		int y = Clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0, _doc.size() - 1);
+		const int y = clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0,
+			_doc.size() - 1);
 
 		if (_char_offset.cy != y)
 		{
@@ -1884,7 +1903,7 @@ public:
 		}
 
 		auto pos = _doc.cursor_pos();
-		pos.y = Clamp(down ? pos.y + (m_nScreenLines - 1) : pos.y - (m_nScreenLines - 1), 0, _doc.size() - 1);
+		pos.y = clamp(down ? pos.y + (m_nScreenLines - 1) : pos.y - (m_nScreenLines - 1), 0, _doc.size() - 1);
 		_doc.move_to(pos, selecting);
 	}
 };

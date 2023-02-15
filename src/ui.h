@@ -1,5 +1,7 @@
 #pragma once
 
+extern HINSTANCE resource_instance;
+
 namespace Color
 {
 	const unsigned Highlight = 0x00CC6611;
@@ -63,12 +65,12 @@ inline COLORREF Emphasize(const COLORREF c, const int n = 48)
 inline SIZE MeasureToolbar(HWND tb)
 {
 	SIZE result{0, 0};
-	auto count = (int)::SendMessage(tb, TB_BUTTONCOUNT, 0, 0L);
+	const auto count = static_cast<int>(::SendMessage(tb, TB_BUTTONCOUNT, 0, 0L));
 
 	for (int i = 0; i < count; ++i)
 	{
 		RECT r;
-		if ((BOOL)::SendMessage(tb, TB_GETITEMRECT, i, (LPARAM) (LPRECT) &r))
+		if (static_cast<BOOL>(::SendMessage(tb, TB_GETITEMRECT, i, (LPARAM)&r)))
 		{
 			result.cx = std::max(r.right, result.cx);
 			result.cy = std::max(r.bottom, result.cy);
@@ -85,42 +87,282 @@ public:
 	HDC _hdc;
 	HWND _hwnd;
 
-	win_dc(HWND hwnd) : _hwnd(hwnd), _hdc(GetDC(hwnd)) { }
+	win_dc(HWND hwnd) : _hdc(GetDC(hwnd)), _hwnd(hwnd)
+	{
+	}
 
 	~win_dc()
 	{
 		ReleaseDC(_hwnd, _hdc);
 	}
 
-	operator HDC()
+	operator HDC() const
 	{
 		return _hdc;
 	}
 
-	HFONT SelectFont(HFONT hFont)
+	HFONT SelectFont(HFONT hFont) const
 	{
-		return (HFONT)::SelectObject(_hdc, hFont);
+		return static_cast<HFONT>(SelectObject(_hdc, hFont));
 	}
 };
 
 inline std::wstring WindowText(HWND h)
 {
-	auto len = ::GetWindowTextLength(h);
-	auto result = (wchar_t*) alloca((len + 1) * sizeof(wchar_t));
+	const auto len = ::GetWindowTextLength(h);
+	const auto result = static_cast<wchar_t*>(alloca((len + 1) * sizeof(wchar_t)));
 	GetWindowText(h, result, len + 1);
 	return result;
 }
 
 inline void FillSolidRect(HDC hDC, int x, int y, int cx, int cy, COLORREF clr)
 {
-	RECT rect = {x, y, x + cx, y + cy};
-	COLORREF crOldBkColor = ::SetBkColor(hDC, clr);
+	const RECT rect = {x, y, x + cx, y + cy};
+	const COLORREF crOldBkColor = SetBkColor(hDC, clr);
 	::ExtTextOut(hDC, 0, 0, ETO_OPAQUE, &rect, nullptr, 0, nullptr);
-	::SetBkColor(hDC, crOldBkColor);
+	SetBkColor(hDC, crOldBkColor);
 }
 
 
 inline void FillSolidRect(HDC hDC, const RECT* pRC, COLORREF crColor)
 {
 	FillSolidRect(hDC, pRC->left, pRC->top, pRC->right - pRC->left, pRC->bottom - pRC->top, crColor);
+}
+
+
+class win_impl 
+{
+public:
+	HWND m_hWnd = nullptr;
+
+	virtual ~win_impl()
+	{
+		if (IsWindow(m_hWnd))
+		{
+			SetWindowLongPtr(m_hWnd, GWLP_USERDATA, 0);
+		}
+	}
+
+	virtual LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+	{
+		return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	}
+
+	static LRESULT CALLBACK win_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+	{
+		if (uMsg == WM_NCCREATE)
+		{
+			const auto pt = std::bit_cast<win_impl*>(std::bit_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
+			const auto ptr = std::bit_cast<LONG_PTR>(std::bit_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
+			SetWindowLongPtr(hwnd, GWLP_USERDATA, ptr);
+
+			if (pt)
+			{
+				pt->m_hWnd = hwnd;
+			}
+		}
+
+		if (uMsg == WM_INITDIALOG)
+		{
+			const auto pt = std::bit_cast<win_impl*>(lParam);
+			const auto ptr = std::bit_cast<LONG_PTR>(lParam);
+			SetWindowLongPtr(hwnd, GWLP_USERDATA, ptr);
+
+			if (pt)
+			{
+				pt->m_hWnd = hwnd;
+			}
+		}
+
+		// get the pointer to the window
+		const auto ptr = std::bit_cast<win_impl*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+
+		if (ptr)
+		{
+			if (uMsg == WM_CREATE) ptr->m_hWnd = hwnd;
+			return ptr->handle_message(hwnd, uMsg, wParam, lParam);
+		}
+		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	}
+
+	bool register_class(UINT style, HICON hIcon, HCURSOR hCursor, HBRUSH hbrBackground,
+		LPCWSTR lpszMenuName, LPCWSTR lpszClassName, HICON hIconSm)
+	{
+		WNDCLASSEX wcx;
+		wcx.cbSize = sizeof(WNDCLASSEX); // size of structure
+		wcx.style = style; // redraw if size changes
+		wcx.lpfnWndProc = win_proc; // points to window procedure
+		wcx.cbClsExtra = 0; // no extra class memory
+		wcx.cbWndExtra = 0; // no extra window memory
+		wcx.hInstance = resource_instance; // handle to instance
+		wcx.hIcon = hIcon; // predefined app. icon
+		wcx.hCursor = hCursor; // predefined arrow
+		wcx.hbrBackground = hbrBackground; // white background brush
+		wcx.lpszMenuName = lpszMenuName; // name of menu resource
+		wcx.lpszClassName = lpszClassName; // name of window class
+		wcx.hIconSm = hIconSm;
+
+		if (RegisterClassEx(&wcx) == 0)
+		{
+			if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	CRect GetClientRect() const 
+	{
+		CRect result;
+		::GetClientRect(m_hWnd, &result);
+		return result;
+	}
+
+	void MoveWindow(const CRect& bounds)
+	{
+		::MoveWindow(m_hWnd, bounds.left, bounds.top, bounds.Width(), bounds.Height(), FALSE);
+	}
+
+	INT_PTR DoModal(const HWND parent, const uintptr_t id)
+	{
+		return ::DialogBoxParam(resource_instance, MAKEINTRESOURCE(id),
+			parent, win_proc, (LPARAM)this);
+	}
+
+	void Create(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0, const uintptr_t id = 0)
+	{
+		if (register_class(CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS, nullptr, nullptr, (HBRUSH)COLOR_WINDOW,
+			nullptr, class_name, nullptr))
+		{
+			m_hWnd = CreateWindowEx(
+				exstyle,
+				class_name,
+				nullptr,
+				style,
+				CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+				parent, std::bit_cast<HMENU>(id),
+				resource_instance,
+				(LPVOID)this);
+		}
+	}
+
+	void create_control(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0, const uintptr_t id = 0)
+	{
+			m_hWnd = CreateWindowEx(
+				exstyle,
+				class_name,
+				nullptr,
+				style,
+				0, 0, 0, 0,
+				parent, 
+				std::bit_cast<HMENU>(id),
+				resource_instance,
+				(LPVOID)this);
+	}
+};
+
+#ifndef GET_X_LPARAM
+#define GET_X_LPARAM(lParam)	((int)(short)LOWORD(lParam))
+#endif
+#ifndef GET_Y_LPARAM
+#define GET_Y_LPARAM(lParam)	((int)(short)HIWORD(lParam))
+#endif
+
+inline void SetFont(HWND h, HFONT f)
+{
+	SendMessage(h, WM_SETFONT, (WPARAM)f, 1);
+}
+
+inline void SetIcon(HWND h, HICON i)
+{
+	SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM)i);
+	SendMessage(h, WM_SETICON, ICON_SMALL, (LPARAM)i);
+}
+
+inline DWORD GetStyle(HWND m_hWnd)
+{
+	return (DWORD)::GetWindowLong(m_hWnd, GWL_STYLE);
+}
+
+BOOL CenterWindow(HWND m_hWnd, HWND hWndCenter = NULL) throw()
+{
+	// determine owner window to center against
+	DWORD dwStyle = GetStyle(m_hWnd);
+	if (hWndCenter == NULL)
+	{
+		if (dwStyle & WS_CHILD)
+			hWndCenter = ::GetParent(m_hWnd);
+		else
+			hWndCenter = ::GetWindow(m_hWnd, GW_OWNER);
+	}
+
+	// get coordinates of the window relative to its parent
+	RECT rcDlg;
+	::GetWindowRect(m_hWnd, &rcDlg);
+	RECT rcArea;
+	RECT rcCenter;
+	HWND hWndParent = hWndCenter;
+	if (!(dwStyle & WS_CHILD))
+	{
+		// don't center against invisible or minimized windows
+		if (hWndCenter != NULL)
+		{
+			DWORD dwStyleCenter = ::GetWindowLong(hWndCenter, GWL_STYLE);
+			if (!(dwStyleCenter & WS_VISIBLE) || (dwStyleCenter & WS_MINIMIZE))
+				hWndCenter = NULL;
+		}
+
+		// center within screen coordinates
+		HMONITOR hMonitor = NULL;
+		if (hWndCenter != NULL)
+		{
+			hMonitor = ::MonitorFromWindow(hWndCenter, MONITOR_DEFAULTTONEAREST);
+		}
+		else
+		{
+			hMonitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+		}
+
+		MONITORINFO minfo;
+		minfo.cbSize = sizeof(MONITORINFO);
+		BOOL bResult = ::GetMonitorInfo(hMonitor, &minfo);
+
+		rcArea = minfo.rcWork;
+
+		if (hWndCenter == NULL)
+			rcCenter = rcArea;
+		else
+			::GetWindowRect(hWndCenter, &rcCenter);
+	}
+	else
+	{
+		// center within parent client coordinates
+		::GetClientRect(hWndParent, &rcArea);
+		::GetClientRect(hWndCenter, &rcCenter);
+		::MapWindowPoints(hWndCenter, hWndParent, (POINT*)&rcCenter, 2);
+	}
+
+	int DlgWidth = rcDlg.right - rcDlg.left;
+	int DlgHeight = rcDlg.bottom - rcDlg.top;
+
+	// find dialog's upper left based on rcCenter
+	int xLeft = (rcCenter.left + rcCenter.right) / 2 - DlgWidth / 2;
+	int yTop = (rcCenter.top + rcCenter.bottom) / 2 - DlgHeight / 2;
+
+	// if the dialog is outside the screen, move it inside
+	if (xLeft + DlgWidth > rcArea.right)
+		xLeft = rcArea.right - DlgWidth;
+	if (xLeft < rcArea.left)
+		xLeft = rcArea.left;
+
+	if (yTop + DlgHeight > rcArea.bottom)
+		yTop = rcArea.bottom - DlgHeight;
+	if (yTop < rcArea.top)
+		yTop = rcArea.top;
+
+	// map screen coordinates to child coordinates
+	return ::SetWindowPos(m_hWnd, NULL, xLeft, yTop, -1, -1,
+		SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }

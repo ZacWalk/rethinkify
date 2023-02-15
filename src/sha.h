@@ -37,7 +37,6 @@ namespace crypto
 		static const unsigned int DIGEST_SIZE = (256 / 8);
 
 	private:
-
 		const static uint32_t sha256_k[];
 		static const uint32_t SHA224_256_BLOCK_SIZE = (512 / 8);
 
@@ -52,10 +51,10 @@ namespace crypto
 
 	std::string to_hex(uint8_t* input, size_t len);
 
-	inline std::string to_sha1(const std::string& input)
+	inline std::string to_sha1(std::string_view input)
 	{
 		sha1 checksum;
-		checksum.update(reinterpret_cast<const uint8_t *>(input.c_str()), input.size());
+		checksum.update(reinterpret_cast<const uint8_t*>(input.data()), input.size());
 
 		uint8_t digest[sha1::DIGEST_SIZE];
 		checksum.final(digest);
@@ -63,10 +62,10 @@ namespace crypto
 		return to_hex(digest, sha1::DIGEST_SIZE);
 	}
 
-	inline std::string to_sha256(std::string input)
+	inline std::string to_sha256(std::string_view input)
 	{
 		sha256 checksum;
-		checksum.update(reinterpret_cast<const uint8_t *>(reinterpret_cast<const uint8_t *>(input.c_str())), input.size());
+		checksum.update(reinterpret_cast<const uint8_t*>(input.data()), input.size());
 
 		uint8_t digest[sha256::DIGEST_SIZE];
 		checksum.final(digest);

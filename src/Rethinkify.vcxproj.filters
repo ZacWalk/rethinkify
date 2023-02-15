@@ -65,7 +65,7 @@
     <ClCompile Include="spell_check.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="app.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="document.cpp">
@@ -79,12 +79,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="Rethinkify.rc">
+    <ResourceCompile Include="app.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\Rethinkify.ico">
+    <Image Include="res\app.ico">
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="res\Next.ico">

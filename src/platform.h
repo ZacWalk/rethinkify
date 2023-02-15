@@ -1,3 +1,5 @@
+#include "util.h" 
+
 namespace platform
 {
 	extern size_t StaticMemoryUsage;
@@ -10,19 +12,18 @@ namespace platform
 		const crit_sec& operator=(const crit_sec& other) = delete;
 
 	public:
-
-		inline crit_sec()
+		crit_sec()
 		{
 			ZeroMemory(&_cs, sizeof(_cs));
 			InitializeCriticalSection(&_cs);
 		}
 
-		inline ~crit_sec()
+		~crit_sec()
 		{
 			DeleteCriticalSection(&_cs);
 		}
 
-		inline operator LPCRITICAL_SECTION() const
+		operator LPCRITICAL_SECTION() const
 		{
 			return &_cs;
 		}
@@ -38,85 +39,135 @@ namespace platform
 		const scope_lock& operator=(const scope_lock& other) = delete;
 
 	public:
-
-		inline scope_lock(const crit_sec& cs) : _cs(cs)
+		scope_lock(const crit_sec& cs) : _cs(cs)
 		{
 			EnterCriticalSection(_cs);
 		}
 
-		inline ~scope_lock()
+		~scope_lock()
 		{
 			LeaveCriticalSection(_cs);
 		}
 	};
 }
 
-class Path
+class file_path
 {
 	std::wstring _path;
 
 public:
-
-	Path(const wchar_t* path = L"") : _path(path) { };
-
-	Path(const Path& other) : _path(other._path) { };
-
-	Path(Path&& other) : _path(std::move(other._path)) { }
-
-	const Path& operator=(const Path& other)
+	file_path(std::wstring path = L"") : _path(std::move(path))
 	{
-		_path = other._path;
-		return *this;
-	};
+	}
+
+	file_path(const file_path& other) = default;
+	file_path(file_path&& other) = default;
+	file_path& operator=(const file_path& other) = default;
+	file_path& operator=(file_path&& other) = default;
 
 	const wchar_t* c_str() const
 	{
 		return _path.c_str();
 	}
 
-	std::wstring str() const
+	std::wstring_view view() const
 	{
 		return _path;
 	}
 
-	inline Path Combine(LPCWSTR name, LPCWSTR extension) const
+	
+
+	static constexpr std::wstring_view::size_type find_ext(const std::wstring_view path)
 	{
-		wchar_t path[MAX_PATH];
-		::PathCombine(path, _path.c_str(), name);
-		::PathRenameExtension(path, extension);
-		return path;
+		const auto last = path.find_last_of(L"./\\");
+		if (last == std::u8string_view::npos || path[last] != '.') return path.size();
+		return last;
 	}
 
-	inline Path Combine(const std::wstring& name, LPCWSTR extension) const
+	static constexpr std::wstring_view::size_type find_last_slash(const std::wstring_view path)
 	{
-		return Combine(name.c_str(), extension);
+		const auto last = path.find_last_of(L"/\\");
+		if (last == std::u8string_view::npos) return path.size();
+		return last + 1;
 	}
 
-	inline Path Combine(LPCWSTR name) const
-	{
-		wchar_t path[MAX_PATH];
-		return ::PathCombine(path, _path.c_str(), name);
+	std::wstring_view without_extension() const
+	{		
+		return _path.substr(0, find_ext(_path));
 	}
 
-	bool Exists() const
+	std::wstring_view extension() const
 	{
-		return ::PathFileExists(_path.c_str()) != 0;
+		return _path.substr(find_ext(_path));
 	}
 
-	static inline Path ModuleFolder()
+	file_path Combine(std::wstring name, std::wstring extension) const
 	{
-		wchar_t path[MAX_PATH];
-		::GetModuleFileName(nullptr, path, MAX_PATH);
-		::PathRemoveFileSpec(path);
-		return path;
+		auto with_name = Combine(name);
+		std::wstring result = std::wstring { with_name.without_extension() };
+
+		if (!extension.empty())
+		{
+			if (extension[0] != L'.') result += L'.';
+			result += extension;
+		}
+		return { result };
 	}
 
-	static inline Path AppData()
+	static constexpr bool is_path_sep(const wchar_t c)
 	{
-		wchar_t path[MAX_PATH];
-		::SHGetSpecialFolderPath(GetActiveWindow(), path, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, TRUE);
-		::PathCombine(path, path, g_szAppName);
-		::CreateDirectory(path, nullptr);
-		return path;
+		return c == L'\\' || c == L'/';
+	}
+
+	file_path Combine(const std::wstring_view part) const
+	{
+		auto result = _path;
+
+		if (!part.empty())
+		{
+			if (!is_path_sep(str::last_char(result)) && !is_path_sep(part[0])) result += '\\';
+			result += part;
+		}
+		return { result };
+	}
+
+	bool exists() const
+	{
+		const auto attribs = ::GetFileAttributes(_path.c_str());
+		
+		return (attribs != INVALID_FILE_ATTRIBUTES &&
+			(attribs & FILE_ATTRIBUTE_DIRECTORY) == 0);
+	}
+
+	bool empty() const
+	{
+		return _path.empty();
+	}
+
+	std::wstring name() const
+	{
+		return _path.substr(find_last_slash(_path));
+	}
+
+	std::wstring folder() const
+	{
+		return _path.substr(0, find_last_slash(_path));
+	}
+
+	static file_path module_folder()
+	{
+		wchar_t raw_path[MAX_PATH];
+		::GetModuleFileName(nullptr, raw_path, MAX_PATH);
+		return file_path(raw_path).folder();
+	}
+
+	static file_path app_data_folder()
+	{
+		wchar_t raw_path[MAX_PATH];
+		::SHGetSpecialFolderPath(GetActiveWindow(), raw_path, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, TRUE);
+
+		auto result = file_path(raw_path).Combine(g_app_name);
+		if (!result.exists()) ::CreateDirectory(raw_path, nullptr);
+		return { result };
 	}
 };
