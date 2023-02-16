@@ -507,7 +507,7 @@ void document::view_tabs(const bool bViewTabs)
 }
 
 
-void document::MoveLeft(const bool selecting)
+void document::move_char_left(const bool selecting)
 {
 	const auto sel = _selection.normalize();
 
@@ -535,7 +535,7 @@ void document::MoveLeft(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveRight(const bool selecting)
+void document::move_char_right(const bool selecting)
 {
 	const auto sel = _selection.normalize();
 
@@ -563,13 +563,13 @@ void document::MoveRight(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveWordLeft(const bool selecting)
+void document::move_word_left(const bool selecting)
 {
 	const auto sel = _selection.normalize();
 
 	if (!sel.empty() && !selecting)
 	{
-		MoveLeft(selecting);
+		move_char_left(selecting);
 		return;
 	}
 
@@ -585,7 +585,7 @@ void document::MoveWordLeft(const bool selecting)
 	const auto& line = _lines[_cursor_loc.y];
 	auto nPos = _cursor_loc.x;
 
-	WordToLeft(_cursor_loc);
+	word_to_left(_cursor_loc);
 
 	while (nPos > 0 && iswspace(line[nPos - 1]))
 		nPos--;
@@ -614,13 +614,13 @@ void document::MoveWordLeft(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveWordRight(const bool selecting)
+void document::move_word_right(const bool selecting)
 {
 	const auto sel = _selection.normalize();
 
 	if (!sel.empty() && !selecting)
 	{
-		MoveRight(selecting);
+		move_char_right(selecting);
 		return;
 	}
 
@@ -636,7 +636,7 @@ void document::MoveWordRight(const bool selecting)
 
 	if (_cursor_loc.x == nLength)
 	{
-		MoveRight(selecting);
+		move_char_right(selecting);
 		return;
 	}
 
@@ -666,45 +666,23 @@ void document::MoveWordRight(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveUp(const bool selecting)
+void document::move_lines(const int lines_to_move, const bool selecting)
 {
 	const auto sel = _selection.normalize();
 
 	if (!sel.empty() && !selecting)
-		_cursor_loc = sel._start;
+		_cursor_loc = lines_to_move > 0 ? sel._end : sel._start;
 
-	if (_cursor_loc.y > 0)
-	{
-		if (_ideal_char_pos == -1)
-			_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-		_cursor_loc.y--;
-		_cursor_loc.x = calc_offset_approx(_cursor_loc.y, _ideal_char_pos);
+	int yy = _cursor_loc.y + lines_to_move;
+	if (yy < 0) yy = 0;
+	if (yy >= _lines.size()) yy = _lines.size() - 1;
 
-		const auto size = _lines[_cursor_loc.y].size();
-
-		if (_cursor_loc.x > size)
-			_cursor_loc.x = size;
-	}
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-
-	select(text_selection(_anchor_loc, _cursor_loc));
-}
-
-void document::MoveDown(const bool selecting)
-{
-	const auto sel = _selection.normalize();
-
-	if (!sel.empty() && !selecting)
-		_cursor_loc = sel._end;
-
-	if (_cursor_loc.y < _lines.size() - 1)
+	if (yy != _cursor_loc.y)
 	{
 		if (_ideal_char_pos == -1)
 			_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
 
-		_cursor_loc.y++;
+		_cursor_loc.y = yy;
 		_cursor_loc.x = calc_offset_approx(_cursor_loc.y, _ideal_char_pos);
 
 		const auto size = _lines[_cursor_loc.y].size();
@@ -718,7 +696,7 @@ void document::MoveDown(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveHome(const bool selecting)
+void document::move_line_home(const bool selecting)
 {
 	const auto& line = _lines[_cursor_loc.y];
 
@@ -736,7 +714,7 @@ void document::MoveHome(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveEnd(const bool selecting)
+void document::move_line_end(const bool selecting)
 {
 	_cursor_loc.x = _lines[_cursor_loc.y].size();
 	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
@@ -746,7 +724,7 @@ void document::MoveEnd(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveCtrlHome(const bool selecting)
+void document::move_doc_home(const bool selecting)
 {
 	_cursor_loc.x = 0;
 	_cursor_loc.y = 0;
@@ -757,7 +735,7 @@ void document::MoveCtrlHome(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-void document::MoveCtrlEnd(const bool selecting)
+void document::move_doc_end(const bool selecting)
 {
 	_cursor_loc.y = _lines.size() - 1;
 	_cursor_loc.x = _lines[_cursor_loc.y].size();
@@ -768,7 +746,7 @@ void document::MoveCtrlEnd(const bool selecting)
 	select(text_selection(_anchor_loc, _cursor_loc));
 }
 
-text_location document::WordToRight(text_location pt) const
+text_location document::word_to_right(text_location pt) const
 {
 	const auto& line = _lines[pt.y];
 
@@ -781,7 +759,7 @@ text_location document::WordToRight(text_location pt) const
 	return pt;
 }
 
-text_location document::WordToLeft(text_location pt) const
+text_location document::word_to_left(text_location pt) const
 {
 	const auto& line = _lines[pt.y];
 
@@ -813,7 +791,7 @@ bool document::QueryEditable()
 	return true;
 }
 
-void document::Paste()
+void document::edit_paste()
 {
 	if (QueryEditable())
 	{
@@ -828,7 +806,7 @@ void document::Paste()
 	}
 }
 
-void document::Cut()
+void document::edit_cut()
 {
 	if (QueryEditable() && has_selection())
 	{
@@ -840,7 +818,7 @@ void document::Cut()
 	}
 }
 
-void document::OnEditDelete()
+void document::edit_delete()
 {
 	if (QueryEditable())
 	{
@@ -867,13 +845,13 @@ void document::OnEditDelete()
 	}
 }
 
-void document::OnEditDeleteBack()
+void document::edit_delete_back()
 {
 	if (QueryEditable())
 	{
 		if (has_selection())
 		{
-			OnEditDelete();
+			edit_delete();
 		}
 		else
 		{
@@ -883,7 +861,7 @@ void document::OnEditDeleteBack()
 	}
 }
 
-void document::OnEditTab()
+void document::edit_tab()
 {
 	if (QueryEditable())
 	{
@@ -936,7 +914,7 @@ void document::OnEditTab()
 	}
 }
 
-void document::OnEditUntab()
+void document::edit_untab()
 {
 	if (QueryEditable())
 	{
@@ -1040,7 +1018,7 @@ void document::OnEditUntab()
 	}
 }
 
-void document::OnEditUndo()
+void document::edit_undo()
 {
 	if (can_undo())
 	{
@@ -1048,7 +1026,7 @@ void document::OnEditUndo()
 	}
 }
 
-void document::OnEditRedo()
+void document::edit_redo()
 {
 	if (can_redo())
 	{
@@ -1244,8 +1222,14 @@ static line_endings detect_line_endings(const uint8_t* buffer, const int len)
 	return line_endings::crlf_style_dos; // guess
 }
 
-bool document::load_from_file(file_path path)
+bool document::load_from_file(const file_path &path)
 {
+	if (_path == path)
+	{
+		// skip if same
+		return false;
+	}
+
 	clear();
 
 	auto success = false;
@@ -1282,7 +1266,7 @@ bool document::load_from_file(file_path path)
 
 					if ((last_char == 0x0A && c == 0x0D) || (last_char == 0x0A && c != 0x0D))
 					{
-						append_line((encoding == Encoding::ASCII) ? str::AsciiToUtf16(line) : str::UTF8ToUtf16(line));
+						append_line((encoding == Encoding::ASCII) ? str::ascii_to_utf16(line) : str::utf8_to_utf16(line));
 						line.clear();
 					}
 
@@ -1308,7 +1292,7 @@ bool document::load_from_file(file_path path)
 					last_char = c;
 				}
 
-				append_line((encoding == Encoding::ASCII) ? str::AsciiToUtf16(line) : str::UTF8ToUtf16(line));
+				append_line((encoding == Encoding::ASCII) ? str::ascii_to_utf16(line) : str::utf8_to_utf16(line));
 			}
 			else if (encoding == Encoding::UTF16BE || encoding == Encoding::UTF16)
 			{
@@ -1418,7 +1402,7 @@ static std::wstring last_error_message()
 	return result;
 }
 
-bool document::save_to_file(file_path path, line_endings nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/,
+bool document::save_to_file(const file_path &path, line_endings nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/,
                             bool bClearModifiedFlag /*= true*/) const
 {
 	auto success = false;
@@ -1435,7 +1419,7 @@ bool document::save_to_file(file_path path, line_endings nCrlfStyle /*= CRLF_STY
 		for (const auto& line : _lines)
 		{
 			if (!first) stream << std::endl;
-			stream << str::UTF16ToUtf8(line._text);
+			stream << str::utf16_to_utf8(line._text);
 			first = false;
 		}
 

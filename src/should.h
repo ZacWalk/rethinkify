@@ -15,12 +15,12 @@ public:
 
 	static void is_equal(const int expected, const int actual, const std::wstring_view message = L"Test")
 	{
-		is_equal(str::From(expected), str::From(actual), message);
+		is_equal(str::to_str(expected), str::to_str(actual), message);
 	}
 
 	static void is_equal(const bool expected, const bool actual, const std::wstring_view message = L"Test")
 	{
-		is_equal(str::From(expected), str::From(actual), message);
+		is_equal(str::to_str(expected), str::to_str(actual), message);
 	}
 
 	static void is_equal_true(const bool actual, const std::wstring_view message = L"Test")

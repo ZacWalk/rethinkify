@@ -24,23 +24,19 @@ public:
 
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
-		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
-		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
-		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
-		if (uMsg == WM_COMMAND) return OnCommand(uMsg, wParam, lParam);
-		//if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
-		//if (id ==nextId) return OnNext(uMsg, wParam, lParam);
-		//if (id ==lastId) return OnLast(uMsg, wParam, lParam);
-		//COMMAND_HANDLER(editId, EN_CHANGE) return OnEditChange(uMsg, wParam, lParam);
+		if (uMsg == WM_CREATE) return on_create(uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return on_size(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return on_erase_background(uMsg, wParam, lParam);
+		if (uMsg == WM_COMMAND) return on_command(uMsg, wParam, lParam);
 		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_create(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		_find_edit.create_control(L"EDIT", m_hWnd, WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0,
 		                          editId);
 
-		const auto button_style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_FLAT;
+		constexpr auto button_style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_FLAT;
 
 		_find_button.create_control(L"BUTTON", m_hWnd, button_style, 0, nextId);
 		SetWindowText(_find_button.m_hWnd, L"Find");
@@ -59,35 +55,35 @@ public:
 		ui::set_font(m_hWnd, _font);
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
+	LRESULT on_size(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
-		auto r = GetClientRect();
+		auto r = get_client_rect();
 
 		r.left += 4;
 		r.right -= 54;
 		r.top += 4;
 		r.bottom -= 4;
 
-		_find_edit.MoveWindow(r);
+		_find_edit.move_window(r);
 
 		r.left = r.right + 4;
 		r.right += 50;
 
-		_find_button.MoveWindow(r);
+		_find_button.move_window(r);
 
 		return 0;
 	}
 
-	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_erase_background(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		auto r = GetClientRect();
+		auto r = get_client_rect();
 		ui::fill_solid_rect(reinterpret_cast<HDC>(wParam), r, style_to_color(style::main_wnd_clr));
 		return 1;
 	}
 
 	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
-		auto r = GetClientRect();
+		auto r = get_client_rect();
 
 		PAINTSTRUCT ps = {nullptr};
 		const auto hdc = BeginPaint(m_hWnd, &ps);
@@ -106,7 +102,7 @@ public:
 		SetWindowText(_find_edit.m_hWnd, s.c_str());
 	}
 
-	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_command(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		const auto id = LOWORD(wParam);
 		const auto code = HIWORD(wParam);
@@ -127,28 +123,29 @@ private:
 	find_wnd& _find;
 	IEvents& _events;
 
-	volatile unsigned long m_cRef = 0;
-	text_location m_ptDropPos;
-	bool m_bDragSelection = false;
-	bool m_bWordSelection = false;
-	bool m_bLineSelection = false;
-	bool m_bPreparingToDrag = false;
-	bool m_bDropPosVisible = false;
-	bool m_bCursorHidden = false;
-	bool m_bFocused = false;
-	bool m_bSelMargin = true;
-	bool m_bDraggingText = false;
-	UINT m_nDragSelTimer = 0;
-	text_location m_ptSavedCaretPos;
-	text_selection m_ptDraggedText;
+	volatile uint32_t _ref_count = 0;
+
+	text_location _pt_drop_pos;
+	bool _drag_selection = false;
+	bool _word_selection = false;
+	bool _line_selection = false;
+	bool _preparing_to_drag = false;
+	bool _drop_pos_visible = false;
+	bool _cursor_hidden = false;
+	bool _is_focused = false;
+	bool _sel_margin = true;
+	bool _dragging_text = false;
+	UINT _drag_sel_timer = 0;
+	text_location _saved_caret_pos;
+	text_selection _dragged_text_selection;
 	HFONT _font = nullptr;
 
-	CSize _char_offset;
-	CSize _extent;
-	CSize _font_extent;
+	isize _char_offset;
+	isize _extent;
+	isize _font_extent;
 
-	int m_nScreenLines = 0;
-	int m_nScreenChars = 0;
+	int _screen_lines = 0;
+	int _screen_chars = 0;
 	
 
 public:
@@ -161,24 +158,24 @@ public:
 
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
-		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
-		if (uMsg == WM_DESTROY) return OnDestroy(uMsg, wParam, lParam);
-		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
-		if (uMsg == WM_SETFOCUS) return OnSetFocus(uMsg, wParam, lParam);
-		if (uMsg == WM_KILLFOCUS) return OnKillFocus(uMsg, wParam, lParam);
-		if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
-		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
-		if (uMsg == WM_VSCROLL) return OnVScroll(uMsg, wParam, lParam);
-		if (uMsg == WM_HSCROLL) return OnHScroll(uMsg, wParam, lParam);
-		if (uMsg == WM_TIMER) return OnTimer(uMsg, wParam, lParam);
-		if (uMsg == WM_SYSCOLORCHANGE) return OnSysColorChange(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONDBLCLK) return OnLButtonDblClk(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONDOWN) return OnLButtonDown(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONUP) return OnLButtonUp(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSEMOVE) return OnMouseMove(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSEWHEEL) return OnMouseWheel(uMsg, wParam, lParam);
-		if (uMsg == WM_CHAR) return OnChar(uMsg, wParam, lParam);
-		if (uMsg == WM_CONTEXTMENU) return OnContextMenu(uMsg, wParam, lParam);
+		if (uMsg == WM_CREATE) return on_create(uMsg, wParam, lParam);
+		if (uMsg == WM_DESTROY) return on_destroy(uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return on_size(uMsg, wParam, lParam);
+		if (uMsg == WM_SETFOCUS) return on_set_focus(uMsg, wParam, lParam);
+		if (uMsg == WM_KILLFOCUS) return on_kill_focus(uMsg, wParam, lParam);
+		if (uMsg == WM_PAINT) return on_paint(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return on_erase_background(uMsg, wParam, lParam);
+		if (uMsg == WM_VSCROLL) return on_v_scroll(uMsg, wParam, lParam);
+		if (uMsg == WM_HSCROLL) return on_h_scroll(uMsg, wParam, lParam);
+		if (uMsg == WM_TIMER) return on_timer(uMsg, wParam, lParam);
+		if (uMsg == WM_SYSCOLORCHANGE) return on_sys_color_change(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDBLCLK) return on_left_button_dbl_clk(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDOWN) return on_left_button_down(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONUP) return on_left_button_up(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEMOVE) return on_mouse_move(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEWHEEL) return on_mouse_wheel(uMsg, wParam, lParam);
+		if (uMsg == WM_CHAR) return on_char(uMsg, wParam, lParam);
+		if (uMsg == WM_CONTEXTMENU) return on_context_menu(uMsg, wParam, lParam);
 		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
@@ -201,25 +198,24 @@ public:
 		_doc.invalidate(invalid::layout);
 	}
 
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	LRESULT on_create(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 	{
 		RegisterDragDrop(m_hWnd, this);
 		return 0;
 	}
 
-	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
+	LRESULT on_destroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		RevokeDragDrop(m_hWnd);
 		return 0;
 	}
 
-
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_size(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		const ui::win_dc hdc(m_hWnd);
 		const auto old_font = hdc.SelectFont(_font);
 
-		CSize font_extent;
+		isize font_extent;
 		GetTextExtentExPoint(hdc, _T("X"), 1, 1, nullptr, nullptr, &font_extent);
 		if (font_extent.cy < 1) font_extent.cy = 1;
 
@@ -231,7 +227,7 @@ public:
 
 		const auto xPos = GET_X_LPARAM(lParam);
 		const auto yPos = GET_Y_LPARAM(lParam);
-		_extent = CSize(xPos, yPos);
+		_extent = isize(xPos, yPos);
 		_font_extent = font_extent;
 
 		layout();
@@ -242,7 +238,7 @@ public:
 		return 0;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_paint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		PAINTSTRUCT ps = {nullptr};
 		const auto hdc = BeginPaint(m_hWnd, &ps);
@@ -251,85 +247,85 @@ public:
 		return 0;
 	}
 
-	static LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	static LRESULT on_erase_background(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		return 1;
 	}
 
-	LRESULT OnTimer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
+	LRESULT on_timer(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
-		OnTimer(wParam);
+		on_timer(wParam);
 		return 0;
 	}
 
-	LRESULT OnSysColorChange(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/) const
+	LRESULT on_sys_color_change(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/) const
 	{
 		invalidate();
 		return 0;
 	}
 
-	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_set_focus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		OnSetFocus(reinterpret_cast<HWND>(wParam));
 		return 0;
 	}
 
-	LRESULT OnKillFocus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_kill_focus(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		OnKillFocus(reinterpret_cast<HWND>(wParam));
+		on_kill_focus(reinterpret_cast<HWND>(wParam));
 		return 0;
 	}
 
-	LRESULT OnVScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_v_scroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		const auto nScrollCode = static_cast<int>(LOWORD(wParam));
 		const auto y = static_cast<short int>(HIWORD(wParam));
 		const auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
-		OnVScroll(nScrollCode, y, hwndScrollBar);
+		on_v_scroll(nScrollCode, y, hwndScrollBar);
 		return 0;
 	}
 
-	LRESULT OnHScroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_h_scroll(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		const auto nScrollCode = static_cast<int>(LOWORD(wParam));
 		const auto nPos = static_cast<short int>(HIWORD(wParam));
 		const auto hwndScrollBar = reinterpret_cast<HWND>(lParam);
-		OnHScroll(nScrollCode, nPos, hwndScrollBar);
+		on_h_scroll(nScrollCode, nPos, hwndScrollBar);
 		return 0;
 	}
 
-	LRESULT OnLButtonDblClk(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_left_button_dbl_clk(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		OnLButtonDblClk(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
+		on_left_button_dbl_clk(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnLButtonDown(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_left_button_down(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		OnLButtonDown(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
+		on_left_button_down(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnLButtonUp(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_left_button_up(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		OnLButtonUp(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
+		on_left_button_up(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnMouseMove(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_mouse_move(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		OnMouseMove(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
+		on_mouse_move(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		return 0;
 	}
 
-	LRESULT OnMouseWheel(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_mouse_wheel(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		const auto delta = static_cast<short>(HIWORD(wParam)) > 0 ? -2 : 2;
-		OnMouseWheel(CPoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), delta);
+		on_mouse_wheel(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), delta);
 		return 0;
 	}
 
-	LRESULT OnChar(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_char(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		const auto c = wParam;
 		auto flags = lParam;
@@ -360,16 +356,10 @@ public:
 		return 0;
 	}
 
-	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_context_menu(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		OnCommand(LOWORD(wParam));
-		return 0;
-	}
-
-	LRESULT OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam)
-	{
-		const CPoint location(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-		CPoint clientLocation(location);
+		const ipoint location(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		ipoint clientLocation(location);
 		ScreenToClient(m_hWnd, &clientLocation);
 
 		const auto menu = CreatePopupMenu();
@@ -436,7 +426,7 @@ public:
 			case ID_EDIT_PASTE:
 			case ID_EDIT_DELETE:
 			case ID_EDIT_SELECT_ALL:
-				OnCommand(result);
+				on_command(result);
 				break;
 
 			case ID_FILE_NEW:
@@ -457,7 +447,7 @@ public:
 		return 0;
 	}
 
-	void OnCommand(int id)
+	void on_command(int id)
 	{
 		switch (id)
 		{
@@ -470,74 +460,74 @@ public:
 			break;
 		case ID_EDIT_FIND_PREVIOUS: _doc.find(_find.find_text(), find_direction_up);
 			break;
-		case ID_EDIT_CHAR_LEFT: _doc.MoveLeft(false);
+		case ID_EDIT_CHAR_LEFT: _doc.move_char_left(false);
 			break;
-		case ID_EDIT_EXT_CHAR_LEFT: _doc.MoveLeft(true);
+		case ID_EDIT_EXT_CHAR_LEFT: _doc.move_char_left(true);
 			break;
-		case ID_EDIT_CHAR_RIGHT: _doc.MoveRight(false);
+		case ID_EDIT_CHAR_RIGHT: _doc.move_char_right(false);
 			break;
-		case ID_EDIT_EXT_CHAR_RIGHT: _doc.MoveRight(true);
+		case ID_EDIT_EXT_CHAR_RIGHT: _doc.move_char_right(true);
 			break;
-		case ID_EDIT_WORD_LEFT: _doc.MoveWordLeft(false);
+		case ID_EDIT_WORD_LEFT: _doc.move_word_left(false);
 			break;
-		case ID_EDIT_EXT_WORD_LEFT: _doc.MoveWordLeft(true);
+		case ID_EDIT_EXT_WORD_LEFT: _doc.move_word_left(true);
 			break;
-		case ID_EDIT_WORD_RIGHT: _doc.MoveWordRight(false);
+		case ID_EDIT_WORD_RIGHT: _doc.move_word_right(false);
 			break;
-		case ID_EDIT_EXT_WORD_RIGHT: _doc.MoveWordRight(true);
+		case ID_EDIT_EXT_WORD_RIGHT: _doc.move_word_right(true);
 			break;
-		case ID_EDIT_LINE_UP: _doc.MoveUp(false);
+		case ID_EDIT_LINE_UP: _doc.move_lines(-1, false);
 			break;
-		case ID_EDIT_EXT_LINE_UP: _doc.MoveUp(true);
+		case ID_EDIT_EXT_LINE_UP: _doc.move_lines(-1, true);
 			break;
-		case ID_EDIT_LINE_DOWN: _doc.MoveDown(false);
+		case ID_EDIT_LINE_DOWN: _doc.move_lines(1, false);
 			break;
-		case ID_EDIT_EXT_LINE_DOWN: _doc.MoveDown(true);
+		case ID_EDIT_EXT_LINE_DOWN: _doc.move_lines(1, true);
 			break;
-		case ID_EDIT_SCROLL_UP: ScrollUp();
+		case ID_EDIT_SCROLL_UP: scroll_up();
 			break;
-		case ID_EDIT_SCROLL_DOWN: ScrollDown();
+		case ID_EDIT_SCROLL_DOWN: scroll_down();
 			break;
-		case ID_EDIT_PAGE_UP: move_page(false, false);
+		case ID_EDIT_PAGE_UP: _doc.move_lines(-_screen_lines, false);
 			break;
-		case ID_EDIT_EXT_PAGE_UP: move_page(true, false);
+		case ID_EDIT_EXT_PAGE_UP: _doc.move_lines(-_screen_lines, false);
 			break;
-		case ID_EDIT_PAGE_DOWN: move_page(false, true);
+		case ID_EDIT_PAGE_DOWN: _doc.move_lines(_screen_lines, false);
 			break;
-		case ID_EDIT_EXT_PAGE_DOWN: move_page(true, true);
+		case ID_EDIT_EXT_PAGE_DOWN: _doc.move_lines(_screen_lines, true);
 			break;
-		case ID_EDIT_LINE_END: _doc.MoveEnd(false);
+		case ID_EDIT_LINE_END: _doc.move_line_end(false);
 			break;
-		case ID_EDIT_EXT_LINE_END: _doc.MoveEnd(true);
+		case ID_EDIT_EXT_LINE_END: _doc.move_line_end(true);
 			break;
-		case ID_EDIT_HOME: _doc.MoveHome(false);
+		case ID_EDIT_HOME: _doc.move_line_home(false);
 			break;
-		case ID_EDIT_EXT_HOME: _doc.MoveHome(true);
+		case ID_EDIT_EXT_HOME: _doc.move_line_home(true);
 			break;
-		case ID_EDIT_TEXT_BEGIN: _doc.MoveCtrlHome(false);
+		case ID_EDIT_TEXT_BEGIN: _doc.move_doc_home(false);
 			break;
-		case ID_EDIT_EXT_TEXT_BEGIN: _doc.MoveCtrlHome(true);
+		case ID_EDIT_EXT_TEXT_BEGIN: _doc.move_doc_home(true);
 			break;
-		case ID_EDIT_TEXT_END: _doc.MoveCtrlEnd(false);
+		case ID_EDIT_TEXT_END: _doc.move_doc_end(false);
 			break;
-		case ID_EDIT_EXT_TEXT_END: _doc.MoveCtrlEnd(true);
+		case ID_EDIT_EXT_TEXT_END: _doc.move_doc_end(true);
 			break;
-		case ID_EDIT_PASTE: _doc.Paste();
+		case ID_EDIT_PASTE: _doc.edit_paste();
 			break;
-		case ID_EDIT_CUT: _doc.Cut();
+		case ID_EDIT_CUT: _doc.edit_cut();
 			break;
-		case ID_EDIT_DELETE: _doc.OnEditDelete();
+		case ID_EDIT_DELETE: _doc.edit_delete();
 			break;
-		case ID_EDIT_DELETE_BACK: _doc.OnEditDeleteBack();
+		case ID_EDIT_DELETE_BACK: _doc.edit_delete_back();
 			break;
-		case ID_EDIT_UNTAB: _doc.OnEditUntab();
+		case ID_EDIT_UNTAB: _doc.edit_untab();
 			break;
-		case ID_EDIT_TAB: _doc.OnEditTab();
+		case ID_EDIT_TAB: _doc.edit_tab();
 			break;
 		//case ID_EDIT_REPLACE: _doc.OnEditReplace(); break;
-		case ID_EDIT_UNDO: _doc.OnEditUndo();
+		case ID_EDIT_UNDO: _doc.edit_undo();
 			break;
-		case ID_EDIT_REDO: _doc.OnEditRedo();
+		case ID_EDIT_REDO: _doc.edit_redo();
 			break;
 		}
 	}
@@ -552,32 +542,32 @@ public:
 
 	void OnSetFocus(HWND oldWnd)
 	{
-		m_bFocused = true;
+		_is_focused = true;
 		invalidate_selection();
 		update_caret();
 	}
 
-	void OnKillFocus(HWND newWnd)
+	void on_kill_focus(HWND newWnd)
 	{
-		m_bFocused = false;
+		_is_focused = false;
 
 		update_caret();
 		invalidate_selection();
 
-		if (m_bDragSelection)
+		if (_drag_selection)
 		{
 			ReleaseCapture();
-			KillTimer(m_hWnd, m_nDragSelTimer);
-			m_bDragSelection = false;
+			KillTimer(m_hWnd, _drag_sel_timer);
+			_drag_selection = false;
 		}
 	}
 
-	void OnTimer(UINT nIDEvent)
+	void on_timer(UINT nIDEvent)
 	{
 		if (nIDEvent == TIMER_DRAGSEL)
 		{
 			assert(m_bDragSelection);
-			CPoint pt;
+			ipoint pt;
 			GetCursorPos(&pt);
 			ScreenToClient(m_hWnd, &pt);
 
@@ -639,7 +629,7 @@ public:
 		}
 	}
 
-	void OnLButtonDown(const CPoint& point, UINT nFlags)
+	void on_left_button_down(const ipoint& point, UINT nFlags)
 	{
 		const bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 		const bool bControl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -658,11 +648,11 @@ public:
 				_doc.select(sel);
 
 				SetCapture(m_hWnd);
-				m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
+				_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 				assert(m_nDragSelTimer != 0);
-				m_bWordSelection = false;
-				m_bLineSelection = true;
-				m_bDragSelection = true;
+				_word_selection = false;
+				_line_selection = true;
+				_drag_selection = true;
 			}
 		}
 		else
@@ -671,7 +661,7 @@ public:
 
 			if (_doc.is_inside_selection(ptText))
 			{
-				m_bPreparingToDrag = true;
+				_preparing_to_drag = true;
 			}
 			else
 			{
@@ -680,11 +670,11 @@ public:
 				_doc.select(sel);
 
 				SetCapture(m_hWnd);
-				m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
+				_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 				assert(m_nDragSelTimer != 0);
-				m_bWordSelection = bControl;
-				m_bLineSelection = false;
-				m_bDragSelection = true;
+				_word_selection = bControl;
+				_line_selection = false;
+				_drag_selection = true;
 			}
 		}
 	}
@@ -692,10 +682,10 @@ public:
 	bool can_scroll() const
 	{
 		const auto line_count = _doc.size() - 1;
-		return m_nScreenChars < line_count;
+		return _screen_chars < line_count;
 	}
 
-	void OnMouseWheel(const CPoint& point, int zDelta)
+	void on_mouse_wheel(const ipoint& point, int zDelta)
 	{
 		if (can_scroll())
 		{
@@ -704,14 +694,14 @@ public:
 		}
 	}
 
-	void OnMouseMove(const CPoint& point, UINT nFlags)
+	void on_mouse_move(const ipoint& point, UINT nFlags)
 	{
-		if (m_bDragSelection)
+		if (_drag_selection)
 		{
 			const auto bOnMargin = point.x < margin_width();
 			const auto pos = client_to_text(point);
 
-			if (m_bLineSelection)
+			if (_line_selection)
 			{
 				if (bOnMargin)
 				{
@@ -720,18 +710,18 @@ public:
 					return;
 				}
 
-				m_bLineSelection = m_bWordSelection = false;
+				_line_selection = _word_selection = false;
 				update_cursor();
 			}
 
-			const auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+			const auto sel = _word_selection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
 			_doc.select(sel);
 		}
 
-		if (m_bPreparingToDrag)
+		if (_preparing_to_drag)
 		{
-			m_bPreparingToDrag = false;
-			const auto hData = PrepareDragData();
+			_preparing_to_drag = false;
+			const auto hData = prepare_drag_data();
 
 			if (hData != nullptr)
 			{
@@ -761,52 +751,52 @@ public:
 		return DROPEFFECT_COPY | DROPEFFECT_MOVE;
 	}
 
-	void OnLButtonUp(const CPoint& point, UINT nFlags)
+	void on_left_button_up(const ipoint& point, UINT nFlags)
 	{
-		if (m_bDragSelection)
+		if (_drag_selection)
 		{
 			const auto pos = client_to_text(point);
 
-			if (m_bLineSelection)
+			if (_line_selection)
 			{
 				const auto sel = _doc.line_selection(pos, true);
 				_doc.select(sel);
 			}
 			else
 			{
-				const auto sel = m_bWordSelection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
+				const auto sel = _word_selection ? _doc.word_selection(pos, true) : _doc.pos_selection(pos, true);
 				_doc.select(sel);
 			}
 
 			ReleaseCapture();
-			KillTimer(m_hWnd, m_nDragSelTimer);
-			m_bDragSelection = false;
+			KillTimer(m_hWnd, _drag_sel_timer);
+			_drag_selection = false;
 		}
 
-		if (m_bPreparingToDrag)
+		if (_preparing_to_drag)
 		{
-			m_bPreparingToDrag = false;
+			_preparing_to_drag = false;
 			_doc.select(client_to_text(point));
 		}
 	}
 
-	void OnLButtonDblClk(const CPoint& point, UINT nFlags)
+	void on_left_button_dbl_clk(const ipoint& point, UINT nFlags)
 	{
-		if (!m_bDragSelection)
+		if (!_drag_selection)
 		{
 			const bool bShift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 			_doc.select(_doc.word_selection(client_to_text(point), bShift));
 
 			SetCapture(m_hWnd);
-			m_nDragSelTimer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
+			_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
 			assert(m_nDragSelTimer != 0);
-			m_bWordSelection = true;
-			m_bLineSelection = false;
-			m_bDragSelection = true;
+			_word_selection = true;
+			_line_selection = false;
+			_drag_selection = true;
 		}
 	}
 
-	void OnRButtonDown(const CPoint& point, UINT nFlags)
+	void OnRButtonDown(const ipoint& point, UINT nFlags)
 	{
 		const auto pt = client_to_text(point);
 
@@ -846,7 +836,7 @@ public:
 
 	void recalc_vert_scrollbar()
 	{
-		if (m_nScreenLines >= _doc.size() && _char_offset.cy > 0)
+		if (_screen_lines >= _doc.size() && _char_offset.cy > 0)
 		{
 			_char_offset.cy = 0;
 			invalidate();
@@ -858,19 +848,19 @@ public:
 		si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
 		si.nMin = 0;
 		si.nMax = _doc.size() - 1;
-		si.nPage = m_nScreenLines;
+		si.nPage = _screen_lines;
 		si.nPos = _char_offset.cy;
 		SetScrollInfo(m_hWnd, SB_VERT, &si, TRUE);
 	}
 
-	void OnVScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
+	void on_v_scroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
 	{
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_ALL;
 		GetScrollInfo(m_hWnd, SB_VERT, &si);
 
-		const int nPageLines = m_nScreenLines;
+		const int nPageLines = _screen_lines;
 		const int line_count = _doc.size();
 
 		int y;
@@ -908,34 +898,34 @@ public:
 
 	void recalc_horz_scrollbar()
 	{
-		if (m_nScreenChars >= _doc.max_line_length() && _char_offset.cx > 0)
+		if (_screen_chars >= _doc.max_line_length() && _char_offset.cx > 0)
 		{
 			_char_offset.cx = 0;
 			invalidate();
 			update_caret();
 		}
 
-		const auto margin_width = m_bSelMargin ? 3 : 0;
+		const auto margin_width = _sel_margin ? 3 : 0;
 
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_PAGE | SIF_POS | SIF_RANGE;
 		si.nMin = 0;
 		si.nMax = _doc.max_line_length() + margin_width;
-		si.nPage = m_nScreenChars;
+		si.nPage = _screen_chars;
 		si.nPos = _char_offset.cx;
 
 		SetScrollInfo(m_hWnd, SB_HORZ, &si, TRUE);
 	}
 
-	void OnHScroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
+	void on_h_scroll(UINT nSBCode, UINT nPos, HWND pScrollBar)
 	{
 		SCROLLINFO si;
 		si.cbSize = sizeof(si);
 		si.fMask = SIF_ALL;
 		GetScrollInfo(m_hWnd, SB_HORZ, &si);
 
-		const int nPageChars = m_nScreenChars;
+		const int nPageChars = _screen_chars;
 		const int nMaxLineLength = _doc.max_line_length();
 
 		int nNewOffset;
@@ -986,7 +976,7 @@ public:
 		static auto arrow = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_ARROW));
 		static auto beam = ::LoadCursor(nullptr, MAKEINTRESOURCE(IDC_IBEAM));
 
-		CPoint pt;
+		ipoint pt;
 		GetCursorPos(&pt);
 		ScreenToClient(m_hWnd, &pt);
 
@@ -1008,7 +998,7 @@ public:
 	{
 		const auto pos = _doc.cursor_pos();
 
-		if (m_bFocused && !m_bCursorHidden &&
+		if (_is_focused && !_cursor_hidden &&
 			_doc.calc_offset(pos.y, pos.x) >= _char_offset.cx)
 		{
 			CreateCaret(m_hWnd, nullptr, 2, _font_extent.cy);
@@ -1041,16 +1031,16 @@ public:
 
 	ULONG STDMETHODCALLTYPE AddRef() override
 	{
-		InterlockedIncrement(&m_cRef);
-		return m_cRef;
+		InterlockedIncrement(&_ref_count);
+		return _ref_count;
 	}
 
 	ULONG STDMETHODCALLTYPE Release() override
 	{
-		return InterlockedDecrement(&m_cRef);
+		return InterlockedDecrement(&_ref_count);
 	}
 
-	static bool CanDrop(IDataObject* pDataObj)
+	static bool can_drop(IDataObject* pDataObj)
 	{
 		return pDataObj->QueryGetData(&ascii_text_format) == S_OK ||
 			pDataObj->QueryGetData(&utf16_text_format) == S_OK ||
@@ -1058,26 +1048,26 @@ public:
 	}
 
 
-	DWORD DropEffect(IDataObject* pDataObj, const CPoint& loc)
+	DWORD drop_effect(IDataObject* pDataObj, const ipoint& loc)
 	{
-		if (CanDrop(pDataObj))
+		if (can_drop(pDataObj))
 		{
-			ShowDropIndicator(loc);
+			show_drop_indicator(loc);
 			return (GetKeyState(VK_CONTROL) < 0) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;
 		}
-		HideDropIndicator();
+		hide_drop_indicator();
 		return DROPEFFECT_NONE;
 	}
 
 	HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
 	{
-		*pdwEffect = DropEffect(pDataObj, pt);
+		*pdwEffect = drop_effect(pDataObj, pt);
 		return S_OK;
 	}
 
 	HRESULT STDMETHODCALLTYPE DragLeave(void) override
 	{
-		HideDropIndicator();
+		hide_drop_indicator();
 		return S_OK;
 	}
 
@@ -1094,7 +1084,7 @@ public:
 		return DropData(pDataObj, pt) ? S_OK : S_FALSE;
 	}
 
-	DROPEFFECT OnDragScroll(HWND wnd, DWORD dwKeyState, CPoint point)
+	DROPEFFECT OnDragScroll(HWND wnd, DWORD dwKeyState, ipoint point)
 	{
 		assert(m_hWnd == wnd);
 
@@ -1102,27 +1092,27 @@ public:
 
 		if (point.y < rcClientRect.top + DRAG_BORDER_Y)
 		{
-			HideDropIndicator();
-			ScrollUp();
-			ShowDropIndicator(point);
+			hide_drop_indicator();
+			scroll_up();
+			show_drop_indicator(point);
 		}
 		else if (point.y >= rcClientRect.bottom - DRAG_BORDER_Y)
 		{
-			HideDropIndicator();
-			ScrollDown();
-			ShowDropIndicator(point);
+			hide_drop_indicator();
+			scroll_down();
+			show_drop_indicator(point);
 		}
 		else if (point.x < rcClientRect.left + margin_width() + DRAG_BORDER_X)
 		{
-			HideDropIndicator();
+			hide_drop_indicator();
 			ScrollLeft();
-			ShowDropIndicator(point);
+			show_drop_indicator(point);
 		}
 		else if (point.x >= rcClientRect.right - DRAG_BORDER_X)
 		{
-			HideDropIndicator();
+			hide_drop_indicator();
 			ScrollRight();
-			ShowDropIndicator(point);
+			show_drop_indicator(point);
 		}
 
 		if (dwKeyState & MK_CONTROL)
@@ -1130,7 +1120,7 @@ public:
 		return DROPEFFECT_MOVE;
 	}
 
-	void ScrollUp()
+	void scroll_up()
 	{
 		if (_char_offset.cy > 0)
 		{
@@ -1139,7 +1129,7 @@ public:
 		}
 	}
 
-	void ScrollDown()
+	void scroll_down()
 	{
 		if (_char_offset.cy < _doc.size() - 1)
 		{
@@ -1166,7 +1156,7 @@ public:
 		}
 	}
 
-	bool DropData(IDataObject* pDataObject, const CPoint& ptClient) const
+	bool DropData(IDataObject* pDataObject, const ipoint& ptClient) const
 	{
 		STGMEDIUM stgmed;
 		std::wstring text;
@@ -1183,7 +1173,7 @@ public:
 		{
 			//ascii text
 			const auto data = static_cast<const char*>(GlobalLock(stgmed.hGlobal));
-			text = str::AsciiToUtf16(data);
+			text = str::ascii_to_utf16(data);
 			GlobalUnlock(stgmed.hGlobal);
 			ReleaseStgMedium(&stgmed);
 		}
@@ -1201,7 +1191,7 @@ public:
 
 		const auto drop_loc = client_to_text(ptClient);
 
-		if (m_bDraggingText && _doc.is_inside_selection(drop_loc))
+		if (_dragging_text && _doc.is_inside_selection(drop_loc))
 		{
 			return false;
 		}
@@ -1211,19 +1201,19 @@ public:
 		return true;
 	}
 
-	void ShowDropIndicator(const CPoint& point)
+	void show_drop_indicator(const ipoint& point)
 	{
-		if (!m_bDropPosVisible)
+		if (!_drop_pos_visible)
 		{
 			//HideCursor();
-			m_ptSavedCaretPos = _doc.cursor_pos();
-			m_bDropPosVisible = true;
+			_saved_caret_pos = _doc.cursor_pos();
+			_drop_pos_visible = true;
 			CreateCaret(m_hWnd, reinterpret_cast<HBITMAP>(1), 2, _font_extent.cy);
 		}
-		m_ptDropPos = client_to_text(point);
-		if (m_ptDropPos.x >= _char_offset.cx)
+		_pt_drop_pos = client_to_text(point);
+		if (_pt_drop_pos.x >= _char_offset.cx)
 		{
-			const auto pt = text_to_client(m_ptDropPos);
+			const auto pt = text_to_client(_pt_drop_pos);
 			SetCaretPos(pt.x, pt.y);
 			ShowCaret(m_hWnd);
 		}
@@ -1233,25 +1223,25 @@ public:
 		}
 	}
 
-	void HideDropIndicator()
+	void hide_drop_indicator()
 	{
-		if (m_bDropPosVisible)
+		if (_drop_pos_visible)
 		{
-			_doc.cursor_pos(m_ptSavedCaretPos);
+			_doc.cursor_pos(_saved_caret_pos);
 			//ShowCursor();
-			m_bDropPosVisible = false;
+			_drop_pos_visible = false;
 		}
 	}
 
-	void ShowCursor()
+	void show_cursor()
 	{
-		m_bCursorHidden = false;
+		_cursor_hidden = false;
 		update_caret();
 	}
 
-	void HideCursor()
+	void hide_cursor()
 	{
-		m_bCursorHidden = true;
+		_cursor_hidden = true;
 		update_caret();
 	}
 
@@ -1306,12 +1296,12 @@ public:
 		return success;
 	}
 
-	void invalidate(CRect r = {}) const
+	void invalidate(irect r = {}) const
 	{
 		InvalidateRect(m_hWnd, r.Width() > 0 ? static_cast<LPCRECT>(r) : nullptr, FALSE);
 	}
 
-	HGLOBAL PrepareDragData()
+	HGLOBAL prepare_drag_data()
 	{
 		const auto sel = _doc.selection();
 
@@ -1329,13 +1319,13 @@ public:
 		wcscpy_s(pszData, len, text.c_str());
 		GlobalUnlock(hData);
 
-		m_ptDraggedText = sel;
+		_dragged_text_selection = sel;
 
 		return hData;
 	}
 
 
-	int client_to_line(const CPoint& point) const
+	int client_to_line(const ipoint& point) const
 	{
 		const auto line_count = _doc.size();
 
@@ -1357,7 +1347,7 @@ public:
 		return clamp(result, 0, line_count - 1);
 	}
 
-	text_location client_to_text(const CPoint& point) const
+	text_location client_to_text(const ipoint& point) const
 	{
 		const auto line_count = _doc.size();
 
@@ -1400,9 +1390,9 @@ public:
 		return pt;
 	}
 
-	CPoint text_to_client(const text_location& point) const
+	ipoint text_to_client(const text_location& point) const
 	{
-		CPoint pt;
+		ipoint pt;
 
 		if (point.y >= 0 && point.y < _doc.size())
 		{
@@ -1467,7 +1457,7 @@ public:
 
 	void invalidate_view()
 	{
-		m_nScreenChars = -1;
+		_screen_chars = -1;
 
 		layout();
 
@@ -1494,8 +1484,8 @@ public:
 		y += cy;
 		}*/
 
-		m_nScreenLines = rect.Height() / _font_extent.cy;
-		m_nScreenChars = rect.Width() / _font_extent.cx;
+		_screen_lines = rect.Height() / _font_extent.cy;
+		_screen_chars = rect.Width() / _font_extent.cx;
 
 		recalc_vert_scrollbar();
 		recalc_horz_scrollbar();
@@ -1521,9 +1511,9 @@ public:
 		const int line_count = _doc.size();
 		int y = _char_offset.cy;
 
-		if (pt.y >= y + m_nScreenLines)
+		if (pt.y >= y + _screen_lines)
 		{
-			y = pt.y - m_nScreenLines + 1;
+			y = pt.y - _screen_lines + 1;
 		}
 		else if (pt.y < y)
 		{
@@ -1538,42 +1528,42 @@ public:
 		}
 
 		//	Scroll horizontally
-		const auto nActualPos = _doc.calc_offset(pt.y, pt.x);
-		auto nNewOffset = _char_offset.cx;
+		const auto actual_pos = _doc.calc_offset(pt.y, pt.x);
+		auto new_offset = _char_offset.cx;
 
-		if (nActualPos > nNewOffset + m_nScreenChars)
+		if (actual_pos > new_offset + _screen_chars)
 		{
-			nNewOffset = nActualPos - m_nScreenChars;
+			new_offset = actual_pos - _screen_chars;
 		}
-		if (nActualPos < nNewOffset)
+		if (actual_pos < new_offset)
 		{
-			nNewOffset = nActualPos;
+			new_offset = actual_pos;
 		}
 
-		if (nNewOffset >= _doc.max_line_length())
-			nNewOffset = _doc.max_line_length() - 1;
-		if (nNewOffset < 0)
-			nNewOffset = 0;
+		if (new_offset >= _doc.max_line_length())
+			new_offset = _doc.max_line_length() - 1;
+		if (new_offset < 0)
+			new_offset = 0;
 
-		if (_char_offset.cx != nNewOffset)
+		if (_char_offset.cx != new_offset)
 		{
-			ScrollToChar(nNewOffset);
+			ScrollToChar(new_offset);
 		}
 
 		update_caret();
 	}
 
-	CRect client_rect() const
+	irect client_rect() const
 	{
-		return CRect(0, 0, _extent.cx, _extent.cy);
+		return irect(0, 0, _extent.cx, _extent.cy);
 	}
 
 	int margin_width() const
 	{
-		return m_bSelMargin ? 20 : 1;
+		return _sel_margin ? 20 : 1;
 	}
 
-	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip,
+	void draw_line(HDC pdc, text_location& ptOrigin, const irect& rcClip,
 	               std::wstring_view pszChars, int nOffset, int nCount) const
 	{
 		if (nCount > 0)
@@ -1603,7 +1593,7 @@ public:
 		}
 	}
 
-	void draw_line(HDC pdc, text_location& ptOrigin, const CRect& rcClip, style nColorIndex,
+	void draw_line(HDC pdc, text_location& ptOrigin, const irect& rcClip, style nColorIndex,
 	               std::wstring_view pszChars, int nOffset, int nCount, const text_location& ptTextPos) const
 	{
 		if (nCount > 0)
@@ -1652,7 +1642,7 @@ public:
 		}
 	}
 
-	void draw_line(HDC hdc, const CRect& rc, int lineIndex) const
+	void draw_line(HDC hdc, const irect& rc, int lineIndex) const
 	{
 		if (lineIndex == -1)
 		{
@@ -1760,10 +1750,10 @@ public:
 	}
 
 	
-	void draw_margin(HDC hdc, const CRect& rect, int lineIndex) const
+	void draw_margin(HDC hdc, const irect& rect, int lineIndex) const
 	{
 		ui::fill_solid_rect(
-			hdc, rect, style_to_color(m_bSelMargin ? style::sel_margin : style::normal_bkgnd));
+			hdc, rect, style_to_color(_sel_margin ? style::sel_margin : style::normal_bkgnd));
 	}
 
 public:
@@ -1781,8 +1771,8 @@ public:
 			auto rcLine = rcClient;
 			rcLine.bottom = rcLine.top + nLineHeight;
 
-			CRect rcCacheMargin(0, y, margin_width(), y + nLineHeight);
-			CRect rcCacheLine(margin_width(), y, rcLine.Width(), y + nLineHeight);
+			irect rcCacheMargin(0, y, margin_width(), y + nLineHeight);
+			irect rcCacheLine(margin_width(), y, rcLine.Width(), y + nLineHeight);
 
 			if (nCurrentLine < line_count)
 			{
@@ -1802,19 +1792,4 @@ public:
 		SelectObject(hdc, oldFont);
 	}
 
-	void move_page(bool down, bool selecting)
-	{
-		const int y = clamp(down ? _char_offset.cy + m_nScreenLines - 1 : _char_offset.cy - m_nScreenLines + 1, 0,
-		                    _doc.size() - 1);
-
-		if (_char_offset.cy != y)
-		{
-			ScrollToLine(y);
-			update_caret();
-		}
-
-		auto pos = _doc.cursor_pos();
-		pos.y = clamp(down ? pos.y + (m_nScreenLines - 1) : pos.y - (m_nScreenLines - 1), 0, _doc.size() - 1);
-		_doc.move_to(pos, selecting);
-	}
 };

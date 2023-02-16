@@ -56,10 +56,11 @@ class file_path
 	std::wstring _path;
 
 public:
-	file_path(std::wstring path = L"") : _path(std::move(path))
+	file_path(const std::wstring_view path) : _path(path)
 	{
 	}
 
+	file_path() = default;
 	file_path(const file_path& other) = default;
 	file_path(file_path&& other) = default;
 	file_path& operator=(const file_path& other) = default;
@@ -73,6 +74,11 @@ public:
 	std::wstring_view view() const
 	{
 		return _path;
+	}
+
+	bool operator==(const file_path& other) const
+	{
+		return str::icmp(_path, other._path) == 0;
 	}
 
 
@@ -157,7 +163,7 @@ public:
 	{
 		wchar_t raw_path[MAX_PATH];
 		::GetModuleFileName(nullptr, raw_path, MAX_PATH);
-		return file_path(raw_path).folder();
+		return { file_path(raw_path).folder() };
 	}
 
 	static file_path app_data_folder()

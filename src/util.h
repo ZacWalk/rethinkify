@@ -2,7 +2,7 @@
 
 namespace str
 {
-	inline std::string UTF16ToUtf8(std::wstring_view wstr)
+	inline std::string utf16_to_utf8(std::wstring_view wstr)
 	{
 		const auto size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
 			nullptr, nullptr);
@@ -12,7 +12,7 @@ namespace str
 		return result;
 	}
 
-	inline std::wstring UTF8ToUtf16(std::string_view str)
+	inline std::wstring utf8_to_utf16(std::string_view str)
 	{
 		const int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
 		std::wstring result(size_needed, 0);
@@ -20,7 +20,7 @@ namespace str
 		return result;
 	}
 
-	inline std::string UTF16ToAscii(std::wstring_view wstr)
+	inline std::string utf16_to_ascii(std::wstring_view wstr)
 	{
 		const auto size_needed = WideCharToMultiByte(CP_ACP, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
 			nullptr, nullptr);
@@ -30,7 +30,7 @@ namespace str
 		return result;
 	}
 
-	inline std::wstring AsciiToUtf16(std::string_view str)
+	inline std::wstring ascii_to_utf16(std::string_view str)
 	{
 		const auto size_needed = MultiByteToWideChar(CP_ACP, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
 		std::wstring result(size_needed, 0);
@@ -157,12 +157,12 @@ namespace str
 		return result;
 	}
 
-	static std::wstring_view From(const bool val)
+	static std::wstring_view to_str(const bool val)
 	{
 		return val ? L"true" : L"false";
 	}
 
-	static std::wstring From(const int val)
+	static std::wstring to_str(const int val)
 	{
 		static constexpr int size = 64;
 		wchar_t sz[size];
@@ -185,67 +185,67 @@ namespace str
 };
 
 
-class CPoint : public POINT
+class ipoint : public POINT
 {
 public:
-	CPoint(int xx = 0, int yy = 0)
+	ipoint(int xx = 0, int yy = 0)
 	{
 		x = xx;
 		y = yy;
 	}
 
-	CPoint(const POINTL& other)
+	ipoint(const POINTL& other)
 	{
 		x = other.x;
 		y = other.y;
 	}
 
-	bool operator==(const CPoint& other) const
+	bool operator==(const ipoint& other) const
 	{
 		return x == other.x && y == other.y;
 	}
 
-	bool operator!=(const CPoint& other) const
+	bool operator!=(const ipoint& other) const
 	{
 		return x != other.x && y != other.y;
 	}
 
-	CPoint operator -() const
+	ipoint operator -() const
 	{
-		return CPoint(-x, -y);
+		return ipoint(-x, -y);
 	}
 
-	CPoint operator +(const POINT& point) const
+	ipoint operator +(const POINT& point) const
 	{
-		return CPoint(x + point.x, y + point.y);
+		return ipoint(x + point.x, y + point.y);
 	}
 };
 
-class CSize : public SIZE
+class isize : public SIZE
 {
 public:
-	CSize(int xx = 0, int yy = 0)
+	isize(int xx = 0, int yy = 0)
 	{
 		cx = xx;
 		cy = yy;
 	}
 
-	bool operator==(const CSize& other) const
+	bool operator==(const isize& other) const
 	{
 		return cx == other.cx && cy == other.cy;
 	}
 
-	bool operator!=(const CSize& other) const
+	bool operator!=(const isize& other) const
 	{
 		return cx != other.cx && cy != other.cy;
 	}
 };
 
 
-class CRect : public RECT
+class irect : public RECT
 {
 public:
-	CRect(int l = 0, int t = 0, int r = 0, int b = 0)
+	irect(int l = 0, int t = 0, int r = 0, int b = 0)
 	{
 		left = l;
 		top = t;
@@ -281,17 +281,17 @@ public:
 		bottom += y;
 	}
 
-	inline CRect Offset(const CPoint& pt) const
+	inline irect Offset(const ipoint& pt) const
 	{
-		return CRect(left + pt.x, top + pt.y, right + pt.x, bottom + pt.y);
+		return irect(left + pt.x, top + pt.y, right + pt.x, bottom + pt.y);
 	}
 
-	inline CRect Offset(int x, int y) const
+	inline irect Offset(int x, int y) const
 	{
-		return CRect(left + x, top + y, right + x, bottom + y);
+		return irect(left + x, top + y, right + x, bottom + y);
 	}
 
-	inline bool Intersects(const CRect& other) const
+	inline bool Intersects(const irect& other) const
 	{
 		return left < other.right &&
 			top < other.bottom &&
@@ -299,19 +299,19 @@ public:
 			bottom > other.top;
 	}
 
-	inline CRect Inflate(int xy) const
+	inline irect Inflate(int xy) const
 	{
-		return CRect(left - xy, top - xy, right + xy, bottom + xy);
+		return irect(left - xy, top - xy, right + xy, bottom + xy);
 	}
 
-	inline CRect Inflate(int x, int y) const
+	inline irect Inflate(int x, int y) const
 	{
-		return CRect(left - x, top - y, right + x, bottom + y);
+		return irect(left - x, top - y, right + x, bottom + y);
 	}
 
-	inline CRect Inflate(const CSize& s) const
+	inline irect Inflate(const isize& s) const
 	{
-		return CRect(left - s.cx, top - s.cy, right + s.cx, bottom + s.cy);
+		return irect(left - s.cx, top - s.cy, right + s.cx, bottom + s.cy);
 	}
 
 	inline bool Contains(const POINT& point) const

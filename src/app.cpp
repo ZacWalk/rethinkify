@@ -16,9 +16,9 @@ constexpr auto tool_wnd_clr = 0x00333333;
 constexpr auto handle_hover_color = 0x00666666;
 const unsigned handle_tracking_color = 0x00CC6611;
 const unsigned text_color = 0x00FFFFFF;
+const unsigned folder_text_color = 0x0022CCEE;
 const unsigned darker_text_color = 0x00CCCCCC;
-
-const unsigned WM_ITEM = WM_USER + 99;
+const unsigned line_color = 0x00AA5522;
 
 COLORREF style_to_color(style style_index)
 {
@@ -103,18 +103,18 @@ class about_dlg : public ui::win_impl
 public:
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
-		if (uMsg == WM_INITDIALOG) return OnInitDialog(uMsg, wParam, lParam);
-		if (uMsg == WM_COMMAND) return OnCommand(uMsg, wParam, lParam);
+		if (uMsg == WM_INITDIALOG) return on_init_dialog(uMsg, wParam, lParam);
+		if (uMsg == WM_COMMAND) return on_command(uMsg, wParam, lParam);
 		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
-	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
+	LRESULT on_init_dialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		ui::center_window(m_hWnd);
 		return 1;
 	}
 
-	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_command(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		const auto id = LOWORD(wParam);
 		if (id == IDOK) return EndDialog(m_hWnd, IDOK);
@@ -408,72 +408,73 @@ folder_contents iterate_file_items(const file_path folder, bool show_hidden)
 	return results;
 }
 
-struct Item
+
+struct list_view_item
 {
+	static constexpr uint32_t style_top = 1 << 0;
+	static constexpr uint32_t style_bottom = 1 << 1;
+	static constexpr uint32_t style_folder = 1 << 2;
+
 	std::wstring name;
-	std::wstring Source;
-	CRect bounds;
+	irect bounds;
 	file_path path;
+	uint32_t style;
 };
 
-class ListWnd : public ui::win_impl
+class list_view : public ui::win_impl
 {
 public:
 
 	IEvents& _events;
 
-	std::vector<std::shared_ptr<Item>> _results;
-	std::shared_ptr<Item> _selectedItem;
-	std::shared_ptr<Item> _hoverItem;
+	std::vector<std::shared_ptr<list_view_item>> _results;
+	std::shared_ptr<list_view_item> _selected_item;
+	std::shared_ptr<list_view_item> _hover_item;
 	HFONT _font = nullptr;
+	HPEN _pen = nullptr;
 
-	CSize _extent;
-	CPoint _offset;
-	int _yMax;
-	int _yTrackingStart;
-	int _yTrackingOffsetStart;
-	bool _highlightScroll;
-	bool _hover;
-	bool _tracking;
-	bool _trackingScrollbar;
+	isize _extent;
+	ipoint _offset;
+	int _y_max = 0;
+	int _y_tracking_start = 0;
+	int _y_tracking_offset_start = 0;
+	bool _highlight_scroll = false;
+	bool _hover = false;
+	bool _tracking = false;
+	bool _trackingScrollbar = false;
+
+	int _item_bullet_x = 10;
+	int _item_padding_x = 4;
+	int _item_padding_y = 4;
 	
 
-	ListWnd(IEvents& events) :
-		_selectedItem(nullptr),
-		_hoverItem(nullptr),
-		_offset(0, 0),
-		_yMax(0),
-		_yTrackingStart(0),
-		_yTrackingOffsetStart(0),
-		_highlightScroll(false),
-		_tracking(false),
-		_trackingScrollbar(false), _events(events)
+	list_view(IEvents& events) : _events(events)
 	{
 	}
 
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
-		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
-		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
-		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
-		if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSEACTIVATE) return OnMouseActivate(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONDOWN) return OnLButtonDown(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONUP) return OnLButtonUp(uMsg, wParam, lParam);
-		if (uMsg == WM_LBUTTONDBLCLK) return OnMouseDblClk(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSEMOVE) return OnMouseMove(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSELEAVE) return OnMouseLeave(uMsg, wParam, lParam);
-		if (uMsg == WM_MOUSEWHEEL) return OnMouseWheel(uMsg, wParam, lParam);
-		if (uMsg == WM_ITEM) return OnItem(uMsg, wParam, lParam);
+		if (uMsg == WM_CREATE) return on_create(uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return on_size(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return on_erase_background(uMsg, wParam, lParam);
+		if (uMsg == WM_PAINT) return on_paint(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEACTIVATE) return on_mouse_activate(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDOWN) return on_left_button_down(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONUP) return on_left_button_up(uMsg, wParam, lParam);
+		if (uMsg == WM_LBUTTONDBLCLK) return on_mouse_dbl_clk(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEMOVE) return on_mouse_move(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSELEAVE) return on_mouse_leave(uMsg, wParam, lParam);
+		if (uMsg == WM_MOUSEWHEEL) return on_mouse_wheel(uMsg, wParam, lParam);
 		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
-	{		
+	LRESULT on_create(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	{
+		_pen = CreatePen(PS_SOLID, 3, line_color);
 		return 0;
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam)
+	LRESULT on_size(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam)
 	{
 		_extent.cx = LOWORD(lParam);
 		_extent.cy = HIWORD(lParam);
@@ -481,17 +482,17 @@ public:
 		return 0;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
+	LRESULT on_paint(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
 		assert(::IsWindow(m_hWnd));
 
 		if (wParam != 0)
 		{
-			OnPaint((HDC)wParam);
+			on_paint((HDC)wParam);
 		}
 		else
 		{
-			const auto r = GetClientRect();
+			const auto r = get_client_rect();
 
 			PAINTSTRUCT ps;
 			auto hPaintDc = BeginPaint(m_hWnd, &ps);
@@ -499,7 +500,7 @@ public:
 			auto hBitmap = CreateCompatibleBitmap(hPaintDc, r.Width(), r.Height());
 			auto hOldBitmap = SelectObject(hdc, hBitmap);
 
-			OnPaint(hdc);
+			on_paint(hdc);
 			BitBlt(hPaintDc, 0, 0, r.Width(), r.Height(), hdc, 0, 0, SRCCOPY);
 
 			SelectObject(hdc, hOldBitmap);
@@ -511,12 +512,12 @@ public:
 		return 0;
 	}
 
-	LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	LRESULT on_erase_background(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 	{
 		return 1;
 	}
 
-	LRESULT OnMouseActivate(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
+	LRESULT on_mouse_activate(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
 		return MA_NOACTIVATE;
 	}
@@ -526,7 +527,7 @@ public:
 		auto hdc = GetWindowDC(m_hWnd);
 		auto old_font = SelectObject(hdc, _font);
 
-		std::sort(_results.begin(), _results.end(), [](const std::shared_ptr<Item> &l, const std::shared_ptr<Item> &r) { return str::icmp(l->name, r->name) < 0; });
+		std::sort(_results.begin(), _results.end(), [](const std::shared_ptr<list_view_item> &l, const std::shared_ptr<list_view_item> &r) { return str::icmp(l->name, r->name) < 0; });
 
 		int y = 16;
 		int n = 0;
@@ -535,39 +536,42 @@ public:
 		{
 			if (i->bounds.Width() == _extent.cx)
 			{
-				CRect bounds(0, y, _extent.cx, y + i->bounds.Height());
+				irect bounds(0, y, _extent.cx, y + i->bounds.Height());
 				i->bounds = bounds;
 				y = bounds.bottom;
 			}
 			else
 			{
-				CRect bounds(0, 0, _extent.cx - 16, 100);
+				irect bounds(0, 0, _extent.cx - (_item_padding_x * 3) + _item_bullet_x, 100);
 				DrawText(hdc, i->name.c_str(), i->name.length(), bounds, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS | DT_CALCRECT);
 
 				bounds.left = 0;
 				bounds.top = y;
 				bounds.right = _extent.cx;
-				bounds.bottom += y + 8;
+				bounds.bottom += y + (_item_padding_y * 2);
 
 				i->bounds = bounds;
 				y = bounds.bottom;
 			}
+
+			uint32_t style = i->style & ~(list_view_item::style_top | list_view_item::style_bottom);
+			if (i == _results.front()) style |= list_view_item::style_top;
+			if (i == _results.back()) style |= list_view_item::style_bottom;
+			i->style = style;
 		}
 
-		_yMax = y + 64;
+		_y_max = y + 64;
 		SelectObject(hdc, old_font);
 		ReleaseDC(m_hWnd, hdc);
 	}
 
-	void OnPaint(HDC hdc)
+	void on_paint(HDC hdc)
 	{
-		auto now = time(nullptr);
-		wchar_t sz[64];
-
-		const auto r = GetClientRect();
+		const auto r = get_client_rect();
 		ui::fill_solid_rect(hdc, r, tool_wnd_clr);
 
 		const auto old_font = SelectObject(hdc, _font);
+		const auto old_pen =  SelectObject(hdc, _pen);
 		SetBkMode(hdc, TRANSPARENT);
 
 		for (auto i : _results)
@@ -576,60 +580,67 @@ public:
 
 			if (bounds.Intersects(r))
 			{
-				if (i == _hoverItem)
+				if (i == _hover_item)
 				{
 					ui::fill_solid_rect(hdc, bounds, handle_hover_color);
 				}
 
-				if (i == _selectedItem)
+				if (i == _selected_item)
 				{
 					ui::fill_solid_rect(hdc, bounds, handle_tracking_color);
 				}
 
-				SetTextColor(hdc, text_color);
+				const auto xx = bounds.left + _item_padding_x + (_item_bullet_x / 3);
+				const auto xx2 = bounds.left + _item_padding_x + _item_bullet_x;
+				const auto yy = (bounds.top + bounds.bottom) / 2;
+				const auto y_top = (i->style & list_view_item::style_top) ? yy : bounds.top;
+				const auto y_bottom = (i->style & list_view_item::style_bottom) ? yy : bounds.bottom;
 
-				bounds = bounds.Inflate(-8, -4);
+				MoveToEx(hdc, xx, y_top, nullptr);
+				LineTo(hdc, xx, y_bottom);
+				MoveToEx(hdc, xx, yy, nullptr);
+				LineTo(hdc, xx2, yy);
+
+				bounds.left += _item_padding_x + _item_bullet_x;
+				bounds = bounds.Inflate(-_item_padding_x, -_item_padding_y);
+
+				SetTextColor(hdc, (i->style & list_view_item::style_folder) ? folder_text_color : text_color);
 				DrawText(hdc, i->name.c_str(), i->name.length(), bounds, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
-
-
-				SetTextColor(hdc, darker_text_color);
-				//FormatDateDiff(sz, now - i->Date);
-				//TextOut(hdc, bounds.left, bounds.bottom - 10, sz, wcslen(sz));
-				TextOut(hdc, bounds.left, bounds.bottom - 20, i->Source.c_str(), i->Source.length());
 			}
 		}
 
-		DrawScroll(hdc, _highlightScroll, _trackingScrollbar);
+		DrawScroll(hdc, _highlight_scroll, _trackingScrollbar);
 
 		SelectObject(hdc, old_font);
+		SelectObject(hdc, old_pen);
 	}
 
 	bool CanScroll() const
 	{
-		return _yMax > _extent.cy;
+		return _y_max > _extent.cy;
 	}
 
 	void DrawScroll(HDC hdc, bool highlight, bool tracking)
 	{
 		if (CanScroll())
 		{
-			const auto y = MulDiv(_offset.y, _extent.cy, _yMax);
-			const auto cy = MulDiv(_extent.cy, _extent.cy, _yMax);
+			const auto y = MulDiv(_offset.y, _extent.cy, _y_max);
+			const auto cy = MulDiv(_extent.cy, _extent.cy, _y_max);
 			auto xPadding = 0;
 			const auto right = _extent.cx;
 
 			if (highlight || tracking)
 			{
-				ui::fill_solid_rect(hdc, CRect(right - 26, 0, right, _extent.cy), handle_color);
+				ui::fill_solid_rect(hdc, irect(right - 26, 0, right, _extent.cy), handle_color);
 				xPadding = 10;
 			}
 
 			const auto c = tracking ? handle_tracking_color : handle_hover_color;
-			ui::fill_solid_rect(hdc, CRect(right - 12 - xPadding, y, right - 4, y + cy), c);
+			ui::fill_solid_rect(hdc, irect(right - 12 - xPadding, y, right - 4, y + cy), c);
 		}
 	}
 
-	std::shared_ptr<Item> SelectionFromPoint(const CPoint& pt)
+	std::shared_ptr<list_view_item> SelectionFromPoint(const ipoint& pt) const
 	{
 		for (auto i : _results)
 		{
@@ -640,22 +651,22 @@ public:
 		return nullptr;
 	}
 
-	void SetHover(std::shared_ptr<Item> h)
+	void SetHover(std::shared_ptr<list_view_item> h)
 	{
-		if (_hoverItem != h)
+		if (_hover_item != h)
 		{
-			_hoverItem = h;
+			_hover_item = h;
 			InvalidateRect(m_hWnd, nullptr, FALSE);
 		}
 	}
 
-	void select_item(const std::shared_ptr<Item>& i)
+	void select_item(const std::shared_ptr<list_view_item>& i)
 	{
-		if (_selectedItem != i)
+		if (_selected_item != i)
 		{
-			_selectedItem = i;
+			_selected_item = i;
 
-			if (_selectedItem)
+			if (_selected_item)
 			{
 				_events.path_selected(i->path);				
 			}
@@ -664,9 +675,9 @@ public:
 		}
 	}
 
-	LRESULT OnLButtonDown(UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT on_left_button_down(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		CPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		ipoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 
 		SetFocus(m_hWnd);
 
@@ -674,8 +685,8 @@ public:
 		{
 			if (!_tracking)
 			{
-				_yTrackingStart = point.y;
-				_yTrackingOffsetStart = _offset.y;
+				_y_tracking_start = point.y;
+				_y_tracking_offset_start = _offset.y;
 
 				_trackingScrollbar = IsOverScrollbar(point);
 				_tracking = true;
@@ -694,21 +705,21 @@ public:
 		return 0;
 	}
 
-	LRESULT OnMouseDblClk(UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT on_mouse_dbl_clk(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		CPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		ipoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		SetHover(SelectionFromPoint(point + _offset));
 
-		if (_hoverItem != nullptr)
+		if (_hover_item != nullptr)
 		{
 			//ShellExecute(m_hWnd, L"open", _hoverItem->Link.c_str(), L"", L"", SW_SHOWNORMAL);
 		}
 		return 0;
 	}
 
-	LRESULT OnMouseMove(UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT on_mouse_move(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		CPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		ipoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 
 		if (!_hover)
 		{
@@ -722,8 +733,8 @@ public:
 
 		if (_trackingScrollbar)
 		{
-			auto offset = MulDiv(point.y - _yTrackingStart, _yMax, _extent.cy);
-			ScrollTo(_yTrackingOffsetStart + offset);
+			auto offset = MulDiv(point.y - _y_tracking_start, _y_max, _extent.cy);
+			ScrollTo(_y_tracking_offset_start + offset);
 		}
 		else
 		{
@@ -734,13 +745,13 @@ public:
 		return 0;
 	}
 
-	LRESULT OnLButtonUp(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
+	LRESULT on_left_button_up(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/)
 	{
 		if (_tracking)
 		{
 			_tracking = false;
 			_trackingScrollbar = false;
-			_yTrackingStart = 0;
+			_y_tracking_start = 0;
 
 			ReleaseCapture();
 			InvalidateRect(m_hWnd, nullptr, FALSE);
@@ -749,41 +760,41 @@ public:
 		return 0;
 	}
 
-	LRESULT OnMouseLeave(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam)
+	LRESULT on_mouse_leave(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam)
 	{
-		_hoverItem = nullptr;
+		_hover_item = nullptr;
 		_hover = false;
-		_highlightScroll = false;
+		_highlight_scroll = false;
 		InvalidateRect(m_hWnd, nullptr, FALSE);
 		return 0;
 	}
 
-	LRESULT OnMouseWheel(UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT on_mouse_wheel(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		int zDelta = ((short)HIWORD(wParam)) / 2;
 		ScrollTo(_offset.y - zDelta);
 		return 0;
 	}
 
-	bool IsOverScrollbar(const CPoint& point) const
+	bool IsOverScrollbar(const ipoint& point) const
 	{
 		return (_extent.cx - 32) < point.x;
 	}
 
-	void UpdateMousePos(const CPoint& point)
+	void UpdateMousePos(const ipoint& point)
 	{
 		auto h = IsOverScrollbar(point);
 
-		if (_highlightScroll != h)
+		if (_highlight_scroll != h)
 		{
-			_highlightScroll = h;
+			_highlight_scroll = h;
 			InvalidateRect(m_hWnd, nullptr, FALSE);
 		}
 	}
 
 	void ScrollTo(int offset)
 	{
-		offset = clamp(offset, 0, _yMax - _extent.cy);
+		offset = clamp(offset, 0, _y_max - _extent.cy);
 
 		if (_offset.y != offset)
 		{
@@ -809,15 +820,6 @@ public:
 	}
 	}*/
 
-	LRESULT OnItem(UINT uMsg, WPARAM wParam, LPARAM lParam)
-	{
-		/*auto i = reinterpret_cast<Item*>(wParam);
-		_results.push_back(i);
-		Layout();
-		InvalidateRect(m_hWnd, nullptr, FALSE);*/
-		return 0;
-	}
-
 	void update_font(const double scale_factor)
 	{
 		LOGFONT lf;
@@ -833,12 +835,17 @@ public:
 
 		if (_font) DeleteObject(_font);
 		_font = ::CreateFontIndirect(&lf);
+
+		_item_bullet_x = 10 * scale_factor;
+		_item_padding_x = 5 * scale_factor;
+		_item_padding_y = 5 * scale_factor;
 	}
 
-	void populate(const folder_contents& folder_contents)
+	void populate(const folder_contents& folder_contents, const file_path &selected_path)
 	{
-		std::vector<std::shared_ptr<Item>> new_results;
-		std::unordered_map<file_path, std::shared_ptr<Item>, ihash, ieq> existing;
+		std::vector<std::shared_ptr<list_view_item>> new_results;
+		std::unordered_map<file_path, std::shared_ptr<list_view_item>, ihash, ieq> existing;
+		std::shared_ptr<list_view_item> new_selected_item;
 
 		for (const auto& i : _results)
 		{
@@ -855,14 +862,45 @@ public:
 			}
 			else
 			{
-				auto i = std::make_shared<Item>();
+				auto i = std::make_shared<list_view_item>();
 				i->name = f.path.name();
 				i->path = f.path;
 				new_results.push_back(i);
 			}
+
+			if (selected_path == new_results.back()->path)
+			{
+				new_selected_item = new_results.back();
+			}
+		}
+
+		for (const auto& f : folder_contents.folders)
+		{
+			const auto found = existing.find(f.path);
+
+			if (found != existing.end())
+			{
+				new_results.push_back(found->second);
+			}
+			else
+			{
+				auto i = std::make_shared<list_view_item>();
+				i->name = std::format(L"{}\\", f.path.name());
+				i->path = f.path;
+				new_results.push_back(i);
+			}
+
+			new_results.back()->style |= list_view_item::style_folder;
+
+			if (selected_path == new_results.back()->path)
+			{
+				new_selected_item = new_results.back();
+			}
 		}
 
 		std::swap(_results, new_results);
+		_selected_item = new_selected_item;
+
 		Layout();
 		InvalidateRect(m_hWnd, nullptr, FALSE);
 	}
@@ -873,7 +911,7 @@ class main_win : public ui::win_impl, public IEvents
 {
 public:
 	text_view _view;
-	ListWnd _list;
+	list_view _list;
 	document _doc;
 	find_wnd _find;
 
@@ -893,27 +931,27 @@ public:
 
 	LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override
 	{
-		if (uMsg == WM_CREATE) return OnCreate(uMsg, wParam, lParam);
-		if (uMsg == WM_ERASEBKGND) return OnEraseBackground(uMsg, wParam, lParam);
-		if (uMsg == WM_PAINT) return OnPaint(uMsg, wParam, lParam);
-		if (uMsg == WM_SIZE) return OnSize(uMsg, wParam, lParam);
-		if (uMsg == WM_SETFOCUS) return OnFocus(uMsg, wParam, lParam);
-		if (uMsg == WM_CLOSE) return OnClose(uMsg, wParam, lParam);
-		if (uMsg == WM_INITMENUPOPUP) return OnInitMenuPopup(uMsg, wParam, lParam);
-		if (uMsg == WM_COMMAND) return OnCommand(uMsg, wParam, lParam);
+		if (uMsg == WM_CREATE) return on_create(uMsg, wParam, lParam);
+		if (uMsg == WM_ERASEBKGND) return on_erase_background(uMsg, wParam, lParam);
+		if (uMsg == WM_PAINT) return on_paint(uMsg, wParam, lParam);
+		if (uMsg == WM_SIZE) return on_size(uMsg, wParam, lParam);
+		if (uMsg == WM_SETFOCUS) return on_focus(uMsg, wParam, lParam);
+		if (uMsg == WM_CLOSE) return on_close(uMsg, wParam, lParam);
+		if (uMsg == WM_INITMENUPOPUP) return on_init_menu_popup(uMsg, wParam, lParam);
+		if (uMsg == WM_COMMAND) return on_command(uMsg, wParam, lParam);
 		if (uMsg == WM_DPICHANGED) return on_window_dpi_changed(uMsg, wParam, lParam);
 
 		switch (uMsg)
 		{
 		case WM_LBUTTONDOWN:
 		{
-			const auto rect = GetClientRect();
-			const auto xPos = GET_X_LPARAM(lParam);
-			const auto yPos = GET_Y_LPARAM(lParam);
+			const auto rect = get_client_rect();
+			const auto x_pos = GET_X_LPARAM(lParam);
+			const auto y_pos = GET_Y_LPARAM(lParam);
 			const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
 
-			_is_tracking_splitter = (xPos > split_pos - SPLITTER_BAR_WIDTH &&
-				xPos < split_pos + SPLITTER_BAR_WIDTH);
+			_is_tracking_splitter = (x_pos > split_pos - SPLITTER_BAR_WIDTH &&
+				x_pos < split_pos + SPLITTER_BAR_WIDTH);
 
 			if (_is_tracking_splitter)
 			{
@@ -933,15 +971,15 @@ public:
 
 		case WM_MOUSEMOVE:
 		{
-			const auto xPos = GET_X_LPARAM(lParam);
-			const auto yPos = GET_Y_LPARAM(lParam);
-			const auto rect = GetClientRect();
+			const auto x_pos = GET_X_LPARAM(lParam);
+			const auto y_pos = GET_Y_LPARAM(lParam);
+			const auto rect = get_client_rect();
 
 			if (wParam == MK_LBUTTON)
 			{
 				if (_is_tracking_splitter)
 				{
-					_split_ratio = (xPos - rect.left) / static_cast<double>(rect.right - rect.left);
+					_split_ratio = (x_pos - rect.left) / static_cast<double>(rect.right - rect.left);
 					if (_split_ratio < 0.05) _split_ratio = 0.05;
 					if (_split_ratio > 0.95) _split_ratio = 0.95;
 					InvalidateRect(hWnd, nullptr, FALSE);
@@ -950,8 +988,8 @@ public:
 			}
 
 			const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
-			const auto new_hover_splitter = (xPos > (split_pos - SPLITTER_BAR_WIDTH) &&
-				(xPos < (split_pos + SPLITTER_BAR_WIDTH)));
+			const auto new_hover_splitter = (x_pos > (split_pos - SPLITTER_BAR_WIDTH) &&
+				(x_pos < (split_pos + SPLITTER_BAR_WIDTH)));
 
 			if (new_hover_splitter != _is_hover_splitter)
 			{
@@ -993,11 +1031,11 @@ public:
 		return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
 
-	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	LRESULT on_create(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 	{
-		_view.Create(L"TEXT_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
-		_list.Create(L"LIST_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN);
-		_find.Create(L"FINDER_FRAME", _view.m_hWnd, WS_CHILD, WS_EX_COMPOSITED);
+		_view.create(L"TEXT_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
+		_list.create(L"LIST_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN);
+		_find.create(L"FINDER_FRAME", _view.m_hWnd, WS_CHILD, WS_EX_COMPOSITED);
 		const auto monitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
 		_scale_factor = GetScalingFactorFromDPI(GetPerMonitorDPI(monitor));
 		_view.update_font(_scale_factor);
@@ -1033,13 +1071,13 @@ public:
 		return 0;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_paint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		PAINTSTRUCT ps = { nullptr };
 		auto hdc = BeginPaint(m_hWnd, &ps);
 
 		const auto bg_brush = CreateSolidBrush(main_wnd_clr);
-		const auto bounds = GetClientRect();
+		const auto bounds = get_client_rect();
 
 		auto c = handle_color;
 		if (_is_hover_splitter) c = handle_hover_color;
@@ -1074,44 +1112,44 @@ public:
 		return 0;
 	}
 
-	static LRESULT OnEraseBackground(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	static LRESULT on_erase_background(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		return 1;
 	}
 
 	void layout_views() const
 	{
-		const auto bounds = GetClientRect();
+		const auto bounds = get_client_rect();
 		const auto split_pos = static_cast<int>(bounds.left + (bounds.right - bounds.left) * _split_ratio);
 
 		auto text_bounds = bounds;
 		text_bounds.left = split_pos + SPLITTER_BAR_WIDTH;
-		_view.MoveWindow(text_bounds);
+		_view.move_window(text_bounds);
 
 		auto list_bounds = bounds;
 		list_bounds.right = split_pos - SPLITTER_BAR_WIDTH;
-		_list.MoveWindow(list_bounds);
+		_list.move_window(list_bounds);
 
 		auto find_bounds = text_bounds;
 		find_bounds.right -= 32;
 		find_bounds.left = find_bounds.right - std::min(static_cast<int>(300 * _scale_factor), find_bounds.Width() / 2);
 		find_bounds.bottom = find_bounds.top + 40;
-		_find.MoveWindow(find_bounds);
+		_find.move_window(find_bounds);
 	}
 
-	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
+	LRESULT on_size(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		layout_views();
 		return 0;
 	}
 
-	LRESULT OnFocus(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
+	LRESULT on_focus(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
 		SetFocus(_view.m_hWnd);
 		return 0;
 	}
 
-	LRESULT OnClose(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
+	LRESULT on_close(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 	{
 		bool destroy = true;
 
@@ -1140,19 +1178,19 @@ public:
 		return 0;
 	}
 
-	LRESULT OnAbout() const
+	LRESULT on_about() const
 	{
-		about_dlg().DoModal(m_hWnd, IDD_ABOUTBOX);
+		about_dlg().do_modal(m_hWnd, IDD_ABOUTBOX);
 		return 0;
 	}
 
-	LRESULT OnExit() const
+	LRESULT on_exit() const
 	{
 		PostMessage(m_hWnd, WM_CLOSE, 0, 0);
 		return 0;
 	}
 
-	LRESULT OnRunTests()
+	LRESULT on_run_tests()
 	{
 		_doc.select(_doc.all());
 
@@ -1169,25 +1207,25 @@ public:
 		return 0;
 	}
 
-	LRESULT OnOpen()
+	LRESULT on_open()
 	{
 		load_doc();
 		return 0;
 	}
 
-	LRESULT OnSave()
+	LRESULT on_save()
 	{
 		save_doc(_doc.path());
 		return 0;
 	}
 
-	LRESULT OnSaveAs()
+	LRESULT on_save_as()
 	{
 		save_doc();
 		return 0;
 	}
 
-	LRESULT OnNew()
+	LRESULT on_new()
 	{
 		bool destroy = true;
 
@@ -1213,7 +1251,7 @@ public:
 		return 0;
 	}
 
-	LRESULT OnEditFind() const
+	LRESULT on_edit_find() const
 	{
 		ShowWindow(_find.m_hWnd, SW_SHOW);
 
@@ -1251,7 +1289,7 @@ public:
 		return false;
 	}
 
-	LRESULT OnEditReformat()
+	LRESULT on_edit_reformat()
 	{
 		if (is_json())
 		{
@@ -1333,7 +1371,7 @@ public:
 		}
 		else
 		{
-			const auto text = str::UTF16ToUtf8(_doc.str());
+			const auto text = str::utf16_to_utf8(_doc.str());
 			const auto options = "-A1tOP";
 
 			// call the Artistic Style formatting function
@@ -1343,7 +1381,7 @@ public:
 				ASMemoryAlloc);
 
 			undo_group ug(_doc);
-			_doc.select(_doc.replace_text(ug, _doc.all(), str::UTF8ToUtf16(textOut)));
+			_doc.select(_doc.replace_text(ug, _doc.all(), str::utf8_to_utf16(textOut)));
 
 			delete[] textOut;
 		}
@@ -1351,7 +1389,7 @@ public:
 		return 0;
 	}
 
-	LRESULT OnEditRemoveDuplicates()
+	LRESULT on_edit_remove_duplicates()
 	{
 		auto lines = _doc.lines();
 
@@ -1365,7 +1403,7 @@ public:
 	}
 
 
-	LRESULT OnInitMenuPopup(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_init_menu_popup(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		const auto hMenu = reinterpret_cast<HMENU>(wParam);
 		const auto count = GetMenuItemCount(hMenu);
@@ -1401,22 +1439,22 @@ public:
 		return 0;
 	}
 
-	LRESULT OnCommand(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
+	LRESULT on_command(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
 		const auto id = LOWORD(wParam);
 
-		if (id == ID_APP_EXIT) return OnExit();
-		if (id == ID_APP_ABOUT) return OnAbout();
-		if (id == ID_HELP_RUNTESTS) return OnRunTests();
-		if (id == ID_FILE_OPEN) return OnOpen();
-		if (id == ID_FILE_SAVE) return OnSave();
-		if (id == ID_FILE_SAVE_AS) return OnSaveAs();
-		if (id == ID_FILE_NEW) return OnNew();
-		if (id == ID_EDIT_FIND) return OnEditFind();
-		if (id == ID_EDIT_REFORMAT) return OnEditReformat();
-		if (id == ID_EDIT_SORTANDREMOVEDUPLICATES) return OnEditRemoveDuplicates();
+		if (id == ID_APP_EXIT) return on_exit();
+		if (id == ID_APP_ABOUT) return on_about();
+		if (id == ID_HELP_RUNTESTS) return on_run_tests();
+		if (id == ID_FILE_OPEN) return on_open();
+		if (id == ID_FILE_SAVE) return on_save();
+		if (id == ID_FILE_SAVE_AS) return on_save_as();
+		if (id == ID_FILE_NEW) return on_new();
+		if (id == ID_EDIT_FIND) return on_edit_find();
+		if (id == ID_EDIT_REFORMAT) return on_edit_reformat();
+		if (id == ID_EDIT_SORTANDREMOVEDUPLICATES) return on_edit_remove_duplicates();
 
-		_view.OnCommand(id);
+		_view.on_command(id);
 		return 0;
 	}
 
@@ -1455,12 +1493,12 @@ public:
 		_doc.path({ L"New" });
 	}
 
-	void load_doc(file_path path)
+	void load_doc(const file_path &path)
 	{
 		if (_doc.load_from_file(path))
 		{
 			// populate the folder list
-			_list.populate(iterate_file_items(path.folder(), false));
+			_list.populate(iterate_file_items({ path.folder() }, false), path);
 		}
 	}
 
@@ -1570,20 +1608,22 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	SetProcessDpiAwarenessContextIndirect(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
 	main_win win;
-	win.Create(L"APP_FRAME", nullptr, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);
+	win.create(L"APP_FRAME", nullptr, WS_OVERLAPPEDWINDOW, WS_EX_COMPOSITED);
 	SetMenu(win.m_hWnd, LoadMenu(hInstance, MAKEINTRESOURCE(IDC_APP)));
 
 	const auto icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APP));
 	ui::set_icon(win.m_hWnd, icon);
 	ShowWindow(win.m_hWnd, SW_SHOW);
 
-	/*int argCount;
-	const auto args = CommandLineToArgvW(GetCommandLine(), &argCount);
-
-	if (argCount > 1)
+	if (!str::is_empty(lpCmdLine))
 	{
-		win.load_doc(std::wstring{ str::unquote(args[1]) });
-	}*/
+		const auto path = file_path{ str::unquote(lpCmdLine) };
+
+		if (path.exists())
+		{
+			win.load_doc(path);
+		}
+	}
 
 	const auto accelerators = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_APP));
 	MSG msg;

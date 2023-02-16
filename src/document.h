@@ -440,8 +440,8 @@ public:
 	         line_endings nCrlfStyle = line_endings::crlf_style_dos);
 	~document();
 
-	bool load_from_file(file_path path);
-	bool save_to_file(file_path path, line_endings nCrlfStyle = line_endings::crlf_style_automatic,
+	bool load_from_file(const file_path &path);
+	bool save_to_file(const file_path &path, line_endings nCrlfStyle = line_endings::crlf_style_automatic,
 	                  bool bClearModifiedFlag = true) const;
 	void clear();
 
@@ -471,7 +471,7 @@ public:
 	}
 
 	std::vector<std::wstring> text(const text_selection& selection) const;
-
+	
 	static std::wstring combine_line_text(const std::vector<document_line>& lines)
 	{
 		std::wostringstream result;
@@ -551,15 +551,15 @@ public:
 	bool GetAutoIndent() const;
 	static bool QueryEditable();
 
-	void Cut();
+	void edit_cut();
 	void Copy() const;
-	void OnEditDelete();
-	void OnEditDeleteBack();
-	void OnEditRedo();
-	void OnEditTab();
-	void OnEditUndo();
-	void OnEditUntab();
-	void Paste();
+	void edit_delete();
+	void edit_delete_back();
+	void edit_redo();
+	void edit_tab();
+	void edit_undo();
+	void edit_untab();
+	void edit_paste();
 	void SetAutoIndent(bool bAutoIndent);
 
 	text_selection selection() const
@@ -567,16 +567,15 @@ public:
 		return _selection.normalize();
 	}
 
-	void MoveCtrlEnd(bool selecting);
-	void MoveCtrlHome(bool selecting);
-	void MoveDown(bool selecting);
-	void MoveEnd(bool selecting);
-	void MoveHome(bool selecting);
-	void MoveLeft(bool selecting);
-	void MoveRight(bool selecting);
-	void MoveUp(bool selecting);
-	void MoveWordLeft(bool selecting);
-	void MoveWordRight(bool selecting);
+	void move_doc_end(bool selecting);
+	void move_doc_home(bool selecting);
+	void move_line_end(bool selecting);
+	void move_line_home(bool selecting);
+	void move_char_left(bool selecting);
+	void move_char_right(bool selecting);
+	void move_word_left(bool selecting);
+	void move_word_right(bool selecting);
+	void move_lines(int lines_to_move, bool selecting);
 
 	bool is_inside_selection(const text_location& loc) const;
 	void reset();
@@ -600,8 +599,8 @@ public:
 	void tab_size(int nTabSize);
 	void view_tabs(bool bViewTabs);
 	int max_line_length() const;
-	text_location WordToLeft(text_location pt) const;
-	text_location WordToRight(text_location pt) const;
+	text_location word_to_left(text_location pt) const;
+	text_location word_to_right(text_location pt) const;
 
 	uint32_t highlight_cookie(int lineIndex) const;
 	uint32_t highlight_line(uint32_t dwCookie, const document_line& line, highlighter::text_block* pBuf,
@@ -654,18 +653,18 @@ public:
 
 		if (ptStart < ptEnd || ptStart == ptEnd)
 		{
-			return text_selection(WordToLeft(ptStart), WordToRight(ptEnd));
+			return text_selection(word_to_left(ptStart), word_to_right(ptEnd));
 		}
-		return text_selection(WordToRight(ptStart), WordToLeft(ptEnd));
+		return text_selection(word_to_right(ptStart), word_to_left(ptEnd));
 	}
 
 	text_selection word_selection() const
 	{
 		if (_cursor_loc < _anchor_loc)
 		{
-			return text_selection(WordToLeft(_cursor_loc), WordToRight(_anchor_loc));
+			return text_selection(word_to_left(_cursor_loc), word_to_right(_anchor_loc));
 		}
-		return text_selection(WordToLeft(_anchor_loc), WordToRight(_cursor_loc));
+		return text_selection(word_to_left(_anchor_loc), word_to_right(_cursor_loc));
 	}
 
 	text_selection line_selection(const text_location& pos, bool from_anchor) const

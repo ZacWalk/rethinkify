@@ -12,59 +12,58 @@ namespace ui
 		const unsigned TaskBackground = 0x00777777;
 	}
 
-	inline COLORREF RGBA(const unsigned r, const unsigned g, const unsigned b, const unsigned a = 255)
+	inline COLORREF rgba(const unsigned r, const unsigned g, const unsigned b, const unsigned a = 255)
 	{
 		return r | (g << 8) | (b << 16) | (a << 24);
 	};
 
-	inline unsigned ByteClamp(const int n)
+	inline unsigned byte_clamp(const int n)
 	{
 		return (n > 255) ? 255u : (n < 0) ? 0u : static_cast<unsigned>(n);
 	}
 
-	inline COLORREF SaturateRGBA(const int r, const int g, const int b, const int a)
+	inline COLORREF saturate_rgba(const int r, const int g, const int b, const int a)
 	{
-		return ByteClamp(r) | (ByteClamp(g) << 8) | (ByteClamp(b) << 16) | (ByteClamp(a) << 24);
+		return byte_clamp(r) | (byte_clamp(g) << 8) | (byte_clamp(b) << 16) | (byte_clamp(a) << 24);
 	};
 
-	inline unsigned GetA(const COLORREF c)
+	inline unsigned get_a(const COLORREF c)
 	{
 		return 0xffu & (c >> 24);
 	};
 
-	inline unsigned GetR(const COLORREF c)
+	inline unsigned get_r(const COLORREF c)
 	{
 		return 0xffu & c;
 	};
 
-	inline unsigned GetG(const COLORREF c)
+	inline unsigned get_g(const COLORREF c)
 	{
 		return 0xffu & (c >> 8);
 	};
 
-	inline unsigned GetB(const COLORREF c)
+	inline unsigned get_b(const COLORREF c)
 	{
 		return 0xffu & (c >> 16);
 	};
 
-	inline COLORREF Lighten(const COLORREF c, const int n = 32)
+	inline COLORREF lighten(const COLORREF c, const int n = 32)
 	{
-		return SaturateRGBA(GetR(c) + n, GetG(c) + n, GetB(c) + n, GetA(c));
+		return saturate_rgba(get_r(c) + n, get_g(c) + n, get_b(c) + n, get_a(c));
 	}
 
-	inline COLORREF Darken(const COLORREF c, const int n = 32)
+	inline COLORREF darken(const COLORREF c, const int n = 32)
 	{
-		return Lighten(c, -n);
+		return lighten(c, -n);
 	}
 
-	inline COLORREF Emphasize(const COLORREF c, const int n = 48)
+	inline COLORREF emphasize(const COLORREF c, const int n = 48)
 	{
-		const bool isLight = GetB(c) > 0x80 || GetG(c) > 0x80 || GetR(c) > 0x80;
-
-		return Lighten(c, isLight ? -n : n);
+		const bool is_light = get_b(c) > 0x80 || get_g(c) > 0x80 || get_r(c) > 0x80;
+		return lighten(c, is_light ? -n : n);
 	}
 
-	inline SIZE MeasureToolbar(HWND tb)
+	inline SIZE measure_toolbar(HWND tb)
 	{
 		SIZE result{ 0, 0 };
 		const auto count = static_cast<int>(::SendMessage(tb, TB_BUTTONCOUNT, 0, 0L));
@@ -128,14 +127,14 @@ namespace ui
 	public:
 		HWND m_hWnd = nullptr;
 
-		CRect GetClientRect() const
+		irect get_client_rect() const
 		{
-			CRect result;
+			irect result;
 			::GetClientRect(m_hWnd, &result);
 			return result;
 		}
 
-		void MoveWindow(const CRect& bounds) const
+		void move_window(const irect& bounds) const
 		{
 			::MoveWindow(m_hWnd, bounds.left, bounds.top, bounds.Width(), bounds.Height(), TRUE);
 		}
@@ -238,13 +237,13 @@ namespace ui
 			return true;
 		}
 
-		INT_PTR DoModal(const HWND parent, const uintptr_t id)
+		INT_PTR do_modal(const HWND parent, const uintptr_t id)
 		{
 			return ::DialogBoxParam(resource_instance, MAKEINTRESOURCE(id),
 				parent, win_proc, (LPARAM)this);
 		}
 
-		void Create(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0,
+		void create(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0,
 			const uintptr_t id = 0)
 		{
 			const auto default_cursor = LoadCursor(nullptr, IDC_ARROW);
@@ -284,7 +283,7 @@ namespace ui
 		SendMessage(h, WM_SETICON, ICON_SMALL, (LPARAM)i);
 	}
 
-	inline DWORD GetStyle(HWND m_hWnd)
+	inline DWORD get_style(HWND m_hWnd)
 	{
 		return static_cast<DWORD>(::GetWindowLong(m_hWnd, GWL_STYLE));
 	}
@@ -292,7 +291,7 @@ namespace ui
 	BOOL center_window(HWND m_hWnd, HWND hWndCenter = nullptr) noexcept
 	{
 		// determine owner window to center against
-		const DWORD dwStyle = GetStyle(m_hWnd);
+		const DWORD dwStyle = get_style(m_hWnd);
 		if (hWndCenter == nullptr)
 		{
 			if (dwStyle & WS_CHILD)

@@ -47,7 +47,7 @@ void spell_check::Init()
 			dicPath = folder.Combine(defaulLang, L".dic");
 		}
 
-		_psc = std::make_shared<Hunspell>(str::UTF16ToAscii(affPath.view()).c_str(), str::UTF16ToAscii(dicPath.view()).c_str());
+		_psc = std::make_shared<Hunspell>(str::utf16_to_ascii(affPath.view()).c_str(), str::utf16_to_ascii(dicPath.view()).c_str());
 
 		std::ifstream f(extPath.c_str());
 
@@ -70,7 +70,7 @@ bool spell_check::is_word_valid(std::wstring_view word)
 	platform::scope_lock l(_cs);
 
 	if (!_psc) Init();
-	return _psc && _psc->spell(str::UTF16ToAscii(word)) != 0;
+	return _psc && _psc->spell(str::utf16_to_ascii(word)) != 0;
 }
 
 std::vector<std::wstring> spell_check::suggest(std::wstring_view word)
@@ -79,7 +79,7 @@ std::vector<std::wstring> spell_check::suggest(std::wstring_view word)
 
 	if (!_psc) Init();
 
-	const auto word_utf8 = str::UTF16ToUtf8(word);
+	const auto word_utf8 = str::utf16_to_utf8(word);
 
 	std::vector<std::wstring> results;
 
@@ -87,7 +87,7 @@ std::vector<std::wstring> spell_check::suggest(std::wstring_view word)
 	{
 		for (const auto& r : _psc->suggest(word_utf8))
 		{
-			results.emplace_back(str::AsciiToUtf16(r));
+			results.emplace_back(str::ascii_to_utf16(r));
 		}
 	}
 
@@ -103,7 +103,7 @@ void spell_check::add_word(std::wstring_view word)
 	if (_psc)
 	{
 		const auto customPath = file_path::app_data_folder().Combine(L"custom.dic");
-		const auto word_utf8 = str::UTF16ToUtf8(word);
+		const auto word_utf8 = str::utf16_to_utf8(word);
 
 		_psc->add(word_utf8);
 
