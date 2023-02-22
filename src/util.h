@@ -359,7 +359,7 @@ public:
 	void finish(uint8_t digest[32]);
 };
 
-inline std::wstring to_base64(const uint8_t* bytes_to_encode, unsigned int in_len)
+inline std::wstring to_base64(const uint8_t* bytes_to_encode, size_t in_len)
 {
 	static const std::string base64_chars =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"

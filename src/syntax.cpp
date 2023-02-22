@@ -112,7 +112,7 @@ static bool is_keyword(std::wstring_view text)
 		L"typeid",
 		L"typename",
 		L"union",
-		L"unsigned",
+		L"uint32_t",
 		L"useindex",
 		L"using",
 		L"uuid",

@@ -6,26 +6,22 @@
 #include "document.h"
 #include "ui.h"
 
-const wchar_t filters[] = L"All Files (*.*)\0*.*\0Text Files (*.txt)\0*.txt\0\0";
+constexpr wchar_t filters[] = L"All Files (*.*)\0*.*\0Text Files (*.txt)\0*.txt\0\0";
 
-constexpr auto SPLITTER_BAR_WIDTH = 5;
+constexpr auto splitter_bar_width = 5;
 
-constexpr auto handle_color = 0x00444444;
-constexpr auto main_wnd_clr = 0x00222222;
-constexpr auto tool_wnd_clr = 0x00333333;
-constexpr auto handle_hover_color = 0x00666666;
-const unsigned handle_tracking_color = 0x00CC6611;
-const unsigned text_color = 0x00FFFFFF;
-const unsigned folder_text_color = 0x0022CCEE;
-const unsigned darker_text_color = 0x00CCCCCC;
-const unsigned line_color = 0x00AA5522;
+
 
 COLORREF style_to_color(style style_index)
 {
 	switch (style_index)
 	{
 	case style::white_space:
-		return main_wnd_clr;
+		return ui::main_wnd_clr;
+	case style::main_wnd_clr:
+		return ui::main_wnd_clr;
+	case style::tool_wnd_clr:
+		return ui::tool_wnd_clr;
 	case style::normal_bkgnd:
 		return RGB(30, 30, 30);
 	case style::normal_text:
@@ -470,7 +466,7 @@ public:
 
 	LRESULT on_create(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
 	{
-		_pen = CreatePen(PS_SOLID, 3, line_color);
+		_pen = CreatePen(PS_SOLID, 3, ui::line_color);
 		return 0;
 	}
 
@@ -478,7 +474,7 @@ public:
 	{
 		_extent.cx = LOWORD(lParam);
 		_extent.cy = HIWORD(lParam);
-		Layout();
+		layout_list();
 		return 0;
 	}
 
@@ -522,7 +518,7 @@ public:
 		return MA_NOACTIVATE;
 	}
 
-	void Layout()
+	void layout_list()
 	{
 		auto hdc = GetWindowDC(m_hWnd);
 		auto old_font = SelectObject(hdc, _font);
@@ -568,7 +564,7 @@ public:
 	void on_paint(HDC hdc)
 	{
 		const auto r = get_client_rect();
-		ui::fill_solid_rect(hdc, r, tool_wnd_clr);
+		ui::fill_solid_rect(hdc, r, ui::tool_wnd_clr);
 
 		const auto old_font = SelectObject(hdc, _font);
 		const auto old_pen =  SelectObject(hdc, _pen);
@@ -582,12 +578,12 @@ public:
 			{
 				if (i == _hover_item)
 				{
-					ui::fill_solid_rect(hdc, bounds, handle_hover_color);
+					ui::fill_solid_rect(hdc, bounds, ui::handle_hover_color);
 				}
 
 				if (i == _selected_item)
 				{
-					ui::fill_solid_rect(hdc, bounds, handle_tracking_color);
+					ui::fill_solid_rect(hdc, bounds, ui::handle_tracking_color);
 				}
 
 				const auto xx = bounds.left + _item_padding_x + (_item_bullet_x / 3);
@@ -604,7 +600,7 @@ public:
 				bounds.left += _item_padding_x + _item_bullet_x;
 				bounds = bounds.Inflate(-_item_padding_x, -_item_padding_y);
 
-				SetTextColor(hdc, (i->style & list_view_item::style_folder) ? folder_text_color : text_color);
+				SetTextColor(hdc, (i->style & list_view_item::style_folder) ? ui::folder_text_color : ui::text_color);
 				DrawText(hdc, i->name.c_str(), i->name.length(), bounds, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
 			}
 		}
@@ -631,11 +627,11 @@ public:
 
 			if (highlight || tracking)
 			{
-				ui::fill_solid_rect(hdc, irect(right - 26, 0, right, _extent.cy), handle_color);
+				ui::fill_solid_rect(hdc, irect(right - 26, 0, right, _extent.cy), ui::handle_color);
 				xPadding = 10;
 			}
 
-			const auto c = tracking ? handle_tracking_color : handle_hover_color;
+			const auto c = tracking ? ui::handle_tracking_color : ui::handle_hover_color;
 			ui::fill_solid_rect(hdc, irect(right - 12 - xPadding, y, right - 4, y + cy), c);
 		}
 	}
@@ -799,7 +795,7 @@ public:
 		if (_offset.y != offset)
 		{
 			_offset.y = offset;
-			Layout();
+			layout_list();
 			InvalidateRect(m_hWnd, nullptr, FALSE);
 		}
 	}
@@ -901,7 +897,7 @@ public:
 		std::swap(_results, new_results);
 		_selected_item = new_selected_item;
 
-		Layout();
+		layout_list();
 		InvalidateRect(m_hWnd, nullptr, FALSE);
 	}
 };
@@ -950,8 +946,8 @@ public:
 			const auto y_pos = GET_Y_LPARAM(lParam);
 			const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
 
-			_is_tracking_splitter = (x_pos > split_pos - SPLITTER_BAR_WIDTH &&
-				x_pos < split_pos + SPLITTER_BAR_WIDTH);
+			_is_tracking_splitter = (x_pos > split_pos - splitter_bar_width &&
+				x_pos < split_pos + splitter_bar_width);
 
 			if (_is_tracking_splitter)
 			{
@@ -988,8 +984,8 @@ public:
 			}
 
 			const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
-			const auto new_hover_splitter = (x_pos > (split_pos - SPLITTER_BAR_WIDTH) &&
-				(x_pos < (split_pos + SPLITTER_BAR_WIDTH)));
+			const auto new_hover_splitter = (x_pos > (split_pos - splitter_bar_width) &&
+				(x_pos < (split_pos + splitter_bar_width)));
 
 			if (new_hover_splitter != _is_hover_splitter)
 			{
@@ -1035,13 +1031,13 @@ public:
 	{
 		_view.create(L"TEXT_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPCHILDREN);
 		_list.create(L"LIST_FRAME", m_hWnd, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN);
-		_find.create(L"FINDER_FRAME", _view.m_hWnd, WS_CHILD, WS_EX_COMPOSITED);
+		_find.create(L"FINDER_FRAME", m_hWnd, WS_CHILD, WS_EX_COMPOSITED);
 		const auto monitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
 		_scale_factor = GetScalingFactorFromDPI(GetPerMonitorDPI(monitor));
 		_view.update_font(_scale_factor);
 		_find.update_font(_scale_factor);
 		_list.update_font(_scale_factor);
-		_view.invalidate_view();
+		_doc.invalidate(invalid::view);
 		update_title();
 
 		return 0;
@@ -1076,28 +1072,28 @@ public:
 		PAINTSTRUCT ps = { nullptr };
 		auto hdc = BeginPaint(m_hWnd, &ps);
 
-		const auto bg_brush = CreateSolidBrush(main_wnd_clr);
+		const auto bg_brush = CreateSolidBrush(ui::main_wnd_clr);
 		const auto bounds = get_client_rect();
 
-		auto c = handle_color;
-		if (_is_hover_splitter) c = handle_hover_color;
-		if (_is_tracking_splitter) c = handle_tracking_color;
+		auto c = ui::handle_color;
+		if (_is_hover_splitter) c = ui::handle_hover_color;
+		if (_is_tracking_splitter) c = ui::handle_tracking_color;
 		const auto splitter_brush = CreateSolidBrush(c);
 
 		const auto split_pos = static_cast<int>(bounds.left + (bounds.right - bounds.left) * _split_ratio);
 
 		const RECT splitter_rect = {
-			split_pos - SPLITTER_BAR_WIDTH, bounds.top,
-			split_pos + SPLITTER_BAR_WIDTH, bounds.bottom
+			split_pos - splitter_bar_width, bounds.top,
+			split_pos + splitter_bar_width, bounds.bottom
 		};
 
 		const RECT client_area1 = {
 			bounds.left, bounds.top,
-			split_pos - SPLITTER_BAR_WIDTH, bounds.bottom
+			split_pos - splitter_bar_width, bounds.bottom
 		};
 
 		const RECT client_area2 = {
-			split_pos + SPLITTER_BAR_WIDTH, bounds.top,
+			split_pos + splitter_bar_width, bounds.top,
 			bounds.right, bounds.bottom
 		};
 
@@ -1119,21 +1115,23 @@ public:
 
 	void layout_views() const
 	{
+		const auto is_find_visible = IsWindowVisible(_find.m_hWnd) != 0;
+		const auto find_height = is_find_visible ? 40 : 0;
 		const auto bounds = get_client_rect();
 		const auto split_pos = static_cast<int>(bounds.left + (bounds.right - bounds.left) * _split_ratio);
 
 		auto text_bounds = bounds;
-		text_bounds.left = split_pos + SPLITTER_BAR_WIDTH;
+		text_bounds.left = split_pos + splitter_bar_width;
+		text_bounds.bottom -= find_height;
 		_view.move_window(text_bounds);
 
 		auto list_bounds = bounds;
-		list_bounds.right = split_pos - SPLITTER_BAR_WIDTH;
+		list_bounds.right = split_pos - splitter_bar_width;
 		_list.move_window(list_bounds);
 
-		auto find_bounds = text_bounds;
-		find_bounds.right -= 32;
-		find_bounds.left = find_bounds.right - std::min(static_cast<int>(300 * _scale_factor), find_bounds.Width() / 2);
-		find_bounds.bottom = find_bounds.top + 40;
+		auto find_bounds = bounds;
+		find_bounds.left = split_pos + splitter_bar_width;
+		find_bounds.top = find_bounds.bottom - find_height;
 		_find.move_window(find_bounds);
 	}
 
@@ -1198,12 +1196,8 @@ public:
 		const auto pos = _doc.delete_text(ug, _doc.selection());
 		_doc.insert_text(ug, pos, run_all_tests());
 		_doc.select(text_location());
-		_view.invalidate_view();
-
-		// http://www.bbc.com/news/
-
 		_doc.path({ L"test-results.md" });
-
+		_doc.invalidate(invalid::view);
 		return 0;
 	}
 
@@ -1267,6 +1261,7 @@ public:
 		}
 
 		SetFocus(_find._find_edit.m_hWnd);
+		layout_views();
 		return 0;
 	}
 
@@ -1489,8 +1484,8 @@ public:
 	void new_doc()
 	{
 		_doc.clear();
-		_view.invalidate_view();
 		_doc.path({ L"New" });
+		_doc.invalidate(invalid::view);
 	}
 
 	void load_doc(const file_path &path)
@@ -1540,11 +1535,6 @@ public:
 			update_title();
 		}
 
-		if (invalids & invalid::view)
-		{
-			_view.invalidate_view();
-		}
-
 		if (invalids & invalid::layout)
 		{
 			_view.layout();
@@ -1563,6 +1553,11 @@ public:
 		if (invalids & invalid::vert_scrollbar)
 		{
 			_view.recalc_vert_scrollbar();
+		}
+
+		if (invalids & invalid::invalidate)
+		{
+			_view.invalidate();
 		}
 	}
 };

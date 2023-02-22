@@ -57,19 +57,27 @@ public:
 
 	LRESULT on_size(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/) const
 	{
-		auto r = get_client_rect();
+		const auto bounds = get_client_rect();
+		const auto button_width = 60;
+		const auto x_padding = 16;
+		const auto y_padding = 5;
+		const auto padding = 5;
 
-		r.left += 4;
-		r.right -= 54;
-		r.top += 4;
-		r.bottom -= 4;
+		auto edit_bounds = bounds;
+		edit_bounds.left += x_padding;
+		edit_bounds.right -= button_width + x_padding + padding;
+		edit_bounds.top += y_padding;
+		edit_bounds.bottom -= y_padding;
 
-		_find_edit.move_window(r);
+		_find_edit.move_window(edit_bounds);
 
-		r.left = r.right + 4;
-		r.right += 50;
+		auto button_bounds = bounds;
+		button_bounds.right -= x_padding;
+		button_bounds.left = edit_bounds.right + padding;
+		button_bounds.top += y_padding;
+		button_bounds.bottom -= y_padding;
 
-		_find_button.move_window(r);
+		_find_button.move_window(button_bounds);
 
 		return 0;
 	}
@@ -77,11 +85,11 @@ public:
 	LRESULT on_erase_background(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		auto r = get_client_rect();
-		ui::fill_solid_rect(reinterpret_cast<HDC>(wParam), r, style_to_color(style::main_wnd_clr));
+		ui::fill_solid_rect(reinterpret_cast<HDC>(wParam), r, style_to_color(style::tool_wnd_clr));
 		return 1;
 	}
 
-	LRESULT OnPaint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
+	LRESULT on_paint(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam) const
 	{
 		auto r = get_client_rect();
 
@@ -140,9 +148,9 @@ private:
 	text_selection _dragged_text_selection;
 	HFONT _font = nullptr;
 
-	isize _char_offset;
-	isize _extent;
-	isize _font_extent;
+	isize _char_offset = {};
+	isize _extent = { 1, 1};
+	isize _font_extent = { 10, 10 };
 
 	int _screen_lines = 0;
 	int _screen_chars = 0;
@@ -171,6 +179,7 @@ public:
 		if (uMsg == WM_SYSCOLORCHANGE) return on_sys_color_change(uMsg, wParam, lParam);
 		if (uMsg == WM_LBUTTONDBLCLK) return on_left_button_dbl_clk(uMsg, wParam, lParam);
 		if (uMsg == WM_LBUTTONDOWN) return on_left_button_down(uMsg, wParam, lParam);
+		if (uMsg == WM_RBUTTONDOWN) return on_right_button_down(ipoint(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), wParam);
 		if (uMsg == WM_LBUTTONUP) return on_left_button_up(uMsg, wParam, lParam);
 		if (uMsg == WM_MOUSEMOVE) return on_mouse_move(uMsg, wParam, lParam);
 		if (uMsg == WM_MOUSEWHEEL) return on_mouse_wheel(uMsg, wParam, lParam);
@@ -181,8 +190,7 @@ public:
 
 	void update_font(const double scale_factor)
 	{
-		LOGFONT lf;
-		memset(&lf, 0, sizeof(lf));
+		LOGFONT lf = {};
 		lf.lfHeight = 24 * scale_factor;
 		lf.lfWeight = FW_NORMAL;
 		lf.lfCharSet = ANSI_CHARSET;
@@ -195,7 +203,25 @@ public:
 		if (_font) DeleteObject(_font);
 		_font = ::CreateFontIndirect(&lf);
 
-		_doc.invalidate(invalid::layout);
+		const ui::win_dc hdc(m_hWnd);
+		const auto old_font = hdc.SelectFont(_font);
+
+		/*TEXTMETRIC tm = {};
+
+		if (GetTextMetrics(hdc, &tm))
+		{
+			_font_extent.cx = tm.tmAveCharWidth;
+			_font_extent.cy = tm.tmHeight;
+		}*/
+
+		isize font_extent;
+		GetTextExtentExPoint(hdc, _T("X"), 1, 1, nullptr, nullptr, &font_extent);
+		if (font_extent.cy < 1) font_extent.cy = 1;
+		_font_extent = font_extent;
+
+		hdc.SelectFont(old_font);
+
+		_doc.invalidate(invalid::horz_scrollbar | invalid::vert_scrollbar | invalid::layout);
 	}
 
 	LRESULT on_create(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/)
@@ -212,29 +238,8 @@ public:
 
 	LRESULT on_size(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam)
 	{
-		const ui::win_dc hdc(m_hWnd);
-		const auto old_font = hdc.SelectFont(_font);
-
-		isize font_extent;
-		GetTextExtentExPoint(hdc, _T("X"), 1, 1, nullptr, nullptr, &font_extent);
-		if (font_extent.cy < 1) font_extent.cy = 1;
-
-		/*
-		TEXTMETRIC tm;
-		if (hdc->GetTextMetrics(&tm))
-		m_nCharWidth -= tm.tmOverhang;
-		*/
-
-		const auto xPos = GET_X_LPARAM(lParam);
-		const auto yPos = GET_Y_LPARAM(lParam);
-		_extent = isize(xPos, yPos);
-		_font_extent = font_extent;
-
-		layout();
-
-		hdc.SelectFont(old_font);
-
-
+		_extent = isize(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		_doc.invalidate(invalid::horz_scrollbar | invalid::vert_scrollbar | invalid::layout);
 		return 0;
 	}
 
@@ -260,7 +265,7 @@ public:
 
 	LRESULT on_sys_color_change(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/) const
 	{
-		invalidate();
+		_doc.invalidate(invalid::invalidate);
 		return 0;
 	}
 
@@ -566,7 +571,7 @@ public:
 	{
 		if (nIDEvent == TIMER_DRAGSEL)
 		{
-			assert(m_bDragSelection);
+			assert(_drag_selection);
 			ipoint pt;
 			GetCursorPos(&pt);
 			ScreenToClient(m_hWnd, &pt);
@@ -595,7 +600,7 @@ public:
 
 			if (_char_offset.cy != y)
 			{
-				ScrollToLine(y);
+				scroll_to_line(y);
 				bChanged = true;
 			}
 
@@ -616,7 +621,7 @@ public:
 
 			if (_char_offset.cx != x)
 			{
-				ScrollToChar(x);
+				scroll_to_char(x);
 				bChanged = true;
 			}
 
@@ -649,7 +654,7 @@ public:
 
 				SetCapture(m_hWnd);
 				_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
-				assert(m_nDragSelTimer != 0);
+				assert(_drag_sel_timer != 0);
 				_word_selection = false;
 				_line_selection = true;
 				_drag_selection = true;
@@ -671,7 +676,7 @@ public:
 
 				SetCapture(m_hWnd);
 				_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
-				assert(m_nDragSelTimer != 0);
+				assert(_drag_sel_timer != 0);
 				_word_selection = bControl;
 				_line_selection = false;
 				_drag_selection = true;
@@ -689,7 +694,7 @@ public:
 	{
 		if (can_scroll())
 		{
-			ScrollToLine(clamp(_char_offset.cy + zDelta, 0, _doc.size()));
+			scroll_to_line(clamp(_char_offset.cy + zDelta, 0, _doc.size()));
 			update_caret();
 		}
 	}
@@ -789,14 +794,14 @@ public:
 
 			SetCapture(m_hWnd);
 			_drag_sel_timer = SetTimer(m_hWnd, TIMER_DRAGSEL, 100, nullptr);
-			assert(m_nDragSelTimer != 0);
+			assert(_drag_sel_timer != 0);
 			_word_selection = true;
 			_line_selection = false;
 			_drag_selection = true;
 		}
 	}
 
-	void OnRButtonDown(const ipoint& point, UINT nFlags)
+	LRESULT on_right_button_down(const ipoint& point, UINT nFlags)
 	{
 		const auto pt = client_to_text(point);
 
@@ -806,9 +811,11 @@ public:
 			_doc.select(text_selection(pt, pt));
 			ensure_visible(pt);
 		}
+
+		return 0;
 	}
 
-	void ScrollToChar(int x)
+	void scroll_to_char(int x)
 	{
 		if (_char_offset.cx != x)
 		{
@@ -822,7 +829,7 @@ public:
 		}
 	}
 
-	void ScrollToLine(int y)
+	void scroll_to_line(int y)
 	{
 		if (_char_offset.cy != y)
 		{
@@ -839,8 +846,7 @@ public:
 		if (_screen_lines >= _doc.size() && _char_offset.cy > 0)
 		{
 			_char_offset.cy = 0;
-			invalidate();
-			update_caret();
+			_doc.invalidate(invalid::invalidate | invalid::caret);
 		}
 
 		SCROLLINFO si;
@@ -892,7 +898,7 @@ public:
 			return;
 		}
 
-		ScrollToLine(clamp(y, 0, line_count - 1));
+		scroll_to_line(clamp(y, 0, line_count - 1));
 		update_caret();
 	}
 
@@ -901,8 +907,7 @@ public:
 		if (_screen_chars >= _doc.max_line_length() && _char_offset.cx > 0)
 		{
 			_char_offset.cx = 0;
-			invalidate();
-			update_caret();
+			_doc.invalidate(invalid::invalidate | invalid::caret);
 		}
 
 		const auto margin_width = _sel_margin ? 3 : 0;
@@ -957,11 +962,11 @@ public:
 			return;
 		}
 
-		ScrollToChar(clamp(nNewOffset, 0, nMaxLineLength - 1));
+		scroll_to_char(clamp(nNewOffset, 0, nMaxLineLength - 1));
 		update_caret();
 	}
 
-	bool OnSetCursor(HWND wnd, UINT nHitTest, UINT message) const
+	bool on_set_cursor(HWND wnd, UINT nHitTest, UINT message) const
 	{
 		if (nHitTest == HTCLIENT)
 		{
@@ -1084,7 +1089,7 @@ public:
 		return DropData(pDataObj, pt) ? S_OK : S_FALSE;
 	}
 
-	DROPEFFECT OnDragScroll(HWND wnd, DWORD dwKeyState, ipoint point)
+	DROPEFFECT drag_scroll(HWND wnd, DWORD dwKeyState, ipoint point) 
 	{
 		assert(m_hWnd == wnd);
 
@@ -1105,13 +1110,13 @@ public:
 		else if (point.x < rcClientRect.left + margin_width() + DRAG_BORDER_X)
 		{
 			hide_drop_indicator();
-			ScrollLeft();
+			scroll_left();
 			show_drop_indicator(point);
 		}
 		else if (point.x >= rcClientRect.right - DRAG_BORDER_X)
 		{
 			hide_drop_indicator();
-			ScrollRight();
+			scroll_right();
 			show_drop_indicator(point);
 		}
 
@@ -1124,7 +1129,7 @@ public:
 	{
 		if (_char_offset.cy > 0)
 		{
-			ScrollToLine(_char_offset.cy - 1);
+			scroll_to_line(_char_offset.cy - 1);
 			update_caret();
 		}
 	}
@@ -1133,25 +1138,25 @@ public:
 	{
 		if (_char_offset.cy < _doc.size() - 1)
 		{
-			ScrollToLine(_char_offset.cy + 1);
+			scroll_to_line(_char_offset.cy + 1);
 			update_caret();
 		}
 	}
 
-	void ScrollLeft()
+	void scroll_left()
 	{
 		if (_char_offset.cx > 0)
 		{
-			ScrollToChar(_char_offset.cx - 1);
+			scroll_to_char(_char_offset.cx - 1);
 			update_caret();
 		}
 	}
 
-	void ScrollRight()
+	void scroll_right()
 	{
 		if (_char_offset.cx < _doc.max_line_length() - 1)
 		{
-			ScrollToChar(_char_offset.cx + 1);
+			scroll_to_char(_char_offset.cx + 1);
 			update_caret();
 		}
 	}
@@ -1248,9 +1253,8 @@ public:
 	std::wstring text_from_clipboard() const override
 	{
 		std::wstring result;
-		const auto pThis = const_cast<text_view*>(this);
 
-		if (OpenClipboard(pThis->m_hWnd))
+		if (OpenClipboard(m_hWnd))
 		{
 			const auto hData = GetClipboardData(CF_UNICODETEXT);
 
@@ -1455,18 +1459,6 @@ public:
 		invalidate(rcInvalid);
 	}
 
-	void invalidate_view()
-	{
-		_screen_chars = -1;
-
-		layout();
-
-		update_caret();
-		recalc_vert_scrollbar();
-		recalc_horz_scrollbar();
-		invalidate();
-	}
-
 	void layout()
 	{
 		const auto rect = client_rect();
@@ -1486,9 +1478,6 @@ public:
 
 		_screen_lines = rect.Height() / _font_extent.cy;
 		_screen_chars = rect.Width() / _font_extent.cx;
-
-		recalc_vert_scrollbar();
-		recalc_horz_scrollbar();
 	}
 
 	int line_offset(int lineIndex) const
@@ -1524,7 +1513,7 @@ public:
 
 		if (_char_offset.cy != y)
 		{
-			ScrollToLine(y);
+			scroll_to_line(y);
 		}
 
 		//	Scroll horizontally
@@ -1547,7 +1536,7 @@ public:
 
 		if (_char_offset.cx != new_offset)
 		{
-			ScrollToChar(new_offset);
+			scroll_to_char(new_offset);
 		}
 
 		update_caret();

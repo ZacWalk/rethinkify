@@ -4,48 +4,50 @@ extern HINSTANCE resource_instance;
 
 namespace ui
 {
-	namespace clr
-	{
-		const unsigned Highlight = 0x00CC6611;
-		const unsigned Hover = 0x00999999;
-		const unsigned Text = 0x00ffffff;
-		const unsigned TaskBackground = 0x00777777;
-	}
+	constexpr uint32_t handle_color = 0x00444444;
+	constexpr uint32_t main_wnd_clr = 0x00222222;
+	constexpr uint32_t tool_wnd_clr = 0x00333333;
+	constexpr uint32_t handle_hover_color = 0x00666666;
+	constexpr uint32_t handle_tracking_color = 0x00CC6611;
+	constexpr uint32_t text_color = 0x00FFFFFF;
+	constexpr uint32_t folder_text_color = 0x0022CCEE;
+	constexpr uint32_t darker_text_color = 0x00CCCCCC;
+	constexpr uint32_t line_color = 0x00AA5522;
 
-	inline COLORREF rgba(const unsigned r, const unsigned g, const unsigned b, const unsigned a = 255)
+	inline COLORREF rgba(const uint32_t r, const uint32_t g, const uint32_t b, const uint32_t a = 255)
 	{
 		return r | (g << 8) | (b << 16) | (a << 24);
 	};
 
-	inline unsigned byte_clamp(const int n)
+	inline uint32_t byte_clamp(const int n)
 	{
-		return (n > 255) ? 255u : (n < 0) ? 0u : static_cast<unsigned>(n);
+		return (n > 255) ? 255u : (n < 0) ? 0u : static_cast<uint32_t>(n);
 	}
 
 	inline COLORREF saturate_rgba(const int r, const int g, const int b, const int a)
 	{
 		return byte_clamp(r) | (byte_clamp(g) << 8) | (byte_clamp(b) << 16) | (byte_clamp(a) << 24);
-	};
+	}
 
-	inline unsigned get_a(const COLORREF c)
+	inline uint32_t get_a(const COLORREF c)
 	{
 		return 0xffu & (c >> 24);
-	};
+	}
 
-	inline unsigned get_r(const COLORREF c)
+	inline uint32_t get_r(const COLORREF c)
 	{
 		return 0xffu & c;
-	};
+	}
 
-	inline unsigned get_g(const COLORREF c)
+	inline uint32_t get_g(const COLORREF c)
 	{
 		return 0xffu & (c >> 8);
-	};
+	}
 
-	inline unsigned get_b(const COLORREF c)
+	inline uint32_t get_b(const COLORREF c)
 	{
 		return 0xffu & (c >> 16);
-	};
+	}
 
 	inline COLORREF lighten(const COLORREF c, const int n = 32)
 	{
@@ -203,14 +205,13 @@ namespace ui
 
 			if (ptr)
 			{
-				if (uMsg == WM_CREATE) ptr->m_hWnd = hwnd;
 				return ptr->handle_message(hwnd, uMsg, wParam, lParam);
 			}
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 		}
 
-		static bool register_class(UINT style, HICON hIcon, HCURSOR hCursor, HBRUSH hbrBackground,
-			LPCWSTR lpszMenuName, LPCWSTR lpszClassName, HICON hIconSm)
+		static bool register_class(const UINT style, const HICON hIcon, const HCURSOR hCursor, const uint32_t clr_background,
+			LPCWSTR lpszMenuName, LPCWSTR lpszClassName, const HICON hIconSm)
 		{
 			WNDCLASSEX wcx;
 			wcx.cbSize = sizeof(WNDCLASSEX); // size of structure
@@ -221,7 +222,7 @@ namespace ui
 			wcx.hInstance = resource_instance; // handle to instance
 			wcx.hIcon = hIcon; // predefined app. icon
 			wcx.hCursor = hCursor; // predefined arrow
-			wcx.hbrBackground = hbrBackground; // white background brush
+			wcx.hbrBackground = CreateSolidBrush(clr_background); // white background brush
 			wcx.lpszMenuName = lpszMenuName; // name of menu resource
 			wcx.lpszClassName = lpszClassName; // name of window class
 			wcx.hIconSm = hIconSm;
@@ -249,7 +250,7 @@ namespace ui
 			const auto default_cursor = LoadCursor(nullptr, IDC_ARROW);
 			if (register_class(CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
 				nullptr, default_cursor,
-				(HBRUSH)COLOR_WINDOW,
+				main_wnd_clr,
 				nullptr, class_name, nullptr))
 			{
 				m_hWnd = CreateWindowEx(

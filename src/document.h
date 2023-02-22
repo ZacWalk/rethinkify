@@ -12,28 +12,31 @@ class text_location;
 using DROPEFFECT = uint32_t;
 using POSITION = int;
 
-const auto TIMER_DRAGSEL = 1001;
-const auto invalid_length = -1;
+constexpr auto TIMER_DRAGSEL = 1001;
+constexpr auto invalid_length = -1;
 
-const auto TAB_CHARACTER = 0xBB;
-const auto SPACE_CHARACTER = 0x95;
-const auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
-const auto DRAG_BORDER_X = 5;
-const auto DRAG_BORDER_Y = 5;
+constexpr auto TAB_CHARACTER = 0xBB;
+constexpr auto SPACE_CHARACTER = 0x95;
+constexpr auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
+constexpr auto DRAG_BORDER_X = 5;
+constexpr auto DRAG_BORDER_Y = 5;
 
 namespace invalid
 {
-	const auto title = 1 << 0;
-	const auto view = 1 << 1;
-	const auto layout = 1 << 2;
-	const auto caret = 1 << 3;
-	const auto horz_scrollbar = 1 << 4;
-	const auto vert_scrollbar = 1 << 5;
+	constexpr auto title = 1 << 0;
+	constexpr auto layout = 1 << 2;
+	constexpr auto caret = 1 << 3;
+	constexpr auto horz_scrollbar = 1 << 4;
+	constexpr auto vert_scrollbar = 1 << 5;
+	constexpr auto invalidate = 1 << 5;
+	constexpr auto view = horz_scrollbar | vert_scrollbar | layout | caret | invalidate;
 }
 
 enum class style
 {
 	main_wnd_clr,
+	tool_wnd_clr,
+
 	white_space,
 	normal_bkgnd,
 	normal_text,
@@ -50,7 +53,7 @@ enum class style
 	code_number,
 	code_operator,
 	code_string,
-	code_preprocessor,
+	code_preprocessor,	
 };
 
 class highlighter
