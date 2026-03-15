@@ -1,17 +1,114 @@
-// AES-256 implementation based on work by Ilya O. Levin and Hal Finney
-// FIPS-180-2 compliant SHA-256 based on work by Christophe Devine
+// util.cpp — AES-256, SHA-256, and UTF-8/UTF-16 string conversions
 
 #include "pch.h"
 #include "util.h"
+#include "platform.h"
+
+// ── UTF-8 ↔ UTF-16 conversions (pure C++) ──────────────────────────────────────
+
+namespace str
+{
+	std::string utf16_to_utf8(const std::wstring_view wstr)
+	{
+		std::string result;
+		result.reserve(wstr.size()); // optimistic: mostly ASCII
+
+		for (size_t i = 0; i < wstr.size(); ++i)
+		{
+			const auto ch = static_cast<uint32_t>(wstr[i]);
+
+			if (ch < 0x80)
+			{
+				result.push_back(static_cast<char>(ch));
+			}
+			else if (ch < 0x800)
+			{
+				result.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+				result.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+			}
+			else if (ch >= 0xD800 && ch <= 0xDBFF && i + 1 < wstr.size())
+			{
+				// Surrogate pair → U+10000..U+10FFFF
+				const auto lo = static_cast<uint32_t>(wstr[++i]);
+				if (lo >= 0xDC00 && lo <= 0xDFFF)
+				{
+					const uint32_t cp = 0x10000 + ((ch - 0xD800) << 10) + (lo - 0xDC00);
+					result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+					result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+					result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+					result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+				}
+			}
+			else
+			{
+				result.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+				result.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+				result.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+			}
+		}
+
+		return result;
+	}
+
+	std::wstring utf8_to_utf16(const std::string_view str)
+	{
+		std::wstring result;
+		result.reserve(str.size()); // optimistic: mostly ASCII
+
+		for (size_t i = 0; i < str.size();)
+		{
+			const auto b0 = static_cast<uint8_t>(str[i]);
+
+			if (b0 < 0x80)
+			{
+				result.push_back(b0);
+				++i;
+			}
+			else if ((b0 & 0xE0) == 0xC0 && i + 1 < str.size())
+			{
+				const auto cp = ((b0 & 0x1F) << 6)
+					| (static_cast<uint8_t>(str[i + 1]) & 0x3F);
+				result.push_back(static_cast<wchar_t>(cp));
+				i += 2;
+			}
+			else if ((b0 & 0xF0) == 0xE0 && i + 2 < str.size())
+			{
+				const auto cp = ((b0 & 0x0F) << 12)
+					| ((static_cast<uint8_t>(str[i + 1]) & 0x3F) << 6)
+					| (static_cast<uint8_t>(str[i + 2]) & 0x3F);
+				result.push_back(static_cast<wchar_t>(cp));
+				i += 3;
+			}
+			else if ((b0 & 0xF8) == 0xF0 && i + 3 < str.size())
+			{
+				// 4-byte → surrogate pair
+				const uint32_t cp = ((b0 & 0x07) << 18)
+					| ((static_cast<uint8_t>(str[i + 1]) & 0x3F) << 12)
+					| ((static_cast<uint8_t>(str[i + 2]) & 0x3F) << 6)
+					| (static_cast<uint8_t>(str[i + 3]) & 0x3F);
+				const uint32_t adj = cp - 0x10000;
+				result.push_back(static_cast<wchar_t>(0xD800 + (adj >> 10)));
+				result.push_back(static_cast<wchar_t>(0xDC00 + (adj & 0x3FF)));
+				i += 4;
+			}
+			else
+			{
+				++i; // skip invalid byte
+			}
+		}
+
+		return result;
+	}
+} // namespace str
 
 constexpr uint8_t F(const uint8_t x)
 {
-	return (((x) << 1) ^ ((((x) >> 7) & 1) * 0x1b));
+	return x << 1 ^ (x >> 7 & 1) * 0x1b;
 }
 
 constexpr uint8_t FD(const uint8_t x)
 {
-	return (((x) >> 1) ^ (((x) & 1) ? 0x8d : 0));
+	return x >> 1 ^ (x & 1 ? 0x8d : 0);
 }
 
 const uint8_t sbox[256] = {
@@ -87,46 +184,40 @@ const uint8_t sboxinv[256] = {
 #define rj_sbox_inv(x) sboxinv[(x)]
 
 
-/* -------------------------------------------------------------------------- */
-static uint8_t rj_xtime(uint8_t x)
+static uint8_t rj_xtime(const uint8_t x)
 {
-	return (x & 0x80) ? ((x << 1) ^ 0x1b) : (x << 1);
-} /* rj_xtime */
+	return x & 0x80 ? x << 1 ^ 0x1b : x << 1;
+}
 
-/* -------------------------------------------------------------------------- */
 static void aes_subBytes(uint8_t* buf)
 {
 	uint8_t i = 16;
 
 	while (i--) buf[i] = rj_sbox(buf[i]);
-} /* aes_subBytes */
+}
 
-/* -------------------------------------------------------------------------- */
 static void aes_subBytes_inv(uint8_t* buf)
 {
 	uint8_t i = 16;
 
 	while (i--) buf[i] = rj_sbox_inv(buf[i]);
-} /* aes_subBytes_inv */
+}
 
-/* -------------------------------------------------------------------------- */
-static void aes_addRoundKey(uint8_t* buf, uint8_t* key)
+static void aes_addRoundKey(uint8_t* buf, const uint8_t* key)
 {
 	uint8_t i = 16;
 
 	while (i--) buf[i] ^= key[i];
-} /* aes_addRoundKey */
+}
 
-/* -------------------------------------------------------------------------- */
-static void aes_addRoundKey_cpy(uint8_t* buf, uint8_t* key, uint8_t* cpk)
+static void aes_addRoundKey_cpy(uint8_t* buf, const uint8_t* key, uint8_t* cpk)
 {
 	uint8_t i = 16;
 
-	while (i--) buf[i] ^= (cpk[i] = key[i]), cpk[16 + i] = key[16 + i];
-} /* aes_addRoundKey_cpy */
+	while (i--) buf[i] ^= cpk[i] = key[i], cpk[16 + i] = key[16 + i];
+}
 
 
-/* -------------------------------------------------------------------------- */
 static void aes_shiftRows(uint8_t* buf)
 {
 	uint8_t i = buf[1];
@@ -147,7 +238,6 @@ static void aes_shiftRows(uint8_t* buf)
 	buf[6] = j;
 } /* aes_shiftRows */
 
-/* -------------------------------------------------------------------------- */
 static void aes_shiftRows_inv(uint8_t* buf)
 {
 	uint8_t i = buf[1];
@@ -168,7 +258,6 @@ static void aes_shiftRows_inv(uint8_t* buf)
 	buf[14] = j;
 } /* aes_shiftRows_inv */
 
-/* -------------------------------------------------------------------------- */
 static void aes_mixColumns(uint8_t* buf)
 {
 	for (uint8_t i = 0; i < 16; i += 4)
@@ -185,7 +274,6 @@ static void aes_mixColumns(uint8_t* buf)
 	}
 } /* aes_mixColumns */
 
-/* -------------------------------------------------------------------------- */
 static void aes_mixColumns_inv(uint8_t* buf)
 {
 	for (uint8_t i = 0; i < 16; i += 4)
@@ -205,12 +293,11 @@ static void aes_mixColumns_inv(uint8_t* buf)
 	}
 } /* aes_mixColumns_inv */
 
-/* -------------------------------------------------------------------------- */
 static void aes_expandEncKey(uint8_t* k, uint8_t* rc)
 {
 	uint8_t i;
 
-	k[0] ^= rj_sbox(k[29]) ^ (*rc);
+	k[0] ^= rj_sbox(k[29]) ^ *rc;
 	k[1] ^= rj_sbox(k[30]);
 	k[2] ^= rj_sbox(k[31]);
 	k[3] ^= rj_sbox(k[28]);
@@ -229,7 +316,6 @@ static void aes_expandEncKey(uint8_t* k, uint8_t* rc)
 			k[i + 2] ^= k[i - 2], k[i + 3] ^= k[i - 1];
 } /* aes_expandEncKey */
 
-/* -------------------------------------------------------------------------- */
 static void aes_expandDecKey(uint8_t* k, uint8_t* rc)
 {
 	uint8_t i;
@@ -248,40 +334,31 @@ static void aes_expandDecKey(uint8_t* k, uint8_t* rc)
 			k[i + 2] ^= k[i - 2], k[i + 3] ^= k[i - 1];
 
 	*rc = FD(*rc);
-	k[0] ^= rj_sbox(k[29]) ^ (*rc);
+	k[0] ^= rj_sbox(k[29]) ^ *rc;
 	k[1] ^= rj_sbox(k[30]);
 	k[2] ^= rj_sbox(k[31]);
 	k[3] ^= rj_sbox(k[28]);
 } /* aes_expandDecKey */
 
 
-/* -------------------------------------------------------------------------- */
-aes256::aes256(uint8_t* k)
+aes256::aes256(const std::span<const uint8_t> k)
 {
+	assert(k.size() >= 32);
 	uint8_t rcon = 1;
-	uint8_t i;
 
-	for (i = 0; i < sizeof(key); i++) enckey[i] = deckey[i] = k[i];
-	for (i = 8; --i;) aes_expandEncKey(deckey, &rcon);
+	std::copy_n(k.data(), sizeof(key), key);
+	std::copy_n(k.data(), sizeof(key), enckey);
+	std::copy_n(k.data(), sizeof(key), deckey);
+	for (uint8_t i = 8; --i;) aes_expandEncKey(deckey, &rcon);
 } /* aes256_init */
 
-aes256::aes256(const std::vector<uint8_t>& k)
-{
-	uint8_t rcon = 1;
-	uint8_t i;
-
-	for (i = 0; i < sizeof(key); i++) enckey[i] = deckey[i] = k[i];
-	for (i = 8; --i;) aes_expandEncKey(deckey, &rcon);
-} /* aes256_init */
-
-/* -------------------------------------------------------------------------- */
 aes256::~aes256()
 {
-	for (uint8_t i = 0; i < sizeof(key); i++)
-		key[i] = enckey[i] = deckey[i] = 0;
+	std::ranges::fill(key, uint8_t{0});
+	std::ranges::fill(enckey, uint8_t{0});
+	std::ranges::fill(deckey, uint8_t{0});
 } /* aes256_done */
 
-/* -------------------------------------------------------------------------- */
 void aes256::encrypt_ecb(uint8_t* buf)
 {
 	uint8_t i, rcon;
@@ -301,7 +378,6 @@ void aes256::encrypt_ecb(uint8_t* buf)
 	aes_addRoundKey(buf, key);
 } /* aes256_encrypt */
 
-/* -------------------------------------------------------------------------- */
 void aes256::decrypt_ecb(uint8_t* buf)
 {
 	uint8_t i, rcon;
@@ -312,7 +388,7 @@ void aes256::decrypt_ecb(uint8_t* buf)
 
 	for (i = 14, rcon = 0x80; --i;)
 	{
-		if ((i & 1))
+		if (i & 1)
 		{
 			aes_expandDecKey(key, &rcon);
 			aes_addRoundKey(buf, &key[16]);
@@ -496,16 +572,18 @@ void sha256::update(const uint8_t* input, size_t length)
 	uint32_t left = total[0] & 0x3F;
 	const uint32_t fill = 64 - left;
 
-	total[0] += length;
+	const auto prev_total0 = total[0];
+	total[0] += static_cast<uint32_t>(length);
 	total[0] &= 0xFFFFFFFF;
 
-	if (total[0] < length)
+	if (total[0] < prev_total0)
 		total[1]++;
+
+	total[1] += static_cast<uint32_t>(length >> 32);
 
 	if (left && length >= fill)
 	{
-		memcpy(buffer + left,
-		       input, fill);
+		std::copy_n(input, fill, buffer + left);
 		process(buffer);
 		length -= fill;
 		input += fill;
@@ -521,11 +599,11 @@ void sha256::update(const uint8_t* input, size_t length)
 
 	if (length)
 	{
-		memcpy(buffer + left, input, length);
+		std::copy_n(input, length, buffer + left);
 	}
 }
 
-static uint8_t sha256_padding[64] =
+static const uint8_t sha256_padding[64] =
 {
 	0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -537,15 +615,15 @@ void sha256::finish(uint8_t digest[32])
 {
 	uint8_t msglen[8];
 
-	const uint32_t high = (total[0] >> 29)
-		| (total[1] << 3);
-	const uint32_t low = (total[0] << 3);
+	const uint32_t high = total[0] >> 29
+		| total[1] << 3;
+	const uint32_t low = total[0] << 3;
 
 	PUT_UINT32(high, msglen, 0);
 	PUT_UINT32(low, msglen, 4);
 
 	const uint32_t last = total[0] & 0x3F;
-	const uint32_t padn = (last < 56) ? (56 - last) : (120 - last);
+	const uint32_t padn = last < 56 ? 56 - last : 120 - last;
 
 	update(sha256_padding, padn);
 	update(msglen, 8);
@@ -558,4 +636,197 @@ void sha256::finish(uint8_t digest[32])
 	PUT_UINT32(state[5], digest, 20);
 	PUT_UINT32(state[6], digest, 24);
 	PUT_UINT32(state[7], digest, 28);
+}
+
+#undef GET_UINT32
+#undef PUT_UINT32
+#undef SHR
+#undef ROTR
+#undef S0
+#undef S1
+#undef S2
+#undef S3
+#undef F0
+#undef F1
+#undef R
+#undef P
+
+// ── String utilities ────────────────────────────────────────────────────────────
+
+namespace str
+{
+	size_t find_in_text(const std::wstring_view text, const std::wstring_view pattern, const bool match_case)
+	{
+		if (text.empty()) return std::wstring_view::npos;
+		if (pattern.empty()) return std::wstring_view::npos;
+
+		const auto text_len = text.size();
+		const auto pat_len = pattern.size();
+
+		if (pat_len > text_len) return std::wstring_view::npos;
+
+		for (size_t pos = 0; pos <= text_len - pat_len; ++pos)
+		{
+			bool found = true;
+			for (size_t j = 0; j < pat_len; ++j)
+			{
+				const auto tc = text[pos + j];
+				const auto pc = pattern[j];
+				if (tc != pc && (match_case || to_lower(tc) != to_lower(pc)))
+				{
+					found = false;
+					break;
+				}
+			}
+			if (found) return pos;
+		}
+		return std::wstring_view::npos;
+	}
+
+	std::wstring combine(const std::vector<std::wstring>& lines, const std::wstring_view endl)
+	{
+		return join(lines, [](const std::wstring& s) -> std::wstring_view { return s; }, endl);
+	}
+
+	std::wstring replace(const std::wstring_view s, const std::wstring_view find,
+	                     const std::wstring_view replacement)
+	{
+		std::wstring result(s);
+		size_t pos = 0;
+		const auto findLength = find.size();
+		const auto replacementLength = replacement.size();
+
+		while ((pos = result.find(find, pos)) != std::wstring::npos)
+		{
+			result.replace(pos, findLength, replacement);
+			pos += replacementLength;
+		}
+
+		return result;
+	}
+} // namespace str
+
+// ── Encoding / hashing ─────────────────────────────────────────────────────────
+
+std::wstring to_base64(const std::span<const uint8_t> input)
+{
+	static const std::string base64_chars =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"abcdefghijklmnopqrstuvwxyz"
+		"0123456789+/";
+
+	std::wstring ret;
+	int i = 0;
+	int j = 0;
+	uint8_t char_array_3[3];
+	uint8_t char_array_4[4];
+
+	for (const auto byte : input)
+	{
+		char_array_3[i++] = byte;
+		if (i == 3)
+		{
+			char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+			char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+			char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+			char_array_4[3] = char_array_3[2] & 0x3f;
+
+			for (i = 0; i < 4; i++)
+				ret += base64_chars[char_array_4[i]];
+			i = 0;
+		}
+	}
+
+	if (i)
+	{
+		for (j = i; j < 3; j++)
+			char_array_3[j] = '\0';
+
+		char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+		char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+		char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+		char_array_4[3] = char_array_3[2] & 0x3f;
+
+		for (j = 0; j < i + 1; j++)
+			ret += base64_chars[char_array_4[j]];
+
+		while (i++ < 3)
+			ret += '=';
+	}
+
+	return ret;
+}
+
+std::wstring to_hex(const std::span<const uint8_t> src)
+{
+	static constexpr wchar_t digits[] = L"0123456789abcdef";
+	std::wstring result;
+	result.reserve(src.size() * 2);
+
+	for (const auto ch : src)
+	{
+		result += digits[(ch & 0xf0) >> 4];
+		result += digits[ch & 0x0f];
+	}
+
+	return result;
+}
+
+std::vector<uint8_t> hex_to_data(const std::wstring_view text)
+{
+	std::vector<uint8_t> result;
+
+	auto high_part = text.size() % 2 == 0;
+
+	if (!high_part)
+		result.push_back(0);
+
+	for (const auto c : text)
+	{
+		if (high_part)
+			result.push_back(0x10 * char_to_hex(c));
+		else
+			result.back() += char_to_hex(c);
+
+		high_part = !high_part;
+	}
+
+	return result;
+}
+
+std::vector<uint8_t> calc_sha256(const std::string_view text)
+{
+	uint8_t result[32];
+
+	sha256 h;
+	h.update(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+	h.finish(result);
+
+	return {result, result + 32};
+}
+
+uint32_t fnv1a_i(const std::wstring_view sv)
+{
+	uint32_t result = OFFSET_BASIS_32;
+
+	for (const auto s : sv)
+	{
+		result ^= str::to_lower(s);
+		result *= FNV_PRIME_32;
+	}
+
+	return result;
+}
+
+uint64_t fnv1a_i_64(const std::wstring_view sv)
+{
+	uint64_t result = OFFSET_BASIS_64;
+
+	for (const auto s : sv)
+	{
+		result ^= static_cast<uint64_t>(str::to_lower(s));
+		result *= FNV_PRIME_64;
+	}
+
+	return result;
 }

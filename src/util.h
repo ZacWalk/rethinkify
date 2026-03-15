@@ -1,57 +1,28 @@
 #pragma once
 
+// util.h — Core utilities: string ops, geometry types (ipoint/isize/irect),
+// AES-256 encryption, SHA-256 hashing, base64/hex encoding
+
 namespace str
 {
-	inline std::string utf16_to_utf8(std::wstring_view wstr)
-	{
-		const auto size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
-			nullptr, nullptr);
-		std::string result(size_needed, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), size_needed, nullptr,
-			nullptr);
-		return result;
-	}
-
-	inline std::wstring utf8_to_utf16(std::string_view str)
-	{
-		const int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
-		std::wstring result(size_needed, 0);
-		MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), size_needed);
-		return result;
-	}
-
-	inline std::string utf16_to_ascii(std::wstring_view wstr)
-	{
-		const auto size_needed = WideCharToMultiByte(CP_ACP, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0,
-			nullptr, nullptr);
-		std::string result(size_needed, 0);
-		WideCharToMultiByte(CP_ACP, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), size_needed, nullptr,
-			nullptr);
-		return result;
-	}
-
-	inline std::wstring ascii_to_utf16(std::string_view str)
-	{
-		const auto size_needed = MultiByteToWideChar(CP_ACP, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
-		std::wstring result(size_needed, 0);
-		MultiByteToWideChar(CP_ACP, 0, str.data(), static_cast<int>(str.size()), result.data(), size_needed);
-		return result;
-	}
+	// String conversions (implemented in util.cpp)
+	std::string utf16_to_utf8(std::wstring_view wstr);
+	std::wstring utf8_to_utf16(std::string_view str);
 
 	constexpr int to_lower(const wint_t c)
 	{
-		if (c < 128) return ((c >= L'A') && (c <= L'Z')) ? c - L'A' + L'a' : c;
+		if (c < 128) return c >= L'A' && c <= L'Z' ? c - L'A' + L'a' : c;
 		if (c > USHRT_MAX) return c;
 		return towlower(c);
 	}
 
-	inline std::wstring_view unquote(std::wstring_view text)
+	[[nodiscard]] constexpr std::wstring_view unquote(const std::wstring_view text)
 	{
-		if (text.size() > 1 && *text.begin() == '"' && *text.rbegin() == '"')
+		if (text.size() > 1 && text.front() == '"' && text.back() == '"')
 		{
 			return text.substr(1, text.length() - 2);
 		}
-		if (text.size() > 1 && *text.begin() == '\'' && *text.rbegin() == '\'')
+		if (text.size() > 1 && text.front() == '\'' && text.back() == '\'')
 		{
 			return text.substr(1, text.length() - 2);
 		}
@@ -59,11 +30,11 @@ namespace str
 		return text;
 	}
 
-	constexpr int icmp(const std::wstring_view ll, const std::wstring_view rr)
+	[[nodiscard]] constexpr int icmp(const std::wstring_view ll, const std::wstring_view rr)
 	{
 		if (ll.data() == rr.data() || (ll.empty() && rr.empty())) return 0;
-		if (ll.empty()) return 1;
-		if (rr.empty()) return -1;
+		if (ll.empty()) return -1;
+		if (rr.empty()) return 1;
 
 		auto cl = 0;
 		auto cr = 0;
@@ -86,194 +57,130 @@ namespace str
 		return cl - cr;
 	}
 
-	static inline size_t find_in_text(std::wstring_view text, std::wstring_view pattern)
+	[[nodiscard]] size_t find_in_text(std::wstring_view text, std::wstring_view pattern, bool match_case = false);
+
+	template <typename T, typename Fn>
+	std::wstring join(const std::vector<T>& items, Fn text_of, const std::wstring_view endl = L"\n")
 	{
-		auto t = text.begin();
-		auto p = pattern.begin();
-		size_t pos = 0;
-
-		if (text.empty()) return std::wstring_view::npos;
-		if (pattern.empty()) return std::wstring_view::npos;
-
-		do
+		if (items.empty())
 		{
-			if (p == pattern.end()) return pos;
-			if (t == text.end()) return std::wstring_view::npos;
-
-			if ((*p == *t) || (towlower(*p) == towlower(*t)))
-			{
-				++p;
-				++t;
-			}
-			else
-			{
-				p = pattern.begin();
-				text = text.substr(1);
-				pos += 1;
-				if (text.empty()) return std::wstring_view::npos;
-				t = text.begin();
-			}
-		} while (true);
-	}
-
-	static inline std::wstring combine(const std::vector<std::wstring>& lines, std::wstring_view endl = L"\n")
-	{
-		if (lines.size() == 1)
-		{
-			return lines[0];
+			return {};
 		}
-		std::wostringstream result;
+
+		if (items.size() == 1)
+		{
+			return std::wstring(text_of(items[0]));
+		}
+
+		size_t total = 0;
+		for (const auto& item : items)
+			total += text_of(item).size();
+		total += (items.size() - 1) * endl.size();
+
+		std::wstring result;
+		result.reserve(total);
 		auto first = true;
 
-		for (const auto& line : lines)
+		for (const auto& item : items)
 		{
 			if (first)
 			{
-				result << line;
+				result.append(text_of(item));
 				first = false;
 			}
 			else
 			{
-				result << std::endl << line;
+				result.append(endl);
+				result.append(text_of(item));
 			}
-		}
-
-		return result.str();
-	}
-
-	static inline std::wstring replace(std::wstring_view s, std::wstring_view find, std::wstring_view replacement)
-	{
-		std::wstring result(s);
-		size_t pos = 0;
-		const auto findLength = find.size();
-		const auto replacementLength = replacement.size();
-
-		while ((pos = result.find(find, pos)) != std::wstring::npos)
-		{
-			result.replace(pos, findLength, replacement);
-			pos += replacementLength;
 		}
 
 		return result;
 	}
 
-	static std::wstring_view to_str(const bool val)
+	[[nodiscard]] std::wstring combine(const std::vector<std::wstring>& lines, std::wstring_view endl = L"\n");
+
+	[[nodiscard]] std::wstring replace(std::wstring_view s, std::wstring_view find, std::wstring_view replacement);
+
+	[[nodiscard]] constexpr std::wstring_view to_str(const bool val)
 	{
 		return val ? L"true" : L"false";
 	}
 
-	static std::wstring to_str(const int val)
+	[[nodiscard]] inline std::wstring to_str(const int val)
 	{
-		static constexpr int size = 64;
-		wchar_t sz[size];
-		_itow_s(val, sz, size, 10);
-		return sz;
+		return std::to_wstring(val);
 	}
 
-	constexpr int last_char(const std::wstring_view sv)
+	[[nodiscard]] constexpr int last_char(const std::wstring_view sv)
 	{
 		if (sv.empty()) return 0;
 		return sv.back();
 	}
 
-	constexpr bool is_empty(const wchar_t* sz)
+	[[nodiscard]] constexpr bool is_empty(const wchar_t* sz)
 	{
 		return sz == nullptr || sz[0] == 0;
 	}
-
-	
 };
 
 
-class ipoint : public POINT
+class ipoint
 {
 public:
-	ipoint(int xx = 0, int yy = 0)
+	int32_t x = 0, y = 0;
+
+	constexpr ipoint(const int xx = 0, const int yy = 0) : x(xx), y(yy)
 	{
-		x = xx;
-		y = yy;
 	}
 
-	ipoint(const POINTL& other)
-	{
-		x = other.x;
-		y = other.y;
-	}
+	bool operator==(const ipoint& other) const = default;
 
-	bool operator==(const ipoint& other) const
-	{
-		return x == other.x && y == other.y;
-	}
-
-	bool operator!=(const ipoint& other) const
-	{
-		return x != other.x && y != other.y;
-	}
-
-	ipoint operator -() const
+	constexpr ipoint operator -() const
 	{
 		return ipoint(-x, -y);
 	}
 
-	ipoint operator +(const POINT& point) const
+	constexpr ipoint operator +(const ipoint& point) const
 	{
 		return ipoint(x + point.x, y + point.y);
 	}
 };
 
-class isize : public SIZE
+class isize
 {
 public:
-	isize(int xx = 0, int yy = 0)
+	int32_t cx = 0, cy = 0;
+
+	constexpr isize(const int xx = 0, const int yy = 0) : cx(xx), cy(yy)
 	{
-		cx = xx;
-		cy = yy;
 	}
 
-	bool operator==(const isize& other) const
-	{
-		return cx == other.cx && cy == other.cy;
-	}
-
-	bool operator!=(const isize& other) const
-	{
-		return cx != other.cx && cy != other.cy;
-	}
+	bool operator==(const isize& other) const = default;
 };
 
 
-class irect : public RECT
+class irect
 {
 public:
-	irect(int l = 0, int t = 0, int r = 0, int b = 0)
+	int32_t left = 0, top = 0, right = 0, bottom = 0;
+
+	irect(const int l = 0, const int t = 0, const int r = 0, const int b = 0)
+		: left(l), top(t), right(r), bottom(b)
 	{
-		left = l;
-		top = t;
-		right = r;
-		bottom = b;
 	}
 
-	int Width() const
+	[[nodiscard]] int Width() const
 	{
 		return right - left;
 	};
 
-	int Height() const
+	[[nodiscard]] int Height() const
 	{
 		return bottom - top;
 	};
 
-	operator LPRECT()
-	{
-		return this;
-	}
-
-	operator LPCRECT() const
-	{
-		return this;
-	}
-
-	void OffsetRect(int x, int y)
+	void OffsetRect(const int x, const int y)
 	{
 		left += x;
 		top += y;
@@ -281,17 +188,17 @@ public:
 		bottom += y;
 	}
 
-	inline irect Offset(const ipoint& pt) const
+	[[nodiscard]] irect Offset(const ipoint& pt) const
 	{
 		return irect(left + pt.x, top + pt.y, right + pt.x, bottom + pt.y);
 	}
 
-	inline irect Offset(int x, int y) const
+	[[nodiscard]] irect Offset(const int x, const int y) const
 	{
 		return irect(left + x, top + y, right + x, bottom + y);
 	}
 
-	inline bool Intersects(const irect& other) const
+	[[nodiscard]] bool Intersects(const irect& other) const
 	{
 		return left < other.right &&
 			top < other.bottom &&
@@ -299,45 +206,40 @@ public:
 			bottom > other.top;
 	}
 
-	inline irect Inflate(int xy) const
+	[[nodiscard]] irect Inflate(const int xy) const
 	{
 		return irect(left - xy, top - xy, right + xy, bottom + xy);
 	}
 
-	inline irect Inflate(int x, int y) const
+	[[nodiscard]] irect Inflate(const int x, const int y) const
 	{
 		return irect(left - x, top - y, right + x, bottom + y);
 	}
 
-	inline irect Inflate(const isize& s) const
+	[[nodiscard]] irect Inflate(const isize& s) const
 	{
 		return irect(left - s.cx, top - s.cy, right + s.cx, bottom + s.cy);
 	}
 
-	inline bool Contains(const POINT& point) const
+	[[nodiscard]] bool Contains(const ipoint& point) const
 	{
 		return left <= point.x && right >= point.x && top <= point.y && bottom >= point.y;
 	}
 };
 
-inline int clamp(int v, int l, int r)
+[[nodiscard]] constexpr int clamp(const int v, const int lo, const int hi)
 {
-	if (v < l) return l;
-	if (r < l) return l;
-	if (v > r) return r;
-	return v;
+	return std::clamp(v, lo, std::max(lo, hi));
 }
 
 class aes256
 {
-private:
 	uint8_t key[32];
 	uint8_t enckey[32];
 	uint8_t deckey[32];
 
 public:
-	aes256(uint8_t* key);
-	aes256(const std::vector<uint8_t>& key);
+	explicit aes256(std::span<const uint8_t> key);
 	~aes256();
 
 	void encrypt_ecb(uint8_t* /* plaintext */);
@@ -346,7 +248,6 @@ public:
 
 class sha256
 {
-private:
 	uint32_t total[2];
 	uint32_t state[8];
 	uint8_t buffer[64];
@@ -359,137 +260,218 @@ public:
 	void finish(uint8_t digest[32]);
 };
 
-inline std::wstring to_base64(const uint8_t* bytes_to_encode, size_t in_len)
-{
-	static const std::string base64_chars =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-		"abcdefghijklmnopqrstuvwxyz"
-		"0123456789+/";
+[[nodiscard]] std::wstring to_base64(std::span<const uint8_t> input);
 
-	std::wstring ret;
-	int i = 0;
-	int j = 0;
-	uint8_t char_array_3[3];
-	uint8_t char_array_4[4];
+[[nodiscard]] std::wstring to_hex(std::span<const uint8_t> src);
 
-	while (in_len--)
-	{
-		char_array_3[i++] = *(bytes_to_encode++);
-		if (i == 3)
-		{
-			char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-			char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-			char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-			char_array_4[3] = char_array_3[2] & 0x3f;
-
-			for (i = 0; (i < 4); i++)
-				ret += base64_chars[char_array_4[i]];
-			i = 0;
-		}
-	}
-
-	if (i)
-	{
-		for (j = i; j < 3; j++)
-			char_array_3[j] = '\0';
-
-		char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-		char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-		char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-		char_array_4[3] = char_array_3[2] & 0x3f;
-
-		for (j = 0; (j < i + 1); j++)
-			ret += base64_chars[char_array_4[j]];
-
-		while ((i++ < 3))
-			ret += '=';
-	}
-
-	return ret;
-}
-
-inline std::wstring to_hex(const uint8_t* src, size_t len)
-{
-	static wchar_t digits[] = L"0123456789abcdef";
-	size_t n = 0, sn = 0;
-	std::wstring result;
-
-	while (sn < len)
-	{
-		const auto ch = src[sn++];
-		result += digits[(ch & 0xf0) >> 4];
-		result += digits[ch & 0x0f];
-	}
-
-	return result;
-}
-
-inline std::wstring to_hex(const std::vector<uint8_t>& src)
-{
-	static wchar_t digits[] = L"0123456789abcdef";
-	std::wstring result;
-
-	for (const auto ch : src)
-	{
-		result += digits[(ch & 0xf0) >> 4];
-		result += digits[ch & 0x0f];
-	}
-
-	return result;
-}
-
-inline int char_to_hex(const wchar_t c)
+[[nodiscard]] constexpr int char_to_hex(const wchar_t c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return 0;
 }
 
-inline std::vector<uint8_t> hex_to_data(const std::wstring_view text)
-{
-	std::vector<uint8_t> result;
+[[nodiscard]] std::vector<uint8_t> hex_to_data(std::wstring_view text);
 
-	auto high_part = ((text.size() % 2) == 0);
-
-	if (!high_part)
-		result.push_back(0);
-	
-	for (const auto c : text)
-	{
-		if (high_part)
-			result.push_back(0x10 * char_to_hex(c));
-		else
-			result.back() += char_to_hex(c);
-
-		high_part = !high_part;
-	}
-
-	return result;
-}
-
-inline std::vector<uint8_t> calc_sha256(const std::string_view text)
-{
-	uint8_t result[32];
-
-	sha256 h;
-	h.update((const uint8_t*)text.data(), text.size());
-	h.finish(result);
-
-	return { result, result + 32 };
-}
+std::vector<uint8_t> calc_sha256(std::string_view text);
 
 static constexpr uint32_t FNV_PRIME_32 = 16777619u;
 static constexpr uint32_t OFFSET_BASIS_32 = 2166136261u;
 
-inline uint32_t fnv1a_i(const std::wstring_view sv)
-{
-	uint32_t result = OFFSET_BASIS_32;
+uint32_t fnv1a_i(std::wstring_view sv);
 
-	for (const auto s : sv)
+static constexpr uint64_t FNV_PRIME_64 = 1099511628211ULL;
+static constexpr uint64_t OFFSET_BASIS_64 = 14695981039346656037ULL;
+
+uint64_t fnv1a_i_64(std::wstring_view sv);
+
+struct color_t
+{
+	uint8_t r = 0;
+	uint8_t g = 0;
+	uint8_t b = 0;
+
+	constexpr color_t() = default;
+
+	constexpr color_t(const uint8_t r, const uint8_t g, const uint8_t b) : r(r), g(g), b(b)
 	{
-		result ^= str::to_lower(s);
-		result *= FNV_PRIME_32;
 	}
 
-	return result;
-}
+	bool operator==(const color_t&) const = default;
+	auto operator<=>(const color_t&) const = default;
+
+	[[nodiscard]] constexpr uint32_t rgb() const
+	{
+		return (r & 0xff) | (g & 0xff) << 8 | (b & 0xff) << 16;
+	}
+
+	static constexpr uint8_t clamp_byte(const int n)
+	{
+		return static_cast<uint8_t>(n > 255 ? 255 : n < 0 ? 0 : n);
+	}
+
+	[[nodiscard]] constexpr color_t lighten(const int n = 32) const
+	{
+		return {clamp_byte(r + n), clamp_byte(g + n), clamp_byte(b + n)};
+	}
+
+	[[nodiscard]] constexpr color_t darken(const int n = 32) const
+	{
+		return lighten(-n);
+	}
+
+	[[nodiscard]] constexpr color_t emphasize(const int n = 48) const
+	{
+		const bool is_light = r > 0x80 || g > 0x80 || b > 0x80;
+		return lighten(is_light ? -n : n);
+	}
+};
+
+
+class file_path
+{
+	std::wstring _path;
+
+public:
+	file_path(const std::wstring_view path) : _path(path)
+	{
+	}
+
+	file_path() = default;
+
+	[[nodiscard]] const wchar_t* c_str() const
+	{
+		return _path.c_str();
+	}
+
+	[[nodiscard]] std::wstring_view view() const
+	{
+		return _path;
+	}
+
+	bool operator==(const file_path& other) const
+	{
+		return str::icmp(_path, other._path) == 0;
+	}
+
+
+	static constexpr std::wstring_view::size_type find_ext(const std::wstring_view path)
+	{
+		const auto last = path.find_last_of(L"./\\");
+		if (last == std::wstring_view::npos || path[last] != '.') return path.size();
+		return last;
+	}
+
+	static constexpr std::wstring_view::size_type find_last_slash(const std::wstring_view path)
+	{
+		const auto last = path.find_last_of(L"/\\");
+		if (last == std::wstring_view::npos) return 0;
+		return last + 1;
+	}
+
+	[[nodiscard]] std::wstring without_extension() const
+	{
+		return _path.substr(0, find_ext(_path));
+	}
+
+	[[nodiscard]] std::wstring extension() const
+	{
+		return _path.substr(find_ext(_path));
+	}
+
+	file_path combine(const std::wstring& name, const std::wstring& extension) const
+	{
+		const auto with_name = combine(name);
+		auto result = std::wstring{with_name.without_extension()};
+
+		if (!extension.empty())
+		{
+			if (extension[0] != L'.') result += L'.';
+			result += extension;
+		}
+		return file_path{result};
+	}
+
+	static constexpr bool is_path_sep(const wchar_t c)
+	{
+		return c == L'\\' || c == L'/';
+	}
+
+	[[nodiscard]] file_path combine(const std::wstring_view part) const
+	{
+		auto result = _path;
+
+		if (!part.empty())
+		{
+			if (!is_path_sep(str::last_char(result)) && !is_path_sep(part[0])) result += '\\';
+			result += part;
+		}
+		return file_path{result};
+	}
+
+	[[nodiscard]] bool exists() const;
+
+	[[nodiscard]] bool is_save_path() const
+	{
+		return _path.find_first_of(L"/\\") != std::wstring::npos;
+	}
+
+	[[nodiscard]] bool empty() const
+	{
+		return _path.empty();
+	}
+
+	[[nodiscard]] std::wstring name() const
+	{
+		return _path.substr(find_last_slash(_path));
+	}
+
+	[[nodiscard]] std::wstring folder() const
+	{
+		return _path.substr(0, find_last_slash(_path));
+	}
+
+	static file_path module_folder();
+
+	static file_path app_data_folder();
+};
+
+struct ihash
+{
+	size_t operator()(const file_path& path) const
+	{
+		return fnv1a_i(path.view());
+	}
+
+	size_t operator()(const std::wstring_view s) const
+	{
+		return fnv1a_i(s);
+	}
+};
+
+struct iless
+{
+	bool operator()(const file_path& l, const file_path& r) const
+	{
+		return str::icmp(l.view(), r.view()) < 0;
+	}
+
+	bool operator()(const std::wstring_view l, const std::wstring_view r) const
+	{
+		return str::icmp(l, r) < 0;
+	}
+};
+
+struct ieq
+{
+	bool operator()(const file_path& l, const file_path& r) const
+	{
+		return str::icmp(l.view(), r.view()) == 0;
+	}
+
+	bool operator()(const std::wstring_view l, const std::wstring_view r) const
+	{
+		return str::icmp(l, r) == 0;
+	}
+};

@@ -1,54 +1,35 @@
-// stdafx.h : include file for standard system include files,
-// or project specific include files that are used frequently, but
-// are changed infrequently
-//
+// pch.h — Precompiled header: standard library includes and global declarations
 
 #pragma once
 
-#include "targetver.h"
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cassert>
+#include <cstdio>
+#include <cstdarg>
 
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
-#define NOMINMAX 
-#define NOKERNEL
-#define NOSERVICE
-#define NOSOUND
-#define NOMCX
-
-// Windows Header Files:
-#include <windows.h>
-
-// C RunTime Header Files
-#include <stdint.h>
-#include <stdlib.h>
-#include <malloc.h>
-#include <memory.h>
-#include <tchar.h>
-#include <assert.h>
-#include <stdio.h>
-#include <stdarg.h>
-
-#include <vector>
-#include <map>
-#include <set>
-#include <string>
 #include <algorithm>
-#include <locale>
-#include <iostream>
-#include <sstream>
-#include <iostream>
-#include <iomanip>
+#include <atomic>
 #include <chrono>
-#include <memory>
+#include <compare>
+#include <format>
+#include <fstream>
 #include <functional>
-#include <fstream>
-#include <sstream>
 #include <iomanip>
-#include <fstream>
+#include <iostream>
+#include <locale>
+#include <map>
+#include <memory>
+#include <ranges>
+#include <set>
 #include <span>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-#include <OleIdl.h>
-#include <Shlobj.h>
-#include <Shlwapi.h>
-#include <commdlg.h>
 
 extern const wchar_t* g_app_name;

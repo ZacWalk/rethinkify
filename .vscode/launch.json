@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Rethinkify (Debug x64)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Exe/rethinkify64d.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/Exe",
+            "preLaunchTask": "Build Rethinkify"
+        }
+    ]
+}

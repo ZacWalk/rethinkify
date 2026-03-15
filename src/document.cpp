@@ -1,18 +1,104 @@
+// document.cpp — Document model implementation: text manipulation, undo/redo, file I/O
+
 #include "pch.h"
+#include "platform.h"
+#include "app.h"
 #include "document.h"
 
+// Standalone spell checker state — shared across all documents
+static std::unique_ptr<pf::spell_checker> s_checker;
+static std::unordered_map<uint64_t, bool> s_spell_cache;
 
-const TCHAR crlf[] = _T("\r\n");
+static void ensure_spell_checker()
+{
+	if (!s_checker)
+		s_checker = pf::create_spell_checker();
+}
 
-static auto s_textHighlighter = std::make_shared<text_highight>();
-static auto s_cppHighlighter = std::make_shared<cpp_highlight>();
+bool spell_check_word(const std::wstring_view word)
+{
+	ensure_spell_checker();
+	if (!s_checker) return true;
 
-document::document(IView& view, const std::wstring& text, line_endings nCrlfStyle) : _view(view),
-	_highlight(s_textHighlighter)
+	const auto key = fnv1a_i_64(word);
+	const auto it = s_spell_cache.find(key);
+	if (it != s_spell_cache.end()) return it->second;
+
+	const auto valid = s_checker->is_word_valid(word);
+	s_spell_cache[key] = valid;
+	return valid;
+}
+
+std::vector<std::wstring> spell_suggest(const std::wstring_view word)
+{
+	ensure_spell_checker();
+	if (s_checker) return s_checker->suggest(word);
+	return {};
+}
+
+void spell_add_word(const std::wstring_view word)
+{
+	ensure_spell_checker();
+	if (s_checker)
+	{
+		s_checker->add_word(word);
+		s_spell_cache[fnv1a_i_64(word)] = true;
+	}
+}
+
+loaded_file_data load_lines(const file_path& path)
+{
+	loaded_file_data data;
+	const auto hFile = pf::open_for_read(path);
+
+	if (hFile != nullptr)
+	{
+		if (is_binary_file(path))
+		{
+			uint8_t line[16];
+			uint32_t readLen = 0;
+
+			while (hFile->read(line, 16, &readLen) && readLen > 0)
+			{
+				std::wstring linew(readLen, L'\0');
+
+				for (uint32_t i = 0; i < readLen; ++i)
+				{
+					linew[i] = line[i];
+				}
+				data.lines.emplace_back(std::move(linew));
+			}
+
+			data.endings = line_endings::binary;
+			data.encoding = file_encoding::binary;
+		}
+		else
+		{
+			const auto info = iterate_file_lines(hFile, [&data](const std::wstring& line, int)
+			{
+				data.lines.emplace_back(line);
+			});
+
+			data.endings = info.endings;
+			data.encoding = info.enc;
+		}
+
+		data.disk_modified_time = pf::file_modified_time(path);
+	}
+
+	return data;
+}
+
+document::document(document_events& events, const std::wstring_view text,
+                   const bool is_overlay,
+                   const line_endings nCrlfStyle) :
+	_events(events),
+	_is_overlay(is_overlay)
 {
 	_modified = false;
 	_create_backup_file = false;
 	_undo_pos = 0;
+	_saved_undo_pos = 0;
 	_line_ending = nCrlfStyle;
 
 	if (text.empty())
@@ -21,55 +107,32 @@ document::document(IView& view, const std::wstring& text, line_endings nCrlfStyl
 	}
 	else
 	{
-		std::wstringstream lines(text);
-		std::wstring line;
-
-		while (std::getline(lines, line))
+		size_t start = 0;
+		for (size_t i = 0; i < text.size(); i++)
 		{
-			append_line(line);
+			if (text[i] == L'\n')
+			{
+				auto end = i;
+				if (end > start && text[end - 1] == L'\r')
+					end--;
+				append_line(text.substr(start, end - start));
+				start = i + 1;
+			}
 		}
+		auto end = text.size();
+		if (end > start && text[end - 1] == L'\r')
+			end--;
+		append_line(text.substr(start, end - start));
 	}
+}
+
+document::document(document_events& events, const file_path& path, const uint64_t disk_modified_time,
+                   const file_encoding encoding) : _events(events), _path(path),
+                                                   _disk_modified_time(disk_modified_time), _encoding(encoding)
+{
 }
 
 document::~document() = default;
-
-uint32_t document::highlight_cookie(int lineIndex) const
-{
-	const auto line_count = _lines.size();
-
-	if (lineIndex < 0 || lineIndex >= line_count)
-		return 0;
-
-	auto i = lineIndex;
-	while (i >= 0 && _lines[i]._parse_cookie == invalid_length)
-		i--;
-	i++;
-
-	int nBlocks;
-	while (i <= lineIndex && _lines[i]._parse_cookie == invalid_length)
-	{
-		auto dwCookie = 0;
-
-		if (i > 0)
-		{
-			dwCookie = _lines[i - 1]._parse_cookie;
-		}
-
-		const auto& line = _lines[i];
-		line._parse_cookie = _highlight->parse_line(dwCookie, line, nullptr, nBlocks);
-
-		assert(line._parse_cookie != invalid_length);
-		i++;
-	}
-
-	return _lines[lineIndex]._parse_cookie;
-}
-
-uint32_t document::highlight_line(uint32_t cookie, const document_line& line, highlighter::text_block* pBuf,
-                                  int& nBlocks) const
-{
-	return _highlight->parse_line(cookie, line, pBuf, nBlocks);
-}
 
 bool document::is_inside_selection(const text_location& ptTextPos) const
 {
@@ -103,16 +166,14 @@ void document::reset()
 
 	for (const auto& line : _lines)
 	{
-		line._parse_cookie = invalid_length;
-		line._expanded_length = invalid_length;
+		line.invalidate_expanded_length();
 	}
 
-	_cursor_loc.x = 0;
-	_cursor_loc.y = 0;
+	_cursor_loc = {};
 	_selection._start = _selection._end = _cursor_loc;
 }
 
-void document::tab_size(int tabSize)
+void document::tab_size(const int tabSize)
 {
 	assert(tabSize >= 0 && tabSize <= 64);
 	if (_tab_size != tabSize)
@@ -121,11 +182,11 @@ void document::tab_size(int tabSize)
 
 		for (const auto& line : _lines)
 		{
-			line._expanded_length = invalid_length;
+			line.invalidate_expanded_length();
 		}
 
 		_max_line_len = -1;
-		invalidate(invalid::view);
+		_events.invalidate(invalid::view);
 	}
 }
 
@@ -134,7 +195,7 @@ int document::max_line_length() const
 	if (_max_line_len == -1)
 	{
 		_max_line_len = 0;
-		const auto line_count = _lines.size();
+		const auto line_count = std::ssize(_lines);
 
 		for (int i = 0; i < line_count; i++)
 		{
@@ -145,7 +206,7 @@ int document::max_line_length() const
 	return _max_line_len;
 }
 
-void document::update_max_line_length(int i) const
+void document::update_max_line_length(const int i) const
 {
 	const int len = expanded_line_length(i);
 
@@ -153,11 +214,11 @@ void document::update_max_line_length(int i) const
 		_max_line_len = len;
 }
 
-int document::expanded_line_length(int line_index) const
+int document::expanded_line_length(const int line_index) const
 {
 	const auto& line = _lines[line_index];
 
-	if (line._expanded_length == -1)
+	if (line.expanded_length_cache() == invalid_length)
 	{
 		auto expanded_len = 0;
 
@@ -172,38 +233,49 @@ int document::expanded_line_length(int line_index) const
 
 				if (tab_pos == std::wstring_view::npos)
 				{
-					expanded_len += line_view.size();
+					expanded_len += static_cast<int>(line_view.size());
 					break;
 				}
 
-				expanded_len += tab_pos;
-				expanded_len += tab_len - (expanded_len % tab_len);
+				expanded_len += static_cast<int>(tab_pos);
+				expanded_len += tab_len - expanded_len % tab_len;
 				line_view = line_view.substr(tab_pos + 1);
 			}
 		}
 
-		line._expanded_length = expanded_len;
+		line.set_expanded_length(expanded_len);
 	}
 
-	return line._expanded_length;
+	return line.expanded_length_cache();
 }
 
-std::wstring document::expanded_chars(std::wstring_view text, const int offset_in, const int count_in) const
+std::wstring document::expanded_chars(const std::wstring_view text, const int offset_in, const int count_in) const
 {
 	std::wstring result;
-	result.reserve(count_in);
+	expanded_chars(text, offset_in, count_in, result);
+	return result;
+}
+
+void document::expanded_chars(std::wstring_view text, const int offset_in, const int count_in,
+                              std::wstring& result) const
+{
+	result.clear();
 
 	if (count_in > 0)
 	{
+		const auto text_len = static_cast<int>(text.size());
+		if (offset_in < 0 || count_in < 0 || offset_in + count_in > text_len)
+			return;
+
 		auto i_text = text.begin();
 		const auto tab_len = tab_size();
 		auto actual_offset = 0;
 
 		for (auto i = 0; i < offset_in; i++)
 		{
-			if (i_text[i] == _T('\t'))
+			if (i_text[i] == L'\t')
 			{
-				actual_offset += tab_len - (actual_offset % tab_len);
+				actual_offset += tab_len - actual_offset % tab_len;
 			}
 			else
 			{
@@ -217,7 +289,7 @@ std::wstring document::expanded_chars(std::wstring_view text, const int offset_i
 
 		for (auto i = 0; i < count_in; i++)
 		{
-			if (i_text[i] == _T('\t'))
+			if (i_text[i] == L'\t')
 			{
 				tab_count++;
 			}
@@ -229,7 +301,7 @@ std::wstring document::expanded_chars(std::wstring_view text, const int offset_i
 
 			for (auto i = 0; i < count_in; i++)
 			{
-				if (i_text[i] == _T('\t'))
+				if (i_text[i] == L'\t')
 				{
 					auto space_count = tab_len - (actual_offset + cur_pos) % tab_len;
 
@@ -241,14 +313,14 @@ std::wstring document::expanded_chars(std::wstring_view text, const int offset_i
 					}
 					while (space_count > 0)
 					{
-						result += _T(' ');
+						result += L' ';
 						cur_pos++;
 						space_count--;
 					}
 				}
 				else
 				{
-					result += (i_text[i] == _T(' ') && _view_tabs) ? SPACE_CHARACTER : i_text[i];
+					result += i_text[i] == L' ' && _view_tabs ? SPACE_CHARACTER : i_text[i];
 					cur_pos++;
 				}
 			}
@@ -258,24 +330,23 @@ std::wstring document::expanded_chars(std::wstring_view text, const int offset_i
 			result.append(i_text, i_text + count_in);
 		}
 	}
-
-	return result;
 }
 
-int document::calc_offset(int lineIndex, int nCharIndex) const
+int document::calc_offset(const int lineIndex, const int nCharIndex) const
 {
 	auto result = 0;
 
-	if (lineIndex >= 0 && lineIndex < _lines.size())
+	if (lineIndex >= 0 && lineIndex < std::ssize(_lines))
 	{
 		const auto& line = _lines[lineIndex];
 		const auto tabSize = tab_size();
+		const auto charLimit = std::min(nCharIndex, static_cast<int>(line.size()));
 
-		for (auto i = 0; i < nCharIndex; i++)
+		for (auto i = 0; i < charLimit; i++)
 		{
-			if (line[i] == _T('\t'))
+			if (line[i] == L'\t')
 			{
-				result += (tabSize - result % tabSize);
+				result += tabSize - result % tabSize;
 			}
 			else
 			{
@@ -287,22 +358,25 @@ int document::calc_offset(int lineIndex, int nCharIndex) const
 	return result;
 }
 
-int document::calc_offset_approx(int lineIndex, int nOffset) const
+int document::calc_offset_approx(const int lineIndex, const int nOffset) const
 {
 	if (nOffset == 0)
 		return 0;
 
+	if (lineIndex < 0 || lineIndex >= std::ssize(_lines))
+		return 0;
+
 	const auto& line = _lines[lineIndex];
-	const auto nLength = line.size();
+	const auto nLength = static_cast<int>(line.size());
 
 	int nCurrentOffset = 0;
 	const int tabSize = tab_size();
 
 	for (int i = 0; i < nLength; i++)
 	{
-		if (line[i] == _T('\t'))
+		if (line[i] == L'\t')
 		{
-			nCurrentOffset += (tabSize - nCurrentOffset % tabSize);
+			nCurrentOffset += tabSize - nCurrentOffset % tabSize;
 		}
 		else
 		{
@@ -331,165 +405,8 @@ void document::cursor_pos(const text_location& pos)
 	{
 		_cursor_loc = pos;
 		_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-		invalidate(invalid::caret);
+		_events.invalidate(invalid::caret);
 	}
-}
-
-bool document::highlight_text(const text_location& ptStartPos, int nLength)
-{
-	_cursor_loc = ptStartPos;
-	_cursor_loc.x += nLength;
-	_anchor_loc = _cursor_loc;
-	select(text_selection(ptStartPos, _cursor_loc));
-	_view.ensure_visible(_cursor_loc);
-	return true;
-}
-
-
-static size_t find_in_line(std::wstring_view line, std::wstring_view what, const bool whole_word)
-{
-	size_t cur = 0;
-
-	for (;;)
-	{
-		const auto found_pos = str::find_in_text(line.substr(cur), what);
-
-		if (found_pos == std::wstring_view::npos)
-		{
-			return std::wstring_view::npos;
-		}
-
-		if (whole_word)
-		{
-			const auto prev_char = found_pos > 0 ? line[found_pos - 1] : 0;
-			const auto next_char = found_pos > 0 ? line[found_pos + what.size() + 1] : 0;
-			const auto is_word = !iswalnum(prev_char) && prev_char != _T('_') &&
-				!iswalnum(next_char) && next_char != _T('_');
-
-			if (is_word)
-			{
-				return cur + found_pos;
-			}
-
-			cur += found_pos + 1;
-		}
-		else
-		{
-			return cur + found_pos;
-		}
-	}
-}
-
-
-void document::find(const std::wstring_view what, const uint32_t flags)
-{
-	text_location found_loc;
-
-	const auto start_pos = (flags & find_start_selection) ? _selection._start : _cursor_loc;
-
-	if (find(what, start_pos, all(), flags, true, found_loc))
-	{
-		_find_text = what;
-
-		auto found_end = found_loc;
-		found_end.x += what.size();
-		select(text_selection(found_loc, found_end));
-	}
-}
-
-
-bool document::find(std::wstring_view what, 
-	const text_location& start_pos, 
-	const text_selection& selection,
-	const uint32_t flags, 
-	bool wrap_search, 
-	text_location& found_pos) const
-{
-	auto current_pos = start_pos;
-
-	if (selection.empty() || what.empty())
-		return false;
-
-	if (current_pos < selection._start)
-	{
-		current_pos = selection._start;
-	}
-
-	const auto match_case = (flags & find_match_case) != 0;
-	const auto whole_word = (flags & find_whole_word) != 0;
-
-	if (flags & find_direction_up)
-	{
-		for (;;)
-		{
-			if (current_pos.x == 0)
-			{
-				current_pos.y--;
-			}
-
-			while (current_pos.y >= 0)
-			{
-				const auto& line = _lines[current_pos.y];
-
-				if (current_pos.x < line._text.size())
-				{
-					const auto found_x = find_in_line(line._text.substr(current_pos.x), what, whole_word);
-
-					if (found_x != std::wstring_view::npos) //	Found text!
-					{
-						current_pos.x += found_x;
-						found_pos = current_pos;
-						return true;
-					}
-				}
-
-				current_pos.x = 0;
-				current_pos.y--;
-			}
-
-			//	Beginning of text reached
-			if (!wrap_search)
-				return false;
-
-			//	Start again from the end of text
-			wrap_search = false;
-			current_pos = text_location(0, _lines.size() - 1);
-		}
-	}
-	for (;;)
-	{
-		while (current_pos.y <= selection._end.y)
-		{
-			const auto& line = _lines[current_pos.y];
-
-			if (current_pos.x < line._text.size())
-			{
-				const auto found_x = find_in_line(line._text.substr(current_pos.x), what, whole_word);
-
-				if (found_x != std::wstring_view::npos)
-				{
-					current_pos.x += found_x;
-
-					if (selection._end < current_pos)
-						break;
-
-					found_pos = current_pos;
-					return true;
-				}
-			}
-
-			current_pos.x = 0;
-			current_pos.y++;
-		}
-
-		if (!wrap_search)
-			return false;
-
-		wrap_search = false;
-		current_pos = selection._start;
-	}
-
-	return false;
 }
 
 bool document::view_tabs() const
@@ -502,10 +419,18 @@ void document::view_tabs(const bool bViewTabs)
 	if (bViewTabs != _view_tabs)
 	{
 		_view_tabs = bViewTabs;
-		invalidate(invalid::view);
+		_events.invalidate(invalid::view);
 	}
 }
 
+void document::finalize_move(const bool selecting)
+{
+	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
+	_events.ensure_visible(_cursor_loc);
+	if (!selecting)
+		_anchor_loc = _cursor_loc;
+	select(text_selection(_anchor_loc, _cursor_loc));
+}
 
 void document::move_char_left(const bool selecting)
 {
@@ -522,17 +447,13 @@ void document::move_char_left(const bool selecting)
 			if (_cursor_loc.y > 0)
 			{
 				_cursor_loc.y--;
-				_cursor_loc.x = _lines[_cursor_loc.y].size();
+				_cursor_loc.x = static_cast<int>(_lines[_cursor_loc.y].size());
 			}
 		}
 		else
 			_cursor_loc.x--;
 	}
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_char_right(const bool selecting)
@@ -545,9 +466,9 @@ void document::move_char_right(const bool selecting)
 	}
 	else
 	{
-		if (_cursor_loc.x == _lines[_cursor_loc.y].size())
+		if (_cursor_loc.x == static_cast<int>(_lines[_cursor_loc.y].size()))
 		{
-			if (_cursor_loc.y < _lines.size() - 1)
+			if (_cursor_loc.y < static_cast<int>(_lines.size()) - 1)
 			{
 				_cursor_loc.y++;
 				_cursor_loc.x = 0;
@@ -556,11 +477,7 @@ void document::move_char_right(const bool selecting)
 		else
 			_cursor_loc.x++;
 	}
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_word_left(const bool selecting)
@@ -579,13 +496,11 @@ void document::move_word_left(const bool selecting)
 			return;
 
 		_cursor_loc.y--;
-		_cursor_loc.x = _lines[_cursor_loc.y].size();
+		_cursor_loc.x = static_cast<int>(_lines[_cursor_loc.y].size());
 	}
 
 	const auto& line = _lines[_cursor_loc.y];
 	auto nPos = _cursor_loc.x;
-
-	word_to_left(_cursor_loc);
 
 	while (nPos > 0 && iswspace(line[nPos - 1]))
 		nPos--;
@@ -593,25 +508,21 @@ void document::move_word_left(const bool selecting)
 	if (nPos > 0)
 	{
 		nPos--;
-		if (iswalnum(line[nPos]) || line[nPos] == _T('_'))
+		if (iswalnum(line[nPos]) || line[nPos] == L'_')
 		{
-			while (nPos > 0 && (iswalnum(line[nPos - 1]) || line[nPos - 1] == _T('_')))
+			while (nPos > 0 && (iswalnum(line[nPos - 1]) || line[nPos - 1] == L'_'))
 				nPos--;
 		}
 		else
 		{
 			while (nPos > 0 && !iswalnum(line[nPos - 1])
-				&& line[nPos - 1] != _T('_') && !iswspace(line[nPos - 1]))
+				&& line[nPos - 1] != L'_' && !iswspace(line[nPos - 1]))
 				nPos--;
 		}
 	}
 
 	_cursor_loc.x = nPos;
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_word_right(const bool selecting)
@@ -624,15 +535,17 @@ void document::move_word_right(const bool selecting)
 		return;
 	}
 
-	if (_cursor_loc.x == _lines[_cursor_loc.y].size())
+	const auto line_len = static_cast<int>(_lines[_cursor_loc.y].size());
+
+	if (_cursor_loc.x == line_len)
 	{
-		if (_cursor_loc.y == _lines.size() - 1)
+		if (_cursor_loc.y == static_cast<int>(_lines.size()) - 1)
 			return;
 		_cursor_loc.y++;
 		_cursor_loc.x = 0;
 	}
 
-	const auto nLength = _lines[_cursor_loc.y].size();
+	const auto nLength = static_cast<int>(_lines[_cursor_loc.y].size());
 
 	if (_cursor_loc.x == nLength)
 	{
@@ -643,15 +556,15 @@ void document::move_word_right(const bool selecting)
 	const auto& line = _lines[_cursor_loc.y];
 	int nPos = _cursor_loc.x;
 
-	if (iswalnum(line[nPos]) || line[nPos] == _T('_'))
+	if (iswalnum(line[nPos]) || line[nPos] == L'_')
 	{
-		while (nPos < nLength && iswalnum(line[nPos]) || line[nPos] == _T('_'))
+		while (nPos < nLength && (iswalnum(line[nPos]) || line[nPos] == L'_'))
 			nPos++;
 	}
 	else
 	{
 		while (nPos < nLength && !iswalnum(line[nPos])
-			&& line[nPos] != _T('_') && !iswspace(line[nPos]))
+			&& line[nPos] != L'_' && !iswspace(line[nPos]))
 			nPos++;
 	}
 
@@ -659,23 +572,20 @@ void document::move_word_right(const bool selecting)
 		nPos++;
 
 	_cursor_loc.x = nPos;
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_lines(const int lines_to_move, const bool selecting)
 {
 	const auto sel = _selection.normalize();
+	const auto line_count = static_cast<int>(_lines.size());
 
 	if (!sel.empty() && !selecting)
 		_cursor_loc = lines_to_move > 0 ? sel._end : sel._start;
 
 	int yy = _cursor_loc.y + lines_to_move;
 	if (yy < 0) yy = 0;
-	if (yy >= _lines.size()) yy = _lines.size() - 1;
+	if (yy >= line_count) yy = line_count - 1;
 
 	if (yy != _cursor_loc.y)
 	{
@@ -685,12 +595,12 @@ void document::move_lines(const int lines_to_move, const bool selecting)
 		_cursor_loc.y = yy;
 		_cursor_loc.x = calc_offset_approx(_cursor_loc.y, _ideal_char_pos);
 
-		const auto size = _lines[_cursor_loc.y].size();
+		const auto size = static_cast<int>(_lines[_cursor_loc.y].size());
 
 		if (_cursor_loc.x > size)
 			_cursor_loc.x = size;
 	}
-	_view.ensure_visible(_cursor_loc);
+	_events.ensure_visible(_cursor_loc);
 	if (!selecting)
 		_anchor_loc = _cursor_loc;
 	select(text_selection(_anchor_loc, _cursor_loc));
@@ -699,51 +609,36 @@ void document::move_lines(const int lines_to_move, const bool selecting)
 void document::move_line_home(const bool selecting)
 {
 	const auto& line = _lines[_cursor_loc.y];
+	const auto line_len = static_cast<int>(line.size());
 
 	int nHomePos = 0;
-	while (nHomePos < line.size() && iswspace(line[nHomePos]))
+	while (nHomePos < line_len && iswspace(line[nHomePos]))
 		nHomePos++;
-	if (nHomePos == line.size() || _cursor_loc.x == nHomePos)
+	if (nHomePos == line_len || _cursor_loc.x == nHomePos)
 		_cursor_loc.x = 0;
 	else
 		_cursor_loc.x = nHomePos;
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_line_end(const bool selecting)
 {
-	_cursor_loc.x = _lines[_cursor_loc.y].size();
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	_cursor_loc.x = static_cast<int>(_lines[_cursor_loc.y].size());
+	finalize_move(selecting);
 }
 
 void document::move_doc_home(const bool selecting)
 {
 	_cursor_loc.x = 0;
 	_cursor_loc.y = 0;
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	finalize_move(selecting);
 }
 
 void document::move_doc_end(const bool selecting)
 {
-	_cursor_loc.y = _lines.size() - 1;
-	_cursor_loc.x = _lines[_cursor_loc.y].size();
-	_ideal_char_pos = calc_offset(_cursor_loc.y, _cursor_loc.x);
-	_view.ensure_visible(_cursor_loc);
-	if (!selecting)
-		_anchor_loc = _cursor_loc;
-	select(text_selection(_anchor_loc, _cursor_loc));
+	_cursor_loc.y = static_cast<int>(_lines.size()) - 1;
+	_cursor_loc.x = static_cast<int>(_lines[_cursor_loc.y].size());
+	finalize_move(selecting);
 }
 
 text_location document::word_to_right(text_location pt) const
@@ -752,7 +647,7 @@ text_location document::word_to_right(text_location pt) const
 
 	while (pt.x < line.size())
 	{
-		if (!iswalnum(line[pt.x]) && line[pt.x] != _T('_'))
+		if (!iswalnum(line[pt.x]) && line[pt.x] != L'_')
 			break;
 		pt.x++;
 	}
@@ -765,70 +660,67 @@ text_location document::word_to_left(text_location pt) const
 
 	while (pt.x > 0)
 	{
-		if (!iswalnum(line[pt.x - 1]) && line[pt.x - 1] != _T('_'))
+		if (!iswalnum(line[pt.x - 1]) && line[pt.x - 1] != L'_')
 			break;
 		pt.x--;
 	}
 	return pt;
 }
 
-void document::Copy() const
+std::wstring document::copy() const
 {
 	if (_selection._start == _selection._end)
-		return;
+		return {};
 
 	const auto sel = _selection.normalize();
-	_view.text_to_clipboard(str::combine(text(sel), L"\r\n"));
+	return str::combine(text(sel), L"\r\n");
 }
 
 bool document::can_paste()
 {
-	return IsClipboardFormatAvailable(CF_UNICODETEXT) != 0;
+	return pf::platform_clipboard_has_text();
 }
 
-bool document::QueryEditable()
+bool document::query_editable() const
 {
-	return true;
+	return !_read_only;
 }
 
-void document::edit_paste()
+void document::edit_paste(const std::wstring_view text)
 {
-	if (QueryEditable())
+	if (query_editable() && !text.empty())
 	{
-		const auto text = _view.text_from_clipboard();
-
-		if (!text.empty())
-		{
-			undo_group ug(*this);
-			const auto pos = delete_text(ug, selection());
-			select(insert_text(ug, pos, text));
-		}
+		undo_group ug(shared_from_this());
+		const auto pos = delete_text(ug, selection());
+		select(insert_text(ug, pos, text));
 	}
 }
 
-void document::edit_cut()
+std::wstring document::edit_cut()
 {
-	if (QueryEditable() && has_selection())
+	if (query_editable() && has_selection())
 	{
 		const auto sel = selection();
-		_view.text_to_clipboard(str::combine(text(sel)));
+		auto result = str::combine(text(sel), L"\r\n");
 
-		undo_group ug(*this);
+		undo_group ug(shared_from_this());
 		select(delete_text(ug, sel));
+		return result;
 	}
+	return {};
 }
 
 void document::edit_delete()
 {
-	if (QueryEditable())
+	if (query_editable())
 	{
 		auto sel = selection();
 
 		if (sel.empty())
 		{
-			if (sel._end.x == _lines[sel._end.y].size())
+			if (sel._end.x == static_cast<int>(_lines[sel._end.y].size()))
 			{
-				if (sel._end.y == _lines.size() - 1)
+				if (sel._end.y == static_cast<int>(_lines.size()) - 1)
 					return;
 
 				sel._end.y++;
@@ -840,14 +732,14 @@ void document::edit_delete()
 			}
 		}
 
-		undo_group ug(*this);
+		undo_group ug(shared_from_this());
 		select(delete_text(ug, sel));
 	}
 }
 
 void document::edit_delete_back()
 {
-	if (QueryEditable())
+	if (query_editable())
 	{
 		if (has_selection())
 		{
@@ -855,59 +747,65 @@ void document::edit_delete_back()
 		}
 		else
 		{
-			undo_group ug(*this);
+			undo_group ug(shared_from_this());
 			select(delete_text(ug, cursor_pos()));
 		}
 	}
 }
 
+document::block_range document::prepare_block_selection(text_selection& sel)
+{
+	const int nStartLine = sel._start.y;
+	int nEndLine = sel._end.y;
+	sel._start.x = 0;
+
+	if (sel._end.x > 0)
+	{
+		if (sel._end.y == static_cast<int>(_lines.size()) - 1)
+		{
+			sel._end.x = static_cast<int>(_lines[sel._end.y].size());
+		}
+		else
+		{
+			sel._end.x = 0;
+			sel._end.y++;
+		}
+	}
+	else
+	{
+		nEndLine--;
+	}
+
+	select(sel);
+	cursor_pos(sel._end);
+	_events.ensure_visible(sel._end);
+
+	return {nStartLine, nEndLine};
+}
+
 void document::edit_tab()
 {
-	if (QueryEditable())
+	if (query_editable())
 	{
 		auto sel = selection();
 
 		if (sel._end.y > sel._start.y)
 		{
-			undo_group ug(*this);
+			undo_group ug(shared_from_this());
+			const auto [nStartLine, nEndLine] = prepare_block_selection(sel);
 
-			const int nStartLine = sel._start.y;
-			int nEndLine = sel._end.y;
-			sel._start.x = 0;
-
-			if (sel._end.x > 0)
-			{
-				if (sel._end.y == _lines.size() - 1)
-				{
-					sel._end.x = _lines[sel._end.y].size();
-				}
-				else
-				{
-					sel._end.x = 0;
-					sel._end.y++;
-				}
-			}
-			else
-			{
-				nEndLine--;
-			}
-
-			select(sel);
-			cursor_pos(sel._end);
-			_view.ensure_visible(sel._end);
-
-			static const TCHAR pszText[] = _T("\t");
+			static constexpr wchar_t pszText[] = L"\t";
 
 			for (int i = nStartLine; i <= nEndLine; i++)
 			{
 				insert_text(ug, text_location(0, i), pszText);
 			}
 
-			invalidate(invalid::horz_scrollbar);
+			_events.invalidate(invalid::horz_scrollbar);
 		}
 		else
 		{
-			undo_group ug(*this);
+			undo_group ug(shared_from_this());
 			const auto pos = delete_text(ug, selection());
 			select(insert_text(ug, pos, L'\t'));
 		}
@@ -916,34 +814,14 @@ void document::edit_tab()
 
 void document::edit_untab()
 {
-	if (QueryEditable())
+	if (query_editable())
 	{
 		auto sel = selection();
 
 		if (sel._end.y > sel._start.y)
 		{
-			undo_group ug(*this);
-
-			const int nStartLine = sel._start.y;
-			int nEndLine = sel._end.y;
-			sel._start.x = 0;
-			if (sel._end.x > 0)
-			{
-				if (sel._end.y == _lines.size() - 1)
-				{
-					sel._end.x = _lines[sel._end.y].size();
-				}
-				else
-				{
-					sel._end.x = 0;
-					sel._end.y++;
-				}
-			}
-			else
-				nEndLine--;
-			select(sel);
-			cursor_pos(sel._end);
-			_view.ensure_visible(sel._end);
+			undo_group ug(shared_from_this());
+			const auto [nStartLine, nEndLine] = prepare_block_selection(sel);
 
 			for (int i = nStartLine; i <= nEndLine; i++)
 			{
@@ -955,7 +833,7 @@ void document::edit_untab()
 
 					while (nPos < line.size())
 					{
-						if (line[nPos] == _T(' '))
+						if (line[nPos] == L' ')
 						{
 							nPos++;
 							if (++nOffset >= tab_size())
@@ -963,7 +841,7 @@ void document::edit_untab()
 						}
 						else
 						{
-							if (line[nPos] == _T('\t'))
+							if (line[nPos] == L'\t')
 								nPos++;
 							break;
 						}
@@ -976,7 +854,7 @@ void document::edit_untab()
 				}
 			}
 
-			invalidate(invalid::horz_scrollbar);
+			_events.invalidate(invalid::horz_scrollbar);
 		}
 		else
 		{
@@ -985,6 +863,7 @@ void document::edit_untab()
 			if (ptCursorPos.x > 0)
 			{
 				const int tabSize = tab_size();
+				if (tabSize == 0) return;
 				const int nOffset = calc_offset(ptCursorPos.y, ptCursorPos.x);
 				int nNewOffset = nOffset / tabSize * tabSize;
 				if (nOffset == nNewOffset && nNewOffset > 0)
@@ -997,7 +876,7 @@ void document::edit_untab()
 
 				while (nCurrentOffset < nNewOffset)
 				{
-					if (line[i] == _T('\t'))
+					if (line[i] == L'\t')
 					{
 						nCurrentOffset = nCurrentOffset / tabSize * tabSize + tabSize;
 					}
@@ -1034,52 +913,78 @@ void document::edit_redo()
 	}
 }
 
-bool document::GetAutoIndent() const
+bool document::get_auto_indent() const
 {
 	return _auto_indent;
 }
 
-void document::SetAutoIndent(const bool bAutoIndent)
+void document::set_auto_indent(const bool bAutoIndent)
 {
 	_auto_indent = bAutoIndent;
 }
 
-static bool is_cpp_extension(std::wstring_view ext)
-{
-	static auto comp = [](std::wstring_view l, std::wstring_view r)
-	{
-		return str::icmp(l, r) < 0;
-	};
-	static std::set<std::wstring_view, std::function<bool(std::wstring_view, std::wstring_view)>> extensions(comp);
 
-	if (extensions.empty())
-	{
-		extensions.insert(L"c");
-		extensions.insert(L"cpp");
-		extensions.insert(L"cxx");
-		extensions.insert(L"cc");
-		extensions.insert(L"h");
-		extensions.insert(L"hh");
-		extensions.insert(L"hpp");
-		extensions.insert(L"hxx");
-		extensions.insert(L"inl");
-	}
+static bool is_spell_check_extension(const std::wstring_view ext)
+{
+	static const std::set<std::wstring_view, iless> extensions = {
+		L"md", L"txt"
+	};
 
 	return extensions.contains(ext);
-};
+}
 
-void document::highlight_from_extension(std::wstring_view ext)
+
+void document::select(const text_selection& selection)
 {
-	if (ext[0] == L'.') ext = ext.substr(1);
+	if (_selection != selection)
+	{
+		assert(selection.is_valid());
 
-	if (is_cpp_extension(ext))
-	{
-		_highlight = s_cppHighlighter;
+		anchor_pos(selection._start);
+		cursor_pos(selection._end);
+
+		_events.ensure_visible(selection._end);
+		_events.invalidate(invalid::caret);
+
+		_events.invalidate_lines(selection._start.y, selection._end.y);
+		_events.invalidate_lines(_selection._start.y, _selection._end.y);
+		_selection = selection;
 	}
-	else
+}
+
+void document::invalidate_line(const int index)
+{
+	const auto& line = _lines[index];
+	const auto old_len = line.expanded_length_cache();
+	line.invalidate_expanded_length();
+
+	_events.invalidate_lines(index, index + 1);
+
+	const int new_len = expanded_line_length(index);
+
+	if (new_len >= _max_line_len)
 	{
-		_highlight = s_textHighlighter;
+		_max_line_len = new_len;
 	}
+	else if (old_len == _max_line_len)
+	{
+		// The previously longest line got shorter — must rescan
+		_max_line_len = -1;
+	}
+
+	_events.invalidate(invalid::horz_scrollbar);
+}
+
+void document::toggle_spell_check()
+{
+	_spell_check = !_spell_check;
+	_events.invalidate(invalid::view);
+}
+
+void document::path(const file_path& path_in)
+{
+	_path = path_in;
+	_events.invalidate(invalid::title);
 }
 
 void document::append_line(std::wstring_view text)
@@ -1092,16 +997,10 @@ void document::clear()
 	_lines.clear();
 	_undo.clear();
 	_undo_pos = 0;
+	_read_only = false;
 	append_line(L"");
 	reset();
 }
-
-static const char* crlfs[] =
-{
-	"\x0d\x0a", //	DOS/Windows style
-	"\x0a\x0d", //	UNIX style
-	"\x0a" //	Macintosh style
-};
 
 static std::istream& safe_get_line(std::istream& is, std::string& t)
 {
@@ -1138,279 +1037,219 @@ static std::istream& safe_get_line(std::istream& is, std::string& t)
 	}
 }
 
-enum class Encoding
-{
-	UTF32,
-	UTF32BE,
-	UTF8,
-	UTF16BE,
-	UTF16,
-	ASCII,
-};
-
-struct _BOM_LOOKUP
-{
-	uint32_t bom;
-	ULONG len;
-	Encoding type;
-};
-
-struct _BOM_LOOKUP BOMLOOK[] =
-{
-	// define longest headers first
-	{0x0000FEFF, 4, Encoding::UTF32},
-	{0xFFFE0000, 4, Encoding::UTF32BE},
-	{0xBFBBEF, 3, Encoding::UTF8},
-	{0xFFFE, 2, Encoding::UTF16BE},
-	{0xFEFF, 2, Encoding::UTF16},
-	{0, 0, Encoding::ASCII},
-};
-
+// BOM byte signatures:
+//   FF FE 00 00  UTF-32, little-endian
+//   00 00 FE FF  UTF-32, big-endian
+//   EF BB BF     UTF-8
+//   FF FE        UTF-16, little-endian
+//   FE FF        UTF-16, big-endian
 //
-//	00 00 FE FF			UTF-32, big-endian 
-//	FF FE 00 00			UTF-32, little-endian 
-//	FE FF				UTF-16, big-endian 
-//	FF FE				UTF-16, little-endian 
-//	EF BB BF			UTF-8 
-//
-static Encoding detect_encoding(const uint8_t* header, size_t filesize, int& headerLen)
+file_encoding detect_encoding(const uint8_t* header, const size_t filesize, int& headerLen)
 {
-	for (auto i = 0; BOMLOOK[i].len; i++)
+	if (filesize >= 4 && header[0] == 0xFF && header[1] == 0xFE && header[2] == 0x00 && header[3] == 0x00)
 	{
-		if (filesize >= BOMLOOK[i].len &&
-			memcmp(header, &BOMLOOK[i].bom, BOMLOOK[i].len) == 0)
-		{
-			headerLen = BOMLOOK[i].len;
-			return BOMLOOK[i].type;
-		}
+		headerLen = 4;
+		return file_encoding::utf32;
+	}
+	if (filesize >= 4 && header[0] == 0x00 && header[1] == 0x00 && header[2] == 0xFE && header[3] == 0xFF)
+	{
+		headerLen = 4;
+		return file_encoding::utf32be;
+	}
+	if (filesize >= 3 && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)
+	{
+		headerLen = 3;
+		return file_encoding::utf8;
+	}
+	if (filesize >= 2 && header[0] == 0xFF && header[1] == 0xFE)
+	{
+		headerLen = 2;
+		return file_encoding::utf16;
+	}
+	if (filesize >= 2 && header[0] == 0xFE && header[1] == 0xFF)
+	{
+		headerLen = 2;
+		return file_encoding::utf16be;
 	}
 
 	headerLen = 0;
 
-	if (header[0] == 0 && header[1] != 0 && header[2] == 0 && header[3] != 0)
-	{
-		return Encoding::UTF16;
-	}
+	if (filesize >= 4 && header[0] != 0 && header[1] == 0 && header[2] != 0 && header[3] == 0)
+		return file_encoding::utf16; // little-endian: char,0,char,0
+	if (filesize >= 4 && header[0] == 0 && header[1] != 0 && header[2] == 0 && header[3] != 0)
+		return file_encoding::utf16be; // big-endian: 0,char,0,char
 
-	if (header[0] != 0 && header[1] == 0 && header[2] != 0 && header[3] == 0)
-	{
-		return Encoding::UTF16BE;
-	}
-
-	return Encoding::ASCII;
+	return file_encoding::utf8;
 }
 
-static line_endings detect_line_endings(const uint8_t* buffer, const int len)
+line_endings detect_line_endings(const uint8_t* buffer, const int len)
 {
-	auto i = 0;
-
-	for (i = 0; i < len; i++)
+	for (int i = 0; i < len; i++)
 	{
-		if (buffer[i] == 0x0a)
-			break;
-	}
-	if (i < len)
-	{
-		if (i > 0 && buffer[i - 1] == 0x0d)
+		if (buffer[i] == 0x0d)
 		{
-			return line_endings::crlf_style_dos;
+			// \r\n = DOS, \r alone = Mac
+			if (i + 1 < len && buffer[i + 1] == 0x0a)
+				return line_endings::crlf_style_dos;
+			return line_endings::crlf_style_mac;
 		}
-
-		return (i < len - 1 && buffer[i + 1] == 0x0d) ? line_endings::crlf_style_unix : line_endings::crlf_style_mac;
+		if (buffer[i] == 0x0a)
+		{
+			// \n alone = Unix
+			return line_endings::crlf_style_unix;
+		}
 	}
 
 	return line_endings::crlf_style_dos; // guess
 }
 
-bool document::load_from_file(const file_path &path)
+file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
+                                   const std::function<void(const std::wstring&, int)>& on_line)
 {
-	if (_path == path)
+	file_lines_info info;
+
+	constexpr uint32_t buf_size = 64 * 1024;
+	uint8_t buffer[buf_size];
+	uint32_t read_len = 0;
+
+	if (!handle->read(buffer, buf_size, &read_len) || read_len == 0)
+		return info;
+
+	int header_len = 0;
+	info.enc = detect_encoding(buffer, handle->size(), header_len);
+	info.endings = detect_line_endings(buffer, read_len);
+
+	int line_number = 0;
+
+	if (info.enc == file_encoding::utf8)
 	{
-		// skip if same
-		return false;
-	}
+		std::string utf8_line;
+		auto pos = static_cast<uint32_t>(header_len);
+		bool skip_next_lf = false;
 
-	clear();
-
-	auto success = false;
-	const auto hFile = ::CreateFile(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-	                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-
-	if (hFile != INVALID_HANDLE_VALUE)
-	{
-		const auto bufferLen = 1024 * 64;
-		uint8_t buffer[bufferLen];
-
-		DWORD readLen;
-		if (ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
+		for (;;)
 		{
-			_lines.clear();
-
-			auto headerLen = 0;
-			const auto size = GetFileSize(hFile, nullptr);
-			const auto encoding = detect_encoding(buffer, size, headerLen);
-
-			_line_ending = detect_line_endings(buffer, readLen);
-			auto crlf = crlfs[static_cast<int>(_line_ending)];
-
-			auto bufferPos = headerLen;
-			auto last_char = 0;
-
-			if (encoding == Encoding::UTF8 || encoding == Encoding::ASCII)
+			for (; pos < read_len; pos++)
 			{
-				std::string line;
+				const auto c = buffer[pos];
 
-				while (readLen > 0)
+				if (skip_next_lf && c == '\n')
 				{
-					const int c = buffer[bufferPos];
-
-					if ((last_char == 0x0A && c == 0x0D) || (last_char == 0x0A && c != 0x0D))
-					{
-						append_line((encoding == Encoding::ASCII) ? str::ascii_to_utf16(line) : str::utf8_to_utf16(line));
-						line.clear();
-					}
-
-					if (c != 0x0A && c != 0x0D)
-					{
-						line += static_cast<char>(c);
-					}
-
-					bufferPos++;
-
-					if (bufferPos == readLen)
-					{
-						if (ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
-						{
-							bufferPos = 0;
-						}
-						else
-						{
-							readLen = 0;
-						}
-					}
-
-					last_char = c;
+					skip_next_lf = false;
+					continue;
 				}
+				skip_next_lf = false;
 
-				append_line((encoding == Encoding::ASCII) ? str::ascii_to_utf16(line) : str::utf8_to_utf16(line));
-			}
-			else if (encoding == Encoding::UTF16BE || encoding == Encoding::UTF16)
-			{
-				const auto buffer16 = reinterpret_cast<const wchar_t*>(buffer);
-				readLen /= 2;
-
-				std::wstring line;
-
-				while (readLen > 0)
+				if (c == '\r' || c == '\n')
 				{
-					auto c = buffer16[bufferPos];
+					on_line(str::utf8_to_utf16(utf8_line), line_number);
+					utf8_line.clear();
+					line_number++;
 
-					if (encoding == Encoding::UTF16)
-					{
-						c = _byteswap_ushort(c);
-					}
-
-					if (c != 0x0A && c != 0x0D)
-					{
-						line += c;
-					}
-
-					if (c == 0x0D)
-					{
-						append_line(line);
-						line.clear();
-					}
-
-					bufferPos++;
-
-					if (bufferPos == readLen)
-					{
-						if (ReadFile(hFile, buffer, bufferLen, &readLen, nullptr))
-						{
-							bufferPos = 0;
-							readLen /= 2;
-						}
-						else
-						{
-							readLen = 0;
-						}
-					}
+					if (c == '\r')
+						skip_next_lf = true;
 				}
-
-				append_line(line);
+				else
+				{
+					utf8_line += static_cast<char>(c);
+				}
 			}
 
-			_modified = false;
-			_undo_pos = 0;
-
-			success = true;
-
-			highlight_from_extension(path.extension());
-
-			_path = path;
-			invalidate(invalid::view | invalid::title);
+			if (!handle->read(buffer, buf_size, &read_len) || read_len == 0)
+				break;
+			pos = 0;
 		}
 
-		if (hFile != nullptr)
-			CloseHandle(hFile);
+		on_line(str::utf8_to_utf16(utf8_line), line_number);
 	}
-
-	if (_lines.empty())
+	else if (info.enc == file_encoding::utf16 || info.enc == file_encoding::utf16be)
 	{
-		append_line(L"");
+		const bool is_be = (info.enc == file_encoding::utf16be);
+		const auto* buffer16 = reinterpret_cast<const wchar_t*>(buffer);
+		read_len /= 2;
+		auto pos = static_cast<uint32_t>(header_len / 2);
+		bool skip_next_lf = false;
+
+		std::wstring line;
+
+		for (;;)
+		{
+			for (; pos < read_len; pos++)
+			{
+				auto c = buffer16[pos];
+				if (is_be) c = _byteswap_ushort(c);
+
+				if (skip_next_lf && c == L'\n')
+				{
+					skip_next_lf = false;
+					continue;
+				}
+				skip_next_lf = false;
+
+				if (c == L'\r' || c == L'\n')
+				{
+					on_line(line, line_number);
+					line.clear();
+					line_number++;
+
+					if (c == L'\r')
+						skip_next_lf = true;
+				}
+				else
+				{
+					line += c;
+				}
+			}
+
+			if (!handle->read(buffer, buf_size, &read_len) || read_len == 0)
+				break;
+			buffer16 = reinterpret_cast<const wchar_t*>(buffer);
+			read_len /= 2;
+			pos = 0;
+		}
+
+		on_line(line, line_number);
 	}
 
-	reset();
-
-	return success;
+	return info;
 }
-
 
 static std::wstring temp_file_path()
 {
-	wchar_t result[MAX_PATH + 1] = {0};
-	GetTempPath(MAX_PATH, result);
-	GetTempFileName(result, L"rethinkify.", 0, result);
-	return result;
+	return pf::platform_temp_file_path(L"rethinkify.");
 }
 
-// Create a string with last error message
 static std::wstring last_error_message()
 {
-	std::wstring result;
-	const auto error = GetLastError();
-
-	if (error)
-	{
-		LPVOID lpMsgBuf;
-		const auto bufLen = FormatMessageW(
-			FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			FORMAT_MESSAGE_FROM_SYSTEM |
-			FORMAT_MESSAGE_IGNORE_INSERTS,
-			nullptr,
-			error,
-			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-			reinterpret_cast<LPWSTR>(&lpMsgBuf),
-			0, nullptr);
-
-		if (bufLen)
-		{
-			result = static_cast<const wchar_t*>(lpMsgBuf);
-			LocalFree(lpMsgBuf);
-		}
-	}
-	return result;
+	return pf::platform_last_error_message();
 }
 
-bool document::save_to_file(const file_path &path, line_endings nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/,
-                            bool bClearModifiedFlag /*= true*/) const
+bool document::save_to_file(const file_path& path, const line_endings nCrlfStyle /*= CRLF_STYLE_AUTOMATIC*/,
+                            const bool bClearModifiedFlag /*= true*/) const
 {
 	auto success = false;
 	const auto tempPath = temp_file_path();
-	std::ofstream stream(tempPath);
+	std::ofstream stream(tempPath, std::ios::binary);
 
 	if (stream)
 	{
+		auto effective_style = nCrlfStyle;
+		if (effective_style == line_endings::crlf_style_automatic)
+			effective_style = _line_ending == line_endings::crlf_style_automatic
+				                  ? line_endings::crlf_style_dos
+				                  : _line_ending;
+
+		const char* eol;
+		switch (effective_style)
+		{
+		case line_endings::crlf_style_unix: eol = "\n";
+			break;
+		case line_endings::crlf_style_mac: eol = "\r";
+			break;
+		default: eol = "\r\n";
+			break;
+		}
+
 		auto first = true;
 
 		static uint8_t smarker[3] = {0xEF, 0xBB, 0xBF};
@@ -1418,24 +1257,28 @@ bool document::save_to_file(const file_path &path, line_endings nCrlfStyle /*= C
 
 		for (const auto& line : _lines)
 		{
-			if (!first) stream << std::endl;
+			if (!first) stream << eol;
 			stream << str::utf16_to_utf8(line._text);
 			first = false;
 		}
 
 		stream.close();
 
-		success = ::MoveFileEx(tempPath.c_str(), path.c_str(),
-		                       MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+		if (stream.fail())
+			return false;
+
+		success = pf::platform_move_file_replace(tempPath.c_str(), path.c_str());
 
 		if (success && bClearModifiedFlag)
 		{
 			_modified = false;
+			_saved_undo_pos = _undo_pos;
+			_disk_modified_time = pf::file_modified_time(path);
 		}
 
 		if (!success)
 		{
-			MessageBox(GetActiveWindow(), last_error_message().c_str(), L"Diffractor", MB_OK);
+			pf::platform_show_error(last_error_message(), g_app_name);
 		}
 	}
 
@@ -1491,31 +1334,68 @@ bool document::can_redo() const
 	return _undo_pos < _undo.size();
 }
 
+text_location document::apply_undo_step(const undo_step& step)
+{
+	if (step.is_insert())
+	{
+		if (step.is_single_char())
+			return delete_text(step.char_end_location());
+		return delete_text(step._selection);
+	}
+	return insert_text(step._selection._start, step._text);
+}
+
+text_location document::apply_redo_step(const undo_step& step)
+{
+	if (step.is_insert())
+		return insert_text(step._selection._start, step._text);
+	if (step.is_single_char())
+		return delete_text(step.char_end_location());
+	return delete_text(step._selection);
+}
+
+text_location document::apply_undo(const undo_item& item)
+{
+	text_location location;
+	for (auto i = item.rbegin(); i != item.rend(); ++i)
+		location = apply_undo_step(*i);
+	return location;
+}
+
+text_location document::apply_redo(const undo_item& item)
+{
+	text_location location;
+	for (const auto& step : item)
+		location = apply_redo_step(step);
+	return location;
+}
+
 text_location document::undo()
 {
 	assert(can_undo());
 	_undo_pos--;
-	_modified = true;
-	return _undo[_undo_pos].undo(*this);
+	_modified = (_undo_pos != _saved_undo_pos);
+	return apply_undo(_undo[_undo_pos]);
 }
 
 text_location document::redo()
 {
 	assert(can_redo());
 	_modified = true;
-	const auto result = _undo[_undo_pos].redo(*this);
+	const auto result = apply_redo(_undo[_undo_pos]);
 	_undo_pos++;
+	_modified = (_undo_pos != _saved_undo_pos);
 	return result;
 }
 
-void document::record_undo(const undo_item& ui)
+void document::record_undo(undo_item ui)
 {
 	_undo.erase(_undo.begin() + _undo_pos, _undo.end());
-	_undo.emplace_back(ui);
+	_undo.push_back(std::move(ui));
 	_undo_pos = _undo.size();
 }
 
-text_selection document::replace_text(undo_group& ug, const text_selection& selection, std::wstring_view text)
+text_selection document::replace_text(undo_group& ug, const text_selection& selection, const std::wstring_view text)
 {
 	text_selection result;
 	result._start = delete_text(ug, selection);
@@ -1523,32 +1403,79 @@ text_selection document::replace_text(undo_group& ug, const text_selection& sele
 	return result;
 }
 
-text_location document::insert_text(const text_location& location, std::wstring_view text)
+text_location document::insert_text(const text_location& location, const std::wstring_view text)
 {
-	auto resultLocation = location;
+	if (text.empty())
+		return location;
 
-	for (const auto& c : text)
+	// Split input into lines
+	std::vector<std::wstring_view> input_lines;
+	size_t start = 0;
+	for (size_t i = 0; i < text.size(); i++)
 	{
-		resultLocation = insert_text(resultLocation, c);
+		if (text[i] == L'\n')
+		{
+			auto end = i;
+			if (end > start && text[end - 1] == L'\r')
+				end--;
+			input_lines.push_back(text.substr(start, end - start));
+			start = i + 1;
+		}
+	}
+	auto end = text.size();
+	if (end > start && text[end - 1] == L'\r')
+		end--;
+	input_lines.push_back(text.substr(start, end - start));
+
+	text_location result = location;
+
+	if (input_lines.size() == 1)
+	{
+		// Single-line insert: splice into existing line
+		auto& li = _lines[location.y];
+		li._text.insert(location.x, input_lines[0]);
+		result.x = location.x + static_cast<int>(input_lines[0].size());
+		result.y = location.y;
+		invalidate_line(location.y);
+	}
+	else
+	{
+		// Multi-line insert: split current line, bulk-insert new lines
+		auto& first_line = _lines[location.y];
+		const auto tail = first_line._text.substr(location.x);
+		first_line._text.erase(location.x);
+		first_line._text.append(input_lines[0]);
+
+		// Build new intermediate and last lines
+		const auto count = static_cast<int>(input_lines.size());
+		std::vector<document_line> new_lines;
+		new_lines.reserve(count - 1);
+
+		for (int i = 1; i < count - 1; i++)
+			new_lines.emplace_back(std::wstring(input_lines[i]));
+
+		// Last input line gets the tail appended
+		new_lines.emplace_back(std::wstring(input_lines[count - 1]) + tail);
+
+		_lines.insert(_lines.begin() + location.y + 1,
+		              std::make_move_iterator(new_lines.begin()),
+		              std::make_move_iterator(new_lines.end()));
+
+		result.y = location.y + count - 1;
+		result.x = static_cast<int>(input_lines[count - 1].size());
+
+		_events.invalidate(invalid::view);
 	}
 
 	_modified = true;
-
-	return resultLocation;
+	return result;
 }
 
-text_location document::insert_text(undo_group& ug, const text_location& location, std::wstring_view text)
+text_location document::insert_text(undo_group& ug, const text_location& location, const std::wstring_view text)
 {
-	auto result_location = location;
-
-	for (const auto& c : text)
-	{
-		result_location = insert_text(result_location, c);
-	}
-
+	const auto result_location = insert_text(location, text);
 	ug.insert(text_selection(location, result_location), text);
 	_modified = true;
-
 	return result_location;
 }
 
@@ -1560,28 +1487,23 @@ text_location document::insert_text(const text_location& location, const wchar_t
 	if (c == L'\n')
 	{
 		// Split
-		const document_line newLine(li._text.substr(location.x, li._text.size()));
-		_lines.insert(_lines.begin() + location.y + 1, newLine);
-		_lines[location.y]._text = _lines[location.y]._text.substr(0, location.x);
+		document_line newLine(li._text.substr(location.x));
+		_lines.insert(_lines.begin() + location.y + 1, std::move(newLine));
+		_lines[location.y]._text.erase(location.x);
 
 		resultLocation.y = location.y + 1;
 		resultLocation.x = 0;
 
-		invalidate(invalid::view);
+		_events.invalidate(invalid::view);
 	}
 	else if (c != '\r')
 	{
-		auto before = li._text;
-		auto after = li._text;
-
-		after.insert(after.begin() + location.x, c);
-
-		li._text = after;
+		li._text.insert(li._text.begin() + location.x, c);
 
 		resultLocation.y = location.y;
 		resultLocation.x = location.x + 1;
 
-		invalidate_line(location.y);
+		_events.invalidate(invalid::view);
 	}
 
 	return resultLocation;
@@ -1600,8 +1522,7 @@ text_location document::delete_text(undo_group& ug, const text_location& locatio
 	{
 		if (location.y > 0)
 		{
-			ug.erase(text_location(_lines[location.y - 1].size(), location.y - 1),
-			         location.x > 0 ? _lines[location.y][location.x - 1] : '\n');
+			ug.erase(text_location(static_cast<int>(_lines[location.y - 1].size()), location.y - 1), L'\n');
 		}
 	}
 	else
@@ -1620,11 +1541,7 @@ text_location document::delete_text(const text_selection& selection)
 		if (selection._start.y == selection._end.y)
 		{
 			auto& li = _lines[selection._start.y];
-			auto before = li._text;
-			auto after = li._text;
-
-			after.erase(after.begin() + selection._start.x, after.begin() + selection._end.x);
-			li._text = after;
+			li._text.erase(li._text.begin() + selection._start.x, li._text.begin() + selection._end.x);
 
 			if (end() < _cursor_loc) _cursor_loc = end();
 
@@ -1645,7 +1562,7 @@ text_location document::delete_text(const text_selection& selection)
 
 			if (end() < _cursor_loc) _cursor_loc = end();
 
-			invalidate(invalid::view);
+			_events.invalidate(invalid::view);
 		}
 	}
 
@@ -1671,23 +1588,19 @@ text_location document::delete_text(const text_location& location)
 		{
 			auto& previous = _lines[location.y - 1];
 
-			resultPos.x = previous.size();
+			resultPos.x = static_cast<int>(previous.size());
 			resultPos.y = location.y - 1;
 
 			previous._text.insert(previous._text.end(), line._text.begin(), line._text.end());
 			_lines.erase(_lines.begin() + location.y);
 
-			invalidate(invalid::view);
+			_events.invalidate(invalid::view);
 		}
 	}
 	else
 	{
 		auto& li = _lines[location.y];
-		auto before = li._text;
-		auto after = li._text;
-
-		after.erase(after.begin() + location.x - 1, after.begin() + location.x);
-		li._text = after;
+		li._text.erase(li._text.begin() + location.x - 1, li._text.begin() + location.x);
 
 		resultPos.x = location.x - 1;
 		resultPos.y = location.y;
@@ -1696,4 +1609,196 @@ text_location document::delete_text(const text_location& location)
 	}
 
 	return resultPos;
+}
+
+bool document::is_json() const
+{
+	for (const auto& line : _lines)
+	{
+		for (const auto& c : line._text)
+		{
+			if (c == '{') return true;
+			if (c != ' ' && c != '\n' && c != '\t' && c != '\r') return false;
+		}
+	}
+	return false;
+}
+
+void document::reformat_json()
+{
+	if (!is_json())
+		return;
+
+	std::wostringstream result;
+	int tabs = 0, tokens = -1;
+
+	for (const auto& line : _lines)
+	{
+		for (const auto& ch : line._text)
+		{
+			if (ch == '{')
+			{
+				tokens++;
+				tabs = tokens;
+				if (tokens > 0) result << "\n";
+				while (tabs)
+				{
+					result << "\t";
+					tabs--;
+				}
+				result << ch << "\n";
+				tabs = tokens + 1;
+				while (tabs)
+				{
+					result << "\t";
+					tabs--;
+				}
+			}
+			else if (ch == ':')
+			{
+				result << " : ";
+			}
+			else if (ch == ',')
+			{
+				result << ",\n";
+				tabs = tokens + 1;
+				while (tabs)
+				{
+					result << "\t";
+					tabs--;
+				}
+			}
+			else if (ch == '}')
+			{
+				tabs = tokens;
+				result << "\n";
+				while (tabs)
+				{
+					result << "\t";
+					tabs--;
+				}
+				result << ch << "\n";
+				tokens--;
+				tabs = tokens + 1;
+				while (tabs)
+				{
+					result << "\t";
+					tabs--;
+				}
+			}
+			else
+			{
+				if (ch == '\n' || ch == '\t') continue;
+				result << ch;
+			}
+		}
+	}
+
+	undo_group ug(shared_from_this());
+	select(replace_text(ug, all(), result.str()));
+}
+
+void document::sort_remove_duplicates()
+{
+	auto lines = _lines;
+
+	std::ranges::sort(lines);
+	const auto [first, last] = std::ranges::unique(lines);
+	lines.erase(first, last);
+
+	undo_group ug(shared_from_this());
+	select(replace_text(ug, all(), combine_line_text(lines)));
+}
+
+void document::apply_loaded_data(const file_path& path, loaded_file_data data)
+{
+	if (data.disk_modified_time != 0)
+	{
+		std::swap(_lines, data.lines);
+
+		if (_lines.empty())
+			append_line(L"");
+
+		auto ext = path.extension();
+		if (!ext.empty() && ext.starts_with(L'.')) ext = ext.substr(1);
+
+		_read_only = data.encoding == file_encoding::binary;
+		_spell_check = is_spell_check_extension(ext);
+		_line_ending = data.endings;
+		_modified = false;
+		_undo_pos = 0;
+		_saved_undo_pos = 0;
+		_path = path;
+		_disk_modified_time = data.disk_modified_time;
+
+		reset();
+		_events.invalidate(invalid::view | invalid::title);
+	}
+}
+
+bool is_binary_extension(const file_path& path)
+{
+	// is binary 
+	static const std::unordered_set<std::wstring_view, ihash, ieq> binary_extensions = {
+		L".exe", L".dll", L".obj", L".lib", L".pdb", L".ilk", L".pch",
+		L".png", L".jpg", L".jpeg", L".gif", L".bmp", L".ico",
+		L".zip", L".7z", L".rar", L".tar", L".gz",
+		L".pdf", L".doc", L".docx", L".xls", L".xlsx",
+		L".mp3", L".mp4", L".avi", L".mov", L".wav",
+		L".ttf", L".otf", L".woff", L".woff2",
+		L".bin", L".dat", L".db", L".sqlite",
+		L".res", L".recipe",
+	};
+	return binary_extensions.contains(path.extension());
+}
+
+bool is_binary_data(const std::span<const uint8_t> buf)
+{
+	const auto readLen = buf.size();
+
+	if (readLen == 0)
+		return false;
+
+	// Check for BOM signatures indicating a text encoding
+	if (readLen >= 2)
+	{
+		if (buf[0] == 0xFF && buf[1] == 0xFE) return false; // UTF-16 LE (or UTF-32 LE)
+		if (buf[0] == 0xFE && buf[1] == 0xFF) return false; // UTF-16 BE
+	}
+	if (readLen >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF)
+		return false; // UTF-8 BOM
+
+	// Check for UTF-16 without BOM (alternating null byte pattern)
+	if (readLen >= 4)
+	{
+		if (buf[0] != 0 && buf[1] == 0 && buf[2] != 0 && buf[3] == 0) return false; // UTF-16 LE
+		if (buf[0] == 0 && buf[1] != 0 && buf[2] == 0 && buf[3] != 0) return false; // UTF-16 BE
+	}
+
+	for (uint32_t i = 0; i < readLen; i++)
+	{
+		const auto c = buf[i];
+		if (c == 0)
+			return true;
+		if (c < 8 && c != 7)
+			return true;
+	}
+
+	return false;
+}
+
+bool is_binary_file(const file_path& path)
+{
+	if (is_binary_extension(path))
+		return true;
+
+	const auto hFile = pf::open_for_read(path);
+	if (hFile == nullptr)
+		return false;
+
+	uint8_t buf[8192];
+	uint32_t readLen = 0;
+	hFile->read(buf, sizeof(buf), &readLen);
+
+	return is_binary_data({buf, readLen});
 }

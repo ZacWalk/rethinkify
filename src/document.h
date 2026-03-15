@@ -1,36 +1,40 @@
 #pragma once
 
+// document.h — Text document model: lines, selections, undo/redo, syntax highlighting
 
-#include "spell_check.h"
-#include "Util.h"
+#include "platform.h"
 
 class undo_group;
 class text_view;
 class document_line;
 class text_location;
+class view_base;
+class document_events;
 
-using DROPEFFECT = uint32_t;
-using POSITION = int;
-
-constexpr auto TIMER_DRAGSEL = 1001;
 constexpr auto invalid_length = -1;
 
 constexpr auto TAB_CHARACTER = 0xBB;
 constexpr auto SPACE_CHARACTER = 0x95;
-constexpr auto DEFAULT_PRINT_MARGIN = 1000; //	10 millimeters
-constexpr auto DRAG_BORDER_X = 5;
-constexpr auto DRAG_BORDER_Y = 5;
 
-namespace invalid
+bool is_binary_extension(const file_path& path);
+bool is_binary_data(std::span<const uint8_t> data);
+bool is_binary_file(const file_path& path);
+
+inline bool is_markdown_path(const file_path& path)
 {
-	constexpr auto title = 1 << 0;
-	constexpr auto layout = 1 << 2;
-	constexpr auto caret = 1 << 3;
-	constexpr auto horz_scrollbar = 1 << 4;
-	constexpr auto vert_scrollbar = 1 << 5;
-	constexpr auto invalidate = 1 << 5;
-	constexpr auto view = horz_scrollbar | vert_scrollbar | layout | caret | invalidate;
+	const auto ext = path.extension();
+	if (ext.empty()) return false;
+	const auto e = ext.starts_with(L'.') ? ext.substr(1) : ext;
+	return str::icmp(e, L"md") == 0 || str::icmp(e, L"markdown") == 0;
 }
+
+enum class doc_type
+{
+	overlay,
+	text,
+	markdown,
+	hex,
+};
 
 enum class style
 {
@@ -53,97 +57,69 @@ enum class style
 	code_number,
 	code_operator,
 	code_string,
-	code_preprocessor,	
+	code_preprocessor,
+
+	md_heading1,
+	md_heading2,
+	md_heading3,
+	md_bold,
+	md_italic,
+	md_link_text,
+	md_link_url,
+	md_marker,
+	md_bullet,
 };
 
-class highlighter
+struct text_block
 {
-public:
-	virtual ~highlighter() = default;
-
-
-	struct text_block
-	{
-		size_t _char_pos;
-		style _color;
-	};
-
-	virtual uint32_t parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf,
-	                            int& nActualItems) const = 0;
-	virtual std::vector<std::wstring> suggest(std::wstring_view wword) const = 0;
-
-	virtual bool can_add(std::wstring_view word) const
-	{
-		return false;
-	}
-
-	virtual void add_word(std::wstring_view word) const
-	{
-	}
+	int _char_pos;
+	style _color;
 };
 
-class cpp_highlight : public highlighter
-{
-	uint32_t parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf,
-	                    int& nActualItems) const override;
+using highlight_fn = std::function<uint32_t(uint32_t dwCookie, const document_line& line, text_block* pBuf,
+                                            int& nActualItems)>;
 
-	std::vector<std::wstring> suggest(std::wstring_view wword) const override
-	{
-		return {std::vector<std::wstring>()};
-	}
-};
-
-class text_highight : public highlighter
-{
-	mutable spell_check _check;
-
-	uint32_t parse_line(uint32_t dwCookie, const document_line& line, text_block* pBuf,
-	                    int& nActualItems) const override;
-	std::vector<std::wstring> suggest(std::wstring_view wword) const override;
-
-	bool can_add(std::wstring_view word) const override
-	{
-		return !_check.is_word_valid(word);
-	}
-
-	void add_word(std::wstring_view word) const override
-	{
-		_check.add_word(word);
-	}
-};
-
-class IView
-{
-public:
-	virtual ~IView() = default;
-
-	virtual std::wstring text_from_clipboard() const = 0;
-	virtual bool text_to_clipboard(std::wstring_view text) = 0;
-	virtual void ensure_visible(const text_location& pt) = 0;
-	virtual void invalidate_lines(int start, int end) = 0;
-};
-
-class IEvents
-{
-public:
-	virtual ~IEvents() = default;
-
-	virtual void path_selected(const file_path& path) = 0;
-};
 
 enum class line_endings
 {
 	crlf_style_automatic = -1,
 	crlf_style_dos = 0,
 	crlf_style_unix = 1,
-	crlf_style_mac = 2
+	crlf_style_mac = 2, binary
 };
 
-const auto find_match_case = 1 << 0;
-const auto find_whole_word = 1 << 1;
-const auto find_direction_up = 1 << 2;
-const auto find_start_selection = 1 << 3;
-const auto replace_selection = 1 << 4;
+enum class file_encoding
+{
+	utf32,
+	utf32be,
+	utf8,
+	utf16be,
+	utf16,
+	ascii,
+	binary,
+};
+
+file_encoding detect_encoding(const uint8_t* header, size_t filesize, int& headerLen);
+line_endings detect_line_endings(const uint8_t* buffer, int len);
+
+struct file_lines_info
+{
+	file_encoding enc = file_encoding::utf8;
+	line_endings endings = line_endings::crlf_style_dos;
+};
+
+file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
+                                   const std::function<void(const std::wstring&, int)>& on_line);
+
+struct loaded_file_data
+{
+	std::vector<document_line> lines;
+	line_endings endings = line_endings::crlf_style_dos;
+	file_encoding encoding;
+	uint64_t disk_modified_time = 0;
+};
+
+loaded_file_data load_lines(const file_path& path);
 
 class text_location
 {
@@ -151,23 +127,16 @@ public:
 	int x = 0;
 	int y = 0;
 
-	text_location(const int xx = 0, const int yy = 0) : x(xx), y(yy)
+	constexpr text_location(const int xx = 0, const int yy = 0) : x(xx), y(yy)
 	{
 	}
 
-	bool operator==(const text_location& other) const
-	{
-		return x == other.x && y == other.y;
-	}
+	bool operator==(const text_location& other) const = default;
 
-	bool operator!=(const text_location& other) const
+	auto operator<=>(const text_location& other) const
 	{
-		return x != other.x || y != other.y;
-	}
-
-	bool operator<(const text_location& other) const
-	{
-		return y < other.y || (y == other.y && x < other.x);
+		if (const auto cmp = y <=> other.y; cmp != 0) return cmp;
+		return x <=> other.x;
 	}
 };
 
@@ -178,10 +147,6 @@ public:
 	text_location _end;
 
 	text_selection() = default;
-	text_selection(const text_selection&) = default;
-	text_selection(text_selection&&) = default;
-	text_selection& operator=(const text_selection&) = default;
-	text_selection& operator=(text_selection&&) = default;
 
 	text_selection(const text_location& start, const text_location& end) : _start(start), _end(end)
 	{
@@ -191,31 +156,23 @@ public:
 	{
 	}
 
-	text_selection(int x1, int y1, int x2, int y2) : _start(x1, y1), _end(x2, y2)
+	text_selection(const int x1, const int y1, const int x2, const int y2) : _start(x1, y1), _end(x2, y2)
 	{
 	}
 
-	bool operator==(const text_selection& other) const
-	{
-		return _start == other._start && _end == other._end;
-	}
+	bool operator==(const text_selection& other) const = default;
 
-	bool operator!=(const text_selection& other) const
-	{
-		return _start != other._start || _end != other._end;
-	}
-
-	bool empty() const
+	[[nodiscard]] bool empty() const
 	{
 		return _start == _end;
 	}
 
-	bool is_valid() const
+	[[nodiscard]] bool is_valid() const
 	{
 		return _start.x >= 0 && _start.y >= 0 && _end.x >= 0 && _end.y >= 0;
 	}
 
-	text_selection normalize() const
+	[[nodiscard]] text_selection normalize() const
 	{
 		text_selection result;
 
@@ -233,7 +190,7 @@ public:
 		return result;
 	}
 
-	int line_count() const
+	[[nodiscard]] int line_count() const
 	{
 		return 1 + _end.y - _start.y;
 	}
@@ -243,63 +200,137 @@ class document_line
 {
 public:
 	std::wstring _text;
-	uint32_t _flags = 0;
-
-	mutable int _expanded_length = invalid_length;
-	mutable int _parse_cookie = invalid_length;
 
 	document_line() = default;
-	document_line(const document_line&) = default;
-	document_line(document_line&&) = default;
-	document_line& operator=(const document_line&) = default;
-	document_line& operator=(document_line&&) = default;
 
 	explicit document_line(std::wstring line) : _text(std::move(line))
 	{
 	}
 
-	explicit document_line(std::wstring_view line) : _text(line)
+	document_line(const std::wstring_view text) : _text(text)
 	{
 	}
 
-	bool empty() const
+	[[nodiscard]] bool empty() const
 	{
 		return _text.empty();
 	}
 
-	size_t size() const
+	[[nodiscard]] size_t size() const
 	{
 		return _text.size();
 	}
 
-	std::wstring_view view() const
+	[[nodiscard]] std::wstring_view view() const
 	{
 		return _text;
 	}
 
-	const wchar_t& operator[](int n) const
+	const wchar_t& operator[](const int n) const
 	{
 		return _text[n];
-	}
-
-	bool operator<(const document_line& other) const
-	{
-		return str::icmp(_text, other._text) < 0;
 	}
 
 	bool operator==(const document_line& other) const
 	{
 		return str::icmp(_text, other._text) == 0;
 	}
+
+	std::strong_ordering operator<=>(const document_line& other) const
+	{
+		const auto result = str::icmp(_text, other._text);
+		if (result < 0) return std::strong_ordering::less;
+		if (result > 0) return std::strong_ordering::greater;
+		return std::strong_ordering::equal;
+	}
+
+	void invalidate_expanded_length() const { _expanded_length = invalid_length; }
+	[[nodiscard]] int expanded_length_cache() const { return _expanded_length; }
+	void set_expanded_length(const int len) const { _expanded_length = len; }
+
+private:
+	mutable int _expanded_length = invalid_length;
 };
 
 
-class document
-{
-private:
-	struct undo_item;
+// --- Undo types ---
 
-	IView& _view;
+enum class undo_action { insert, erase };
+
+struct undo_step
+{
+	text_selection _selection;
+	undo_action _action = undo_action::insert;
+	std::wstring _text;
+
+	undo_step() = default;
+
+	undo_step(const text_location& location, const wchar_t& c, const undo_action action) :
+		_selection(location, location), _action(action), _text(1, c)
+	{
+	}
+
+	undo_step(const text_selection& selection, std::wstring text, const undo_action action) :
+		_selection(selection), _action(action), _text(std::move(text))
+	{
+	}
+
+	undo_step(const text_selection& selection, const std::wstring_view text, const undo_action action) :
+		_selection(selection), _action(action), _text(text)
+	{
+	}
+
+	[[nodiscard]] bool is_insert() const { return _action == undo_action::insert; }
+	[[nodiscard]] bool is_erase() const { return _action == undo_action::erase; }
+	[[nodiscard]] bool is_single_char() const { return _text.size() == 1; }
+
+	// For a single-char step, compute the position just past the inserted character.
+	// Newline -> (0, y+1), other char -> (x+1, y).
+	[[nodiscard]] text_location char_end_location() const
+	{
+		if (_text[0] == L'\n')
+			return text_location(0, _selection._start.y + 1);
+		return text_location(_selection._start.x + 1, _selection._start.y);
+	}
+};
+
+struct undo_item
+{
+	void add_insert(const text_location& location, const wchar_t& c)
+	{
+		_steps.emplace_back(location, c, undo_action::insert);
+	}
+
+	void add_insert(const text_selection& selection, std::wstring_view text)
+	{
+		_steps.emplace_back(selection, text, undo_action::insert);
+	}
+
+	void add_erase(const text_location& location, const wchar_t& c)
+	{
+		_steps.emplace_back(location, c, undo_action::erase);
+	}
+
+	void add_erase(const text_selection& selection, std::wstring_view text)
+	{
+		_steps.emplace_back(selection, text, undo_action::erase);
+	}
+
+	[[nodiscard]] bool empty() const { return _steps.empty(); }
+	[[nodiscard]] auto begin() const { return _steps.begin(); }
+	[[nodiscard]] auto end() const { return _steps.end(); }
+	[[nodiscard]] auto rbegin() const { return _steps.rbegin(); }
+	[[nodiscard]] auto rend() const { return _steps.rend(); }
+
+private:
+	std::vector<undo_step> _steps;
+};
+
+// --- Document ---
+
+class document : public std::enable_shared_from_this<document>
+{
+	document_events& _events;
 
 	text_location _anchor_loc;
 	text_location _cursor_loc;
@@ -307,207 +338,112 @@ private:
 	text_selection _saved_sel;
 	bool _auto_indent = false;
 	bool _view_tabs = false;
+	bool _read_only = false;
+	bool _spell_check = false;
 	int _ideal_char_pos = 0;
 	int _tab_size = 4;
 	mutable int _max_line_len = -1;
-	std::atomic<uint32_t> _invalid = 0;
 
 	file_path _path;
-	std::wstring _find_text;
-	std::shared_ptr<highlighter> _highlight;
+	mutable uint64_t _disk_modified_time = 0;
 
 	mutable bool _modified = false;
 	line_endings _line_ending = line_endings::crlf_style_automatic;
+	file_encoding _encoding = file_encoding::utf8;
 	bool _create_backup_file = false;
 
 	std::vector<document_line> _lines;
 	std::vector<undo_item> _undo;
 
 	size_t _undo_pos = 0;
+	mutable size_t _saved_undo_pos = 0;
+	bool _is_overlay = false;
 
-private:
-	struct undo_step
-	{
-	public:
-		text_selection _selection;
-		bool _insert = false;
-		std::wstring _text;
-
-	public:
-		undo_step() = default;
-		undo_step(const undo_step&) = default;
-		undo_step(undo_step&&) = default;
-		undo_step& operator=(const undo_step&) = default;
-		undo_step& operator=(undo_step&&) = default;
-
-		undo_step(const text_location& location, const wchar_t& c, bool insert) : _selection(location, location),
-			_insert(insert), _text(1, c)
-		{
-		}
-
-		undo_step(const text_location& location, std::wstring text, bool insert) :
-			_selection(location, location), _insert(insert), _text(std::move(text))
-		{
-		}
-
-		undo_step(const text_selection& selection, std::wstring text, bool insert) : _selection(selection),
-			_insert(insert), _text(std::move(text))
-		{
-		}
-
-		undo_step(const text_selection& selection, std::wstring_view text, bool insert) : _selection(selection),
-			_insert(insert), _text(text)
-		{
-		}
-
-		text_location undo(document& buffer) const
-		{
-			if (_insert)
-			{
-				if (_text == L"\n")
-				{
-					return buffer.delete_text(text_location(0, _selection._start.y + 1));
-				}
-				if (_text.size() == 1)
-				{
-					return buffer.delete_text(text_location(_selection._start.x + 1, _selection._start.y));
-				}
-				return buffer.delete_text(_selection);
-			}
-			return buffer.insert_text(_selection._start, _text);
-		}
-
-		text_location redo(document& buffer) const
-		{
-			if (_insert)
-			{
-				return buffer.insert_text(_selection._start, _text);
-			}
-			if (_text == L"\n")
-			{
-				return buffer.delete_text(text_location(0, _selection._start.y + 1));
-			}
-			if (_text.size() == 1)
-			{
-				return buffer.delete_text(text_location(_selection._start.x + 1, _selection._start.y));
-			}
-			return buffer.delete_text(_selection);
-		}
-	};
-
-	struct undo_item
-	{
-	public:
-		std::vector<undo_step> _steps;
-
-	public:
-		undo_item() = default;
-		undo_item(const undo_item&) = default;
-		undo_item(undo_item&&) = default;
-		undo_item& operator=(const undo_item&) = default;
-		undo_item& operator=(undo_item&&) = default;
-
-		text_location undo(document& buffer)
-		{
-			text_location location;
-
-			for (auto i = _steps.rbegin(); i != _steps.rend(); ++i)
-			{
-				location = i->undo(buffer);
-			}
-
-			return location;
-		}
-
-		text_location redo(document& buffer)
-		{
-			text_location location;
-
-			for (auto i = _steps.begin(); i != _steps.end(); ++i)
-			{
-				location = i->redo(buffer);
-			}
-
-			return location;
-		}
-	};
-
+	text_location apply_undo_step(const undo_step& step);
+	text_location apply_redo_step(const undo_step& step);
+	text_location apply_undo(const undo_item& item);
+	text_location apply_redo(const undo_item& item);
 
 	text_location insert_text(const text_location& location, std::wstring_view text);
 	text_location insert_text(const text_location& location, const wchar_t& c);
 	text_location delete_text(const text_selection& selection);
 	text_location delete_text(const text_location& location);
 
+	struct block_range
+	{
+		int start_line;
+		int end_line;
+	};
+
+	block_range prepare_block_selection(text_selection& sel);
+
 public:
-	document(IView& view, const std::wstring& text = std::wstring(),
+	document(document_events& events, std::wstring_view text = {},
+	         bool is_overlay = false,
 	         line_endings nCrlfStyle = line_endings::crlf_style_dos);
+	document(document_events& events, const file_path& path, uint64_t disk_modified_time, file_encoding encoding);
 	~document();
 
-	bool load_from_file(const file_path &path);
-	bool save_to_file(const file_path &path, line_endings nCrlfStyle = line_endings::crlf_style_automatic,
+	void apply_loaded_data(const file_path& path, loaded_file_data data);
+	bool save_to_file(const file_path& path, line_endings nCrlfStyle = line_endings::crlf_style_automatic,
 	                  bool bClearModifiedFlag = true) const;
 	void clear();
 
-	bool is_modified() const
+	[[nodiscard]] file_encoding encoding() const
 	{
-		return _modified;
+		return _encoding;
 	}
 
-	bool empty() const
+	[[nodiscard]] bool is_modified() const
+	{
+		return !_is_overlay && _modified;
+	}
+
+	[[nodiscard]] bool is_read_only() const
+	{
+		return _read_only;
+	}
+
+	void read_only(const bool ro)
+	{
+		_read_only = ro;
+	}
+
+	[[nodiscard]] bool empty() const
 	{
 		return _lines.empty();
 	}
 
-	size_t size() const
+	[[nodiscard]] size_t size() const
 	{
 		return _lines.size();
 	}
 
-	const document_line& operator[](int n) const
+	const document_line& operator[](const int n) const
 	{
 		return _lines[n];
 	}
 
-	document_line& operator[](int n)
+	document_line& operator[](const int n)
 	{
 		return _lines[n];
 	}
 
 	std::vector<std::wstring> text(const text_selection& selection) const;
-	
+
 	static std::wstring combine_line_text(const std::vector<document_line>& lines)
 	{
-		std::wostringstream result;
-		auto first = true;
-
-		for (const auto& line : lines)
-		{
-			if (first)
-			{
-				result << line._text;
-				first = false;
-			}
-			else
-			{
-				result << std::endl << line._text;
-			}
-		}
-
-		return result.str();
+		return str::join(lines, [](const document_line& l) -> std::wstring_view { return l._text; });
 	}
 
-	std::wstring str() const
+	[[nodiscard]] std::wstring str() const
 	{
 		return combine_line_text(_lines);
 	}
 
-	void path(file_path path_in)
-	{
-		_path = path_in;
-		invalidate(invalid::title);
-	}
+	void path(const file_path& path_in);
 
-	file_path path() const
+	[[nodiscard]] file_path path() const
 	{
 		return _path;
 	}
@@ -522,50 +458,43 @@ public:
 	text_location delete_text(undo_group& ug, const text_location& location);
 
 
-	bool can_undo() const;
-	bool can_redo() const;
+	[[nodiscard]] bool can_undo() const;
+	[[nodiscard]] bool can_redo() const;
 	text_location undo();
 	text_location redo();
-	void record_undo(const undo_item& ui);
+	void record_undo(undo_item ui);
 
-	bool find(std::wstring_view what, const text_location& start_pos, const text_selection& selection,
-	          uint32_t flags, bool wrap_search, text_location& found_pos) const;
-	void find(std::wstring_view what, uint32_t flags);
-
-	bool can_find_next() const
-	{
-		return !_find_text.empty();
-	}
-
-	void highlight_from_extension(std::wstring_view ext);
-
-	const std::vector<document_line>& lines() const
+	[[nodiscard]] const std::vector<document_line>& lines() const
 	{
 		return _lines;
 	}
 
 	static bool can_paste();
 
-	bool has_selection() const
+	[[nodiscard]] bool has_selection() const
 	{
 		return !_selection.empty();
 	}
 
-	bool GetAutoIndent() const;
-	static bool QueryEditable();
+	[[nodiscard]] bool get_auto_indent() const;
+	[[nodiscard]] bool query_editable() const;
 
-	void edit_cut();
-	void Copy() const;
+	std::wstring edit_cut();
+	std::wstring copy() const;
 	void edit_delete();
 	void edit_delete_back();
 	void edit_redo();
 	void edit_tab();
 	void edit_undo();
 	void edit_untab();
-	void edit_paste();
-	void SetAutoIndent(bool bAutoIndent);
+	void edit_paste(std::wstring_view text);
+	void set_auto_indent(bool bAutoIndent);
 
-	text_selection selection() const
+	[[nodiscard]] bool is_json() const;
+	void reformat_json();
+	void sort_remove_duplicates();
+
+	[[nodiscard]] text_selection selection() const
 	{
 		return _selection.normalize();
 	}
@@ -582,19 +511,20 @@ public:
 
 	bool is_inside_selection(const text_location& loc) const;
 	void reset();
+	void finalize_move(bool selecting);
 
-	text_location end() const
+	[[nodiscard]] text_location end() const
 	{
-		const auto last_line = _lines.size() - 1;
-		return text_location(_lines[last_line].size(), last_line);
+		const auto last_line = static_cast<int>(_lines.size()) - 1;
+		return text_location(static_cast<int>(_lines[last_line].size()), last_line);
 	}
 
-	text_selection all() const
+	[[nodiscard]] text_selection all() const
 	{
 		return text_selection(text_location(0, 0), end());
 	}
 
-	int tab_size() const
+	[[nodiscard]] int tab_size() const
 	{
 		return _tab_size;
 	}
@@ -605,24 +535,20 @@ public:
 	text_location word_to_left(text_location pt) const;
 	text_location word_to_right(text_location pt) const;
 
-	uint32_t highlight_cookie(int lineIndex) const;
-	uint32_t highlight_line(uint32_t dwCookie, const document_line& line, highlighter::text_block* pBuf,
-	                        int& nActualItems) const;
-
-	bool view_tabs() const;
-	bool highlight_text(const text_location& ptStartPos, int nLength);
+	[[nodiscard]] bool view_tabs() const;
 
 	int calc_offset(int lineIndex, int nCharIndex) const;
 	int calc_offset_approx(int lineIndex, int nOffset) const;
 	int expanded_line_length(int line_index) const;
 	std::wstring expanded_chars(std::wstring_view text, int offset_in, int count_in) const;
+	void expanded_chars(std::wstring_view text, int offset_in, int count_in, std::wstring& result) const;
 
-	const text_location& cursor_pos() const
+	[[nodiscard]] const text_location& cursor_pos() const
 	{
 		return _cursor_loc;
 	}
 
-	const text_location& anchor_pos() const
+	[[nodiscard]] const text_location& anchor_pos() const
 	{
 		return _anchor_loc;
 	}
@@ -632,14 +558,16 @@ public:
 
 	void update_max_line_length(int lineIndex) const;
 
-	void move_to(text_location pos, bool selecting)
+	void move_to(text_location pos, const bool selecting)
 	{
-		const auto limit = _lines[pos.y].size();
+		const auto limit = static_cast<int>(_lines[pos.y].size());
 
 		if (pos.x > limit)
 		{
 			pos.x = limit;
 		}
+
+		_cursor_loc = pos;
 
 		if (!selecting)
 		{
@@ -649,7 +577,7 @@ public:
 		select(text_selection(_anchor_loc, _cursor_loc));
 	}
 
-	text_selection word_selection(const text_location& pos, bool from_anchor) const
+	text_selection word_selection(const text_location& pos, const bool from_anchor) const
 	{
 		const auto ptStart = from_anchor ? _anchor_loc : pos;
 		const auto ptEnd = pos;
@@ -670,128 +598,114 @@ public:
 		return text_selection(word_to_left(_anchor_loc), word_to_right(_cursor_loc));
 	}
 
-	text_selection line_selection(const text_location& pos, bool from_anchor) const
+	text_selection line_selection(const text_location& pos, const bool from_anchor) const
 	{
 		auto ptStart = from_anchor ? _anchor_loc : pos;
 		auto ptEnd = pos;
 
 		ptEnd.x = 0; //	Force beginning of the line
 
-		if (ptStart.y >= _lines.size())
+		if (ptStart.y < static_cast<int>(_lines.size()))
 		{
-			ptStart.x = _lines[ptStart.y].size();
+			ptStart.x = static_cast<int>(_lines[ptStart.y].size());
 		}
 		else
 		{
-			ptStart.y++;
-			ptStart.x = 0;
+			ptStart.y = static_cast<int>(_lines.size()) - 1;
+			ptStart.x = static_cast<int>(_lines[ptStart.y].size());
 		}
 
 		return text_selection(ptStart, ptEnd);
 	}
 
-	text_selection pos_selection(const text_location& pos, bool from_anchor) const
+	text_selection pos_selection(const text_location& pos, const bool from_anchor) const
 	{
 		return text_selection(from_anchor ? _anchor_loc : pos, pos);
 	}
 
-	void select(const text_selection& selection)
+	void select(const text_selection& selection);
+
+	void invalidate_line(int index);
+
+	[[nodiscard]] bool spell_check() const
 	{
-		if (_selection != selection)
-		{
-			assert(selection.is_valid());
-
-			anchor_pos(selection._start);
-			cursor_pos(selection._end);
-
-			_view.ensure_visible(selection._end);
-			invalidate(invalid::caret);
-
-			_view.invalidate_lines(selection._start.y, selection._end.y);
-			_view.invalidate_lines(_selection._start.y, _selection._end.y);
-			_selection = selection;
-		}
+		return _spell_check;
 	}
 
-	void invalidate_line(int index)
+	void toggle_spell_check();
+
+	[[nodiscard]] doc_type get_doc_type() const
 	{
-		const auto& line = _lines[index];
-		line._expanded_length = -1;
-		line._parse_cookie = -1;
-
-		_view.invalidate_lines(index, index + 1);
-
-		update_max_line_length(index);
-		invalidate(invalid::horz_scrollbar);
+		if (_is_overlay)
+			return doc_type::overlay;
+		if (_encoding == file_encoding::binary)
+			return doc_type::hex;
+		if (is_markdown_path(_path))
+			return doc_type::markdown;
+		return doc_type::text;
 	}
 
-	void add_word(std::wstring_view word)
+	uint64_t disk_modified_time() const
 	{
-		_highlight->add_word(word);
-		invalidate(invalid::view);
+		return _disk_modified_time;
 	}
-
-	std::vector<std::wstring> suggest(std::wstring_view word) const
-	{
-		return _highlight->suggest(word);
-	}
-
-	bool can_add(std::wstring_view word) const
-	{
-		return _highlight->can_add(word);
-	}
-
-	void invalidate(const uint32_t i)
-	{
-		_invalid |= i;
-	}
-
-	uint32_t validate()
-	{
-		return _invalid.exchange(0);
-	}
-
-	friend class undo_group;
 };
+
+using document_ptr = std::shared_ptr<document>;
 
 
 class undo_group
 {
 	document& _doc;
-	document::undo_item _undo;
+	undo_item _undo;
 
 public:
-	undo_group(const undo_group&) = default;
-	undo_group(undo_group&&) = default;
-	undo_group& operator=(const undo_group&) = default;
-	undo_group& operator=(undo_group&&) = default;
+	undo_group(const undo_group&) = delete;
+	undo_group(undo_group&&) = delete;
+	undo_group& operator=(const undo_group&) = delete;
+	undo_group& operator=(undo_group&&) = delete;
 
 	undo_group(document& d) : _doc(d)
 	{
 	}
 
+	undo_group(const document_ptr& d) : _doc(*d)
+	{
+	}
+
 	~undo_group()
 	{
-		_doc.record_undo(_undo);
+		if (!_undo.empty())
+			_doc.record_undo(std::move(_undo));
 	}
 
 	void insert(const text_location& location, const wchar_t& c)
 	{
-		_undo._steps.emplace_back(location, c, true);
+		_undo.add_insert(location, c);
 	}
 
-	void insert(const text_selection& selection, std::wstring_view text)
+	void insert(const text_selection& selection, const std::wstring_view text)
 	{
-		_undo._steps.emplace_back(selection, text, true);
+		_undo.add_insert(selection, text);
 	}
 
 	void erase(const text_location& location, const wchar_t& c)
 	{
-		_undo._steps.emplace_back(location, c, false);
+		_undo.add_erase(location, c);
 	}
 
-	void erase(const text_selection& selection, std::wstring_view text)
+	void erase(const text_selection& selection, const std::wstring_view text)
 	{
-		_undo._steps.emplace_back(selection, text, false);
+		_undo.add_erase(selection, text);
 	}
 };
+
+// --- Highlighting and spell checking utilities (used by views) ---
+
+// Select the appropriate syntax highlighter based on file path/extension.
+highlight_fn select_highlighter(doc_type type, const file_path& path);
+
+// Spell checking helpers — thin wrappers around the platform spell checker.
+bool spell_check_word(std::wstring_view word);
+std::vector<std::wstring> spell_suggest(std::wstring_view word);
+void spell_add_word(std::wstring_view word);

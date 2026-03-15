@@ -1,382 +1,344 @@
 #pragma once
 
-extern HINSTANCE resource_instance;
+// ui.h — UI color constants
+
+#include "platform.h"
 
 namespace ui
 {
-	constexpr uint32_t handle_color = 0x00444444;
-	constexpr uint32_t main_wnd_clr = 0x00222222;
-	constexpr uint32_t tool_wnd_clr = 0x00333333;
-	constexpr uint32_t handle_hover_color = 0x00666666;
-	constexpr uint32_t handle_tracking_color = 0x00CC6611;
-	constexpr uint32_t text_color = 0x00FFFFFF;
-	constexpr uint32_t folder_text_color = 0x0022CCEE;
-	constexpr uint32_t darker_text_color = 0x00CCCCCC;
-	constexpr uint32_t line_color = 0x00AA5522;
+	constexpr color_t handle_color{0x44, 0x44, 0x44};
+	constexpr color_t focus_handle_color{40, 100, 220};
+	constexpr color_t main_wnd_clr{0x22, 0x22, 0x22};
+	constexpr color_t tool_wnd_clr{0x33, 0x33, 0x33};
+	constexpr color_t handle_hover_color{0x66, 0x66, 0x66};
+	constexpr color_t handle_tracking_color{0x11, 0x66, 0xCC};
+	constexpr color_t text_color{0xFF, 0xFF, 0xFF};
+	constexpr color_t folder_text_color{0xEE, 0xCC, 0x22};
+	constexpr color_t darker_text_color{0xCC, 0xCC, 0xCC};
+	constexpr color_t line_color{0x22, 0x55, 0xAA};
+	constexpr color_t window_background{33, 33, 33};
+}
 
-	inline COLORREF rgba(const uint32_t r, const uint32_t g, const uint32_t b, const uint32_t a = 255)
-	{
-		return r | (g << 8) | (b << 16) | (a << 24);
-	};
 
-	inline uint32_t byte_clamp(const int n)
+struct edit_box
+{
+	std::wstring text;
+	int cursor_pos = 0;
+	int sel_anchor = 0;
+
+	[[nodiscard]] int sel_start() const { return std::min(cursor_pos, sel_anchor); }
+	[[nodiscard]] int sel_end() const { return std::max(cursor_pos, sel_anchor); }
+	[[nodiscard]] bool has_selection() const { return cursor_pos != sel_anchor; }
+
+	void delete_selection()
 	{
-		return (n > 255) ? 255u : (n < 0) ? 0u : static_cast<uint32_t>(n);
+		if (!has_selection()) return;
+		const auto s = sel_start();
+		const auto e = sel_end();
+		text.erase(s, e - s);
+		cursor_pos = s;
+		sel_anchor = s;
 	}
 
-	inline COLORREF saturate_rgba(const int r, const int g, const int b, const int a)
+	void insert_at_cursor(const std::wstring_view t)
 	{
-		return byte_clamp(r) | (byte_clamp(g) << 8) | (byte_clamp(b) << 16) | (byte_clamp(a) << 24);
+		if (has_selection()) delete_selection();
+		text.insert(cursor_pos, t);
+		cursor_pos += static_cast<int>(t.length());
+		sel_anchor = cursor_pos;
 	}
 
-	inline uint32_t get_a(const COLORREF c)
+	// Returns true if text was modified
+	bool on_char(const pf::window_frame_ptr& w, const wchar_t ch)
 	{
-		return 0xffu & (c >> 24);
-	}
-
-	inline uint32_t get_r(const COLORREF c)
-	{
-		return 0xffu & c;
-	}
-
-	inline uint32_t get_g(const COLORREF c)
-	{
-		return 0xffu & (c >> 8);
-	}
-
-	inline uint32_t get_b(const COLORREF c)
-	{
-		return 0xffu & (c >> 16);
-	}
-
-	inline COLORREF lighten(const COLORREF c, const int n = 32)
-	{
-		return saturate_rgba(get_r(c) + n, get_g(c) + n, get_b(c) + n, get_a(c));
-	}
-
-	inline COLORREF darken(const COLORREF c, const int n = 32)
-	{
-		return lighten(c, -n);
-	}
-
-	inline COLORREF emphasize(const COLORREF c, const int n = 48)
-	{
-		const bool is_light = get_b(c) > 0x80 || get_g(c) > 0x80 || get_r(c) > 0x80;
-		return lighten(c, is_light ? -n : n);
-	}
-
-	inline SIZE measure_toolbar(HWND tb)
-	{
-		SIZE result{ 0, 0 };
-		const auto count = static_cast<int>(::SendMessage(tb, TB_BUTTONCOUNT, 0, 0L));
-
-		for (int i = 0; i < count; ++i)
+		if (ch == 0x01) // Ctrl+A
 		{
-			RECT r;
-			if (static_cast<BOOL>(::SendMessage(tb, TB_GETITEMRECT, i, (LPARAM)&r)))
+			sel_anchor = 0;
+			cursor_pos = static_cast<int>(text.length());
+			return false;
+		}
+
+		if (ch == 0x03) // Ctrl+C
+		{
+			if (has_selection())
+				w->text_to_clipboard(text.substr(sel_start(), sel_end() - sel_start()));
+			else if (!text.empty())
+				w->text_to_clipboard(text);
+			return false;
+		}
+
+		if (ch == 0x16) // Ctrl+V
+		{
+			const auto clip = w->text_from_clipboard();
+			if (!clip.empty())
 			{
-				result.cx = std::max(r.right, result.cx);
-				result.cy = std::max(r.bottom, result.cy);
+				std::wstring clean;
+				clean.reserve(clip.size());
+				for (const auto c : clip)
+					if (c != L'\r' && c != L'\n')
+						clean += c;
+				insert_at_cursor(clean);
+				return true;
 			}
+			return false;
 		}
 
-		return result;
-	}
-
-
-	class win_dc
-	{
-	public:
-		HDC _hdc;
-		HWND _hwnd;
-
-		win_dc(HWND hwnd) : _hdc(GetDC(hwnd)), _hwnd(hwnd)
+		if (ch == 0x18) // Ctrl+X
 		{
-		}
-
-		~win_dc()
-		{
-			ReleaseDC(_hwnd, _hdc);
-		}
-
-		operator HDC() const
-		{
-			return _hdc;
-		}
-
-		HFONT SelectFont(HFONT hFont) const
-		{
-			return static_cast<HFONT>(SelectObject(_hdc, hFont));
-		}
-	};
-
-	inline void fill_solid_rect(HDC hDC, int x, int y, int cx, int cy, COLORREF clr)
-	{
-		const RECT rect = { x, y, x + cx, y + cy };
-		const COLORREF crOldBkColor = SetBkColor(hDC, clr);
-		::ExtTextOut(hDC, 0, 0, ETO_OPAQUE, &rect, nullptr, 0, nullptr);
-		SetBkColor(hDC, crOldBkColor);
-	}
-
-
-	inline void fill_solid_rect(HDC hDC, const RECT* pRC, COLORREF crColor)
-	{
-		fill_solid_rect(hDC, pRC->left, pRC->top, pRC->right - pRC->left, pRC->bottom - pRC->top, crColor);
-	}
-
-	class win
-	{
-	public:
-		HWND m_hWnd = nullptr;
-
-		irect get_client_rect() const
-		{
-			irect result;
-			::GetClientRect(m_hWnd, &result);
-			return result;
-		}
-
-		void move_window(const irect& bounds) const
-		{
-			::MoveWindow(m_hWnd, bounds.left, bounds.top, bounds.Width(), bounds.Height(), TRUE);
-		}
-
-
-		void create_control(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0,
-			const uintptr_t id = 0)
-		{
-			m_hWnd = CreateWindowEx(
-				exstyle,
-				class_name,
-				nullptr,
-				style,
-				0, 0, 0, 0,
-				parent,
-				std::bit_cast<HMENU>(id),
-				resource_instance,
-				this);
-		}
-	};
-
-	class win_impl : public win
-	{
-	public:
-		virtual ~win_impl()
-		{
-			if (IsWindow(m_hWnd))
+			if (has_selection())
 			{
-				SetWindowLongPtr(m_hWnd, GWLP_USERDATA, 0);
+				w->text_to_clipboard(text.substr(sel_start(), sel_end() - sel_start()));
+				delete_selection();
 			}
-		}
-
-		virtual LRESULT handle_message(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-		{
-			return DefWindowProc(hWnd, uMsg, wParam, lParam);
-		}
-
-		static LRESULT CALLBACK win_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-		{
-			if (uMsg == WM_NCCREATE)
+			else if (!text.empty())
 			{
-				const auto pt = std::bit_cast<win_impl*>(std::bit_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
-				const auto ptr = std::bit_cast<LONG_PTR>(std::bit_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
-				SetWindowLongPtr(hwnd, GWLP_USERDATA, ptr);
-
-				if (pt)
-				{
-					pt->m_hWnd = hwnd;
-				}
+				w->text_to_clipboard(text);
+				text.clear();
+				cursor_pos = 0;
+				sel_anchor = 0;
 			}
-
-			if (uMsg == WM_INITDIALOG)
-			{
-				const auto pt = std::bit_cast<win_impl*>(lParam);
-				const auto ptr = std::bit_cast<LONG_PTR>(lParam);
-				SetWindowLongPtr(hwnd, GWLP_USERDATA, ptr);
-
-				if (pt)
-				{
-					pt->m_hWnd = hwnd;
-				}
-			}
-
-			// get the pointer to the window
-			const auto ptr = std::bit_cast<win_impl*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-
-			if (ptr)
-			{
-				return ptr->handle_message(hwnd, uMsg, wParam, lParam);
-			}
-			return DefWindowProc(hwnd, uMsg, wParam, lParam);
-		}
-
-		static bool register_class(const UINT style, const HICON hIcon, const HCURSOR hCursor, const uint32_t clr_background,
-			LPCWSTR lpszMenuName, LPCWSTR lpszClassName, const HICON hIconSm)
-		{
-			WNDCLASSEX wcx;
-			wcx.cbSize = sizeof(WNDCLASSEX); // size of structure
-			wcx.style = style; // redraw if size changes
-			wcx.lpfnWndProc = win_proc; // points to window procedure
-			wcx.cbClsExtra = 0; // no extra class memory
-			wcx.cbWndExtra = 0; // no extra window memory
-			wcx.hInstance = resource_instance; // handle to instance
-			wcx.hIcon = hIcon; // predefined app. icon
-			wcx.hCursor = hCursor; // predefined arrow
-			wcx.hbrBackground = CreateSolidBrush(clr_background); // white background brush
-			wcx.lpszMenuName = lpszMenuName; // name of menu resource
-			wcx.lpszClassName = lpszClassName; // name of window class
-			wcx.hIconSm = hIconSm;
-
-			if (RegisterClassEx(&wcx) == 0)
-			{
-				if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-				{
-					return false;
-				}
-			}
-
 			return true;
 		}
 
-		INT_PTR do_modal(const HWND parent, const uintptr_t id)
+		if (ch == 0x08) // Backspace
 		{
-			return ::DialogBoxParam(resource_instance, MAKEINTRESOURCE(id),
-				parent, win_proc, (LPARAM)this);
+			if (has_selection())
+			{
+				delete_selection();
+			}
+			else if (cursor_pos > 0)
+			{
+				text.erase(cursor_pos - 1, 1);
+				cursor_pos--;
+				sel_anchor = cursor_pos;
+			}
+			return true;
 		}
 
-		void create(LPCWSTR class_name, const HWND parent, const uint32_t style, const uint32_t exstyle = 0,
-			const uintptr_t id = 0)
+		if (ch >= L' ')
 		{
-			const auto default_cursor = LoadCursor(nullptr, IDC_ARROW);
-			if (register_class(CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
-				nullptr, default_cursor,
-				main_wnd_clr,
-				nullptr, class_name, nullptr))
-			{
-				m_hWnd = CreateWindowEx(
-					exstyle,
-					class_name,
-					nullptr,
-					style,
-					CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-					parent, std::bit_cast<HMENU>(id),
-					resource_instance,
-					this);
-			}
-		}
-	};
-
-#ifndef GET_X_LPARAM
-#define GET_X_LPARAM(lParam)	((int)(short)LOWORD(lParam))
-#endif
-#ifndef GET_Y_LPARAM
-#define GET_Y_LPARAM(lParam)	((int)(short)HIWORD(lParam))
-#endif
-
-	inline void set_font(HWND h, HFONT f)
-	{
-		SendMessage(h, WM_SETFONT, (WPARAM)f, 1);
-	}
-
-	inline void set_icon(HWND h, HICON i)
-	{
-		SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM)i);
-		SendMessage(h, WM_SETICON, ICON_SMALL, (LPARAM)i);
-	}
-
-	inline DWORD get_style(HWND m_hWnd)
-	{
-		return static_cast<DWORD>(::GetWindowLong(m_hWnd, GWL_STYLE));
-	}
-
-	BOOL center_window(HWND m_hWnd, HWND hWndCenter = nullptr) noexcept
-	{
-		// determine owner window to center against
-		const DWORD dwStyle = get_style(m_hWnd);
-		if (hWndCenter == nullptr)
-		{
-			if (dwStyle & WS_CHILD)
-				hWndCenter = GetParent(m_hWnd);
-			else
-				hWndCenter = GetWindow(m_hWnd, GW_OWNER);
+			insert_at_cursor(std::wstring_view(&ch, 1));
+			return true;
 		}
 
-		// get coordinates of the window relative to its parent
-		RECT rcDlg;
-		GetWindowRect(m_hWnd, &rcDlg);
-		RECT rcArea;
-		RECT rcCenter;
-		const HWND hWndParent = hWndCenter;
-		if (!(dwStyle & WS_CHILD))
+		return false;
+	}
+
+	// Returns true if the key was handled. Sets text_modified if text content changed.
+	bool on_key_down(const pf::window_frame_ptr& w, const unsigned int vk, bool& text_modified)
+	{
+		namespace pk = pf::platform_key;
+		const bool shift = w->is_key_down(pk::Shift);
+		const bool ctrl = w->is_key_down(pk::Control);
+		text_modified = false;
+
+		if (vk == pk::Left)
 		{
-			// don't center against invisible or minimized windows
-			if (hWndCenter != nullptr)
+			if (ctrl) // word-skip left
 			{
-				const DWORD dwStyleCenter = ::GetWindowLong(hWndCenter, GWL_STYLE);
-				if (!(dwStyleCenter & WS_VISIBLE) || (dwStyleCenter & WS_MINIMIZE))
-					hWndCenter = nullptr;
+				auto pos = cursor_pos;
+				while (pos > 0 && text[pos - 1] == L' ') pos--;
+				while (pos > 0 && text[pos - 1] != L' ') pos--;
+				cursor_pos = pos;
+			}
+			else if (cursor_pos > 0)
+			{
+				cursor_pos--;
+			}
+			if (!shift) sel_anchor = cursor_pos;
+			return true;
+		}
+
+		if (vk == pk::Right)
+		{
+			const auto len = static_cast<int>(text.length());
+			if (ctrl)
+			{
+				auto pos = cursor_pos;
+				while (pos < len && text[pos] != L' ') pos++;
+				while (pos < len && text[pos] == L' ') pos++;
+				cursor_pos = pos;
+			}
+			else if (cursor_pos < len)
+			{
+				cursor_pos++;
+			}
+			if (!shift) sel_anchor = cursor_pos;
+			return true;
+		}
+
+		if (vk == pk::Home)
+		{
+			cursor_pos = 0;
+			if (!shift) sel_anchor = cursor_pos;
+			return true;
+		}
+
+		if (vk == pk::End)
+		{
+			cursor_pos = static_cast<int>(text.length());
+			if (!shift) sel_anchor = cursor_pos;
+			return true;
+		}
+
+		if (vk == pk::Delete)
+		{
+			if (has_selection())
+			{
+				delete_selection();
+				text_modified = true;
+			}
+			else if (cursor_pos < static_cast<int>(text.length()))
+			{
+				text.erase(cursor_pos, 1);
+				text_modified = true;
+			}
+			return true;
+		}
+
+		return false;
+	}
+
+	ipoint caret_position(const irect& box_rect, const int inner_pad,
+	                      const isize& char_sz, const pf::font& font,
+	                      const pf::window_frame_ptr& w) const
+	{
+		const auto text_y = box_rect.top + (box_rect.Height() - char_sz.cy) / 2;
+
+		if (text.empty() || cursor_pos == 0)
+		{
+			return {box_rect.left + inner_pad, text_y};
+		}
+		const auto mc = w->create_measure_context();
+		const auto before = text.substr(0, cursor_pos);
+		const auto sz = mc->measure_text(before, font);
+		return {box_rect.left + inner_pad + sz.cx, text_y};
+	}
+};
+
+
+struct custom_scrollbar
+{
+	enum class orientation { vertical, horizontal };
+
+	orientation _orient;
+	int _content_size = 0;
+	int _page_size = 0;
+	int _position = 0;
+
+	bool _hover = false;
+	bool _tracking = false;
+	int _tracking_start_mouse = 0;
+	int _tracking_start_pos = 0;
+
+	static constexpr int thumb_thickness = 8;
+	static constexpr int edge_margin = 4;
+	static constexpr int hover_track_width = 26;
+	static constexpr int hit_margin = 32;
+
+	custom_scrollbar(const orientation o) : _orient(o)
+	{
+	}
+
+	[[nodiscard]] bool can_scroll() const
+	{
+		return _content_size > _page_size && _page_size > 0;
+	}
+
+	void update(const int content_size, const int page_size, const int position)
+	{
+		_content_size = content_size;
+		_page_size = page_size;
+		_position = position;
+	}
+
+	bool hit_test(const ipoint& pt, const irect& client) const
+	{
+		if (!can_scroll()) return false;
+		if (_orient == orientation::vertical)
+			return pt.x >= client.right - hit_margin && pt.y >= client.top && pt.y < client.bottom;
+		return pt.y >= client.bottom - hit_margin && pt.x >= client.left && pt.x < client.right;
+	}
+
+	void draw(pf::draw_context& dc, const irect& client) const
+	{
+		if (!can_scroll()) return;
+
+		if (_orient == orientation::vertical)
+		{
+			const auto extent = client.Height();
+			const auto y = pf::mul_div(_position, extent, _content_size) + client.top;
+			const auto cy = std::max(pf::mul_div(_page_size, extent, _content_size), thumb_thickness);
+			const auto right = client.right;
+			auto x_pad = 0;
+
+			if (_hover || _tracking)
+			{
+				dc.fill_solid_rect(irect(right - hover_track_width, client.top, right, client.bottom),
+				                   ui::handle_color);
+				x_pad = 10;
 			}
 
-			// center within screen coordinates
-			HMONITOR hMonitor = nullptr;
-			if (hWndCenter != nullptr)
-			{
-				hMonitor = MonitorFromWindow(hWndCenter, MONITOR_DEFAULTTONEAREST);
-			}
-			else
-			{
-				hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
-			}
-
-			MONITORINFO minfo;
-			minfo.cbSize = sizeof(MONITORINFO);
-			BOOL bResult = ::GetMonitorInfo(hMonitor, &minfo);
-
-			rcArea = minfo.rcWork;
-
-			if (hWndCenter == nullptr)
-				rcCenter = rcArea;
-			else
-				GetWindowRect(hWndCenter, &rcCenter);
+			const auto c = _tracking ? ui::handle_tracking_color : ui::handle_hover_color;
+			dc.fill_solid_rect(irect(right - thumb_thickness - edge_margin - x_pad, y,
+			                         right - edge_margin, y + cy), c);
 		}
 		else
 		{
-			// center within parent client coordinates
-			GetClientRect(hWndParent, &rcArea);
-			GetClientRect(hWndCenter, &rcCenter);
-			MapWindowPoints(hWndCenter, hWndParent, (POINT*)&rcCenter, 2);
+			const auto extent = client.Width();
+			const auto x = pf::mul_div(_position, extent, _content_size) + client.left;
+			const auto cx = std::max(pf::mul_div(_page_size, extent, _content_size), thumb_thickness);
+			const auto bottom = client.bottom;
+			auto y_pad = 0;
+
+			if (_hover || _tracking)
+			{
+				dc.fill_solid_rect(irect(client.left, bottom - hover_track_width, client.right, bottom),
+				                   ui::handle_color);
+				y_pad = 10;
+			}
+
+			const auto c = _tracking ? ui::handle_tracking_color : ui::handle_hover_color;
+			dc.fill_solid_rect(irect(x, bottom - thumb_thickness - edge_margin - y_pad,
+			                         x + cx, bottom - edge_margin), c);
 		}
-
-		const int DlgWidth = rcDlg.right - rcDlg.left;
-		const int DlgHeight = rcDlg.bottom - rcDlg.top;
-
-		// find dialog's upper left based on rcCenter
-		int xLeft = (rcCenter.left + rcCenter.right) / 2 - DlgWidth / 2;
-		int yTop = (rcCenter.top + rcCenter.bottom) / 2 - DlgHeight / 2;
-
-		// if the dialog is outside the screen, move it inside
-		if (xLeft + DlgWidth > rcArea.right)
-			xLeft = rcArea.right - DlgWidth;
-		if (xLeft < rcArea.left)
-			xLeft = rcArea.left;
-
-		if (yTop + DlgHeight > rcArea.bottom)
-			yTop = rcArea.bottom - DlgHeight;
-		if (yTop < rcArea.top)
-			yTop = rcArea.top;
-
-		// map screen coordinates to child coordinates
-		return SetWindowPos(m_hWnd, nullptr, xLeft, yTop, -1, -1,
-			SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 	}
 
-	static std::wstring window_text(HWND h)
+	bool begin_tracking(const ipoint& pt, const irect& client, const pf::window_frame_ptr& window)
 	{
-		const auto len = ::GetWindowTextLength(h);
-		if (len == 0) return {};
-		std::wstring result(len + 1, 0);
-		GetWindowText(h, result.data(), len + 1);
-		result.resize(len, 0);
-		return result;
+		if (!hit_test(pt, client)) return false;
+		_tracking = true;
+		_tracking_start_mouse = _orient == orientation::vertical ? pt.y : pt.x;
+		_tracking_start_pos = _position;
+		window->set_capture();
+		return true;
 	}
-}
+
+	int track_to(const ipoint& pt, const irect& client) const
+	{
+		if (!_tracking) return _position;
+		const int delta_mouse = _orient == orientation::vertical
+			                        ? pt.y - _tracking_start_mouse
+			                        : pt.x - _tracking_start_mouse;
+		const int extent = _orient == orientation::vertical ? client.Height() : client.Width();
+		if (extent <= 0) return _position;
+		const auto delta_content = pf::mul_div(delta_mouse, _content_size, extent);
+		return clamp(_tracking_start_pos + delta_content, 0, _content_size - _page_size);
+	}
+
+	void end_tracking(const pf::window_frame_ptr& window)
+	{
+		if (_tracking)
+		{
+			_tracking = false;
+			window->release_capture();
+		}
+	}
+
+	bool set_hover(const bool hover)
+	{
+		if (_hover == hover) return false;
+		_hover = hover;
+		return true;
+	}
+};
