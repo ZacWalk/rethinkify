@@ -1,32 +1,32 @@
-#pragma once
-
 // test.h — Lightweight test framework: assertions and test runner
 
-#include "util.h"
+#pragma once
+
+#include "platform.h"
 
 class should
 {
 public:
-	static void is_equal(const std::wstring_view expected, const std::wstring_view actual,
-	                     const std::wstring_view message = L"Test")
+	static void is_equal(const std::u8string_view expected, const std::u8string_view actual,
+	                     const std::u8string_view message = u8"Test")
 	{
 		if (actual != expected)
 		{
-			throw std::format(L"{}: expected '{}', got '{}'", message, expected, actual);
+			throw pf::format(u8"{}: expected '{}', got '{}'", message, expected, actual);
 		}
 	}
 
-	static void is_equal(const int expected, const int actual, const std::wstring_view message = L"Test")
+	static void is_equal(const int expected, const int actual, const std::u8string_view message = u8"Test")
 	{
-		is_equal(str::to_str(expected), str::to_str(actual), message);
+		is_equal(to_str(expected), to_str(actual), message);
 	}
 
-	static void is_equal(const bool expected, const bool actual, const std::wstring_view message = L"Test")
+	static void is_equal(const bool expected, const bool actual, const std::u8string_view message = u8"Test")
 	{
-		is_equal(str::to_str(expected), str::to_str(actual), message);
+		is_equal(to_str(expected), to_str(actual), message);
 	}
 
-	static void is_equal_true(const bool actual, const std::wstring_view message = L"Test")
+	static void is_equal_true(const bool actual, const std::u8string_view message = u8"Test")
 	{
 		is_equal(true, actual, message);
 	}
@@ -34,6 +34,15 @@ public:
 
 class tests
 {
+public:
+	struct run_result
+	{
+		std::u8string output;
+		int pass_count = 0;
+		int fail_count = 0;
+	};
+
+private:
 	static std::chrono::high_resolution_clock::time_point now()
 	{
 		return std::chrono::high_resolution_clock::now();
@@ -45,42 +54,42 @@ class tests
 		return std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
 	}
 
-	std::map<std::wstring_view, std::function<void()>> _tests;
+	std::map<std::u8string_view, std::function<void()>> _tests;
 
 public:
-	void register_test(const std::wstring_view name, const std::function<void()>& f)
+	void register_test(const std::u8string_view name, const std::function<void()>& f)
 	{
 		_tests[name] = f;
 	}
 
-	void run_all(std::wstringstream& output) const
+	run_result run_all_result() const
 	{
 		const auto all_started = now();
 		auto pass_count = 0;
 		auto fail_count = 0;
-		std::wstringstream details;
+		std::u8string details;
 
 		for (auto& test : _tests)
 		{
-			details << "Running '" << test.first << "' ... ";
+			details += pf::format(u8"Running '{}' ... ", test.first);
 			auto test_started = now();
 
 			try
 			{
 				test.second();
-				details << L" success in " << duration_in_microseconds(test_started) << L" microseconds" << std::endl;
+				details += pf::format(u8" success in {} microseconds\n", duration_in_microseconds(test_started));
 				pass_count += 1;
 			}
-			catch (const std::wstring& message)
+			catch (const std::u8string& message)
 			{
-				details << L" FAILED in " << duration_in_microseconds(test_started) << L" microseconds" << std::endl;
-				details << std::endl << message << std::endl << std::endl;
+				details += pf::format(u8" FAILED in {} microseconds\n\n{}\n\n", duration_in_microseconds(test_started),
+				                      message);
 				fail_count += 1;
 			}
 			catch (const std::exception& e)
 			{
-				details << L" FAILED in " << duration_in_microseconds(test_started) << L" microseconds" << std::endl;
-				details << std::endl << e.what() << std::endl << std::endl;
+				details += pf::format(u8" FAILED in {} microseconds\n\n{}\n\n", duration_in_microseconds(test_started),
+				                      std::u8string_view(reinterpret_cast<const char8_t*>(e.what())));
 				fail_count += 1;
 			}
 		}
@@ -88,12 +97,22 @@ public:
 		const auto total = pass_count + fail_count;
 		const auto elapsed = duration_in_microseconds(all_started);
 
+		run_result result;
+		result.pass_count = pass_count;
+		result.fail_count = fail_count;
 		if (fail_count == 0)
-			output << L"**" << total << L" tests passed** in " << elapsed << L" microseconds" << std::endl;
+			result.output += pf::format(u8"**{} tests passed** in {} microseconds\n", total, elapsed);
 		else
-			output << L"**" << fail_count << L" of " << total << L" tests failed** in " << elapsed << L" microseconds"
-				<< std::endl;
+			result.output += pf::format(u8"**{} of {} tests failed** in {} microseconds\n", fail_count, total,
+			                            elapsed);
 
-		output << std::endl << details.str();
+		result.output += u8"\n";
+		result.output += details;
+		return result;
+	}
+
+	std::u8string run_all() const
+	{
+		return run_all_result().output;
 	}
 };

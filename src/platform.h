@@ -1,7 +1,7 @@
-#pragma once
-
 // platform.h — Platform-independent types, constants, window/draw abstractions, API declarations.
 // Must NOT include OS-specific headers. See platform_win.cpp for Win32 implementation.
+
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -9,12 +9,711 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <tuple>
+#include <bit>
+#include <charconv>
+#include <stdexcept>
+#include <utility>
+#include <cwctype>
 #include <vector>
-
-#include "util.h"
 
 namespace pf
 {
+	constexpr uint32_t LEAD_SURROGATE_MIN = 0xd800u;
+	constexpr uint32_t LEAD_SURROGATE_MAX = 0xdbffu;
+	constexpr uint32_t TRAIL_SURROGATE_MIN = 0xdc00u;
+	constexpr uint32_t TRAIL_SURROGATE_MAX = 0xdfffu;
+	constexpr uint32_t LEAD_OFFSET = LEAD_SURROGATE_MIN - (0x10000 >> 10);
+	constexpr uint32_t SURROGATE_OFFSET = 0xfca02400u; //  0x10000u - (LEAD_SURROGATE_MIN << 10) - TRAIL_SURROGATE_MIN;
+
+	inline bool is_lead_surrogate(const uint32_t cp)
+	{
+		return cp >= LEAD_SURROGATE_MIN && cp <= LEAD_SURROGATE_MAX;
+	}
+
+	inline bool is_trail_surrogate(const uint32_t cp)
+	{
+		return cp >= TRAIL_SURROGATE_MIN && cp <= TRAIL_SURROGATE_MAX;
+	}
+
+	inline uint16_t mask16(const uint32_t oc)
+	{
+		return static_cast<uint16_t>(0xffff & oc);
+	}
+
+	constexpr bool is_utf8_continuation(const char8_t b)
+	{
+		return (static_cast<uint8_t>(b) & 0xC0) == 0x80;
+	}
+
+	constexpr int utf8_codepoint_count(const std::u8string_view s)
+	{
+		int count = 0;
+		for (const auto b : s)
+		{
+			if (!is_utf8_continuation(b))
+				count++;
+		}
+		return count;
+	}
+
+	constexpr size_t utf8_truncate(const std::u8string_view s, const int max_codepoints)
+	{
+		int cps = 0;
+		size_t i = 0;
+		while (i < s.size())
+		{
+			if (!is_utf8_continuation(s[i]))
+			{
+				if (cps >= max_codepoints)
+					return i;
+				cps++;
+			}
+			i++;
+		}
+		return i;
+	}
+
+	constexpr int utf8_next(const std::u8string_view s, int pos)
+	{
+		if (pos >= static_cast<int>(s.size())) return pos;
+		pos++;
+		while (pos < static_cast<int>(s.size()) && is_utf8_continuation(s[pos]))
+			pos++;
+		return pos;
+	}
+
+	constexpr int utf8_prev(const std::u8string_view s, int pos)
+	{
+		if (pos <= 0) return 0;
+		pos--;
+		while (pos > 0 && is_utf8_continuation(s[pos]))
+			pos--;
+		return pos;
+	}
+
+	std::u8string utf16_to_utf8(std::wstring_view wstr);
+	std::u8string u32_to_utf8(std::u32string_view str);
+	std::u32string utf8_to_u32(std::string_view str);
+	std::wstring u32_to_wstr(std::u32string_view str);
+	std::u32string wstr_to_u32(std::wstring_view str);
+
+	constexpr uint32_t to_lower(const uint32_t c)
+	{
+		if (c < 128) return c >= U'A' && c <= U'Z' ? c - U'A' + U'a' : c;
+		if (c > USHRT_MAX) return c;
+		return towlower(c);
+	}
+
+	constexpr uint32_t to_upper(const uint32_t c)
+	{
+		if (c < 128) return c >= U'a' && c <= U'z' ? c - U'a' + U'A' : c;
+		if (c > USHRT_MAX) return c;
+		return towupper(c);
+	}
+
+	constexpr uint32_t pop_utf8_char(std::u8string_view::const_iterator& in_ptr,
+	                                 const std::u8string_view::const_iterator& end)
+	{
+		const auto c1 = *in_ptr++;
+
+		if (c1 < 0x80)
+		{
+			return c1;
+		}
+		if (c1 >> 5 == 0x6)
+		{
+			if (std::distance(in_ptr, end) < 1)
+			{
+				in_ptr = end;
+				return 0;
+			}
+
+			uint32_t c = (c1 & 0x1F) << 6;
+			c |= (*in_ptr++ & 0x3F) << 0;
+			return c;
+		}
+		if (c1 >> 4 == 0xe)
+		{
+			if (std::distance(in_ptr, end) < 2)
+			{
+				in_ptr = end;
+				return 0;
+			}
+
+			uint32_t c = (c1 & 0x0F) << 12;
+			c |= (*in_ptr++ & 0x3F) << 6;
+			c |= (*in_ptr++ & 0x3F) << 0;
+			return c;
+		}
+		if (c1 >> 3 == 0x1e)
+		{
+			if (std::distance(in_ptr, end) < 3)
+			{
+				in_ptr = end;
+				return 0;
+			}
+
+			uint32_t c = (c1 & 0x07) << 18;
+			c |= (*in_ptr++ & 0x3F) << 12;
+			c |= (*in_ptr++ & 0x3F) << 6;
+			c |= (*in_ptr++ & 0x3F) << 0;
+			return c;
+		}
+
+		return '?';
+	}
+
+	constexpr uint32_t peek_utf8_char(std::u8string_view::const_iterator in_ptr,
+	                                  const std::u8string_view::const_iterator& end)
+	{
+		return pop_utf8_char(in_ptr, end);
+	}
+
+	inline std::u8string_view utf8_cast(const std::string_view val)
+	{
+		return {std::bit_cast<const char8_t*>(val.data()), val.size()};
+	}
+
+	inline std::wstring utf8_to_utf16(const std::u8string_view s)
+	{
+		std::wstring result;
+		result.reserve(s.size());
+		auto i = s.begin();
+		while (i < s.end())
+		{
+			const auto cp = pop_utf8_char(i, s.end());
+
+			if (cp > 0xffff)
+			{
+				result += static_cast<uint16_t>((cp >> 10) + LEAD_OFFSET);
+				result += static_cast<uint16_t>((cp & 0x3ff) + TRAIL_SURROGATE_MIN);
+			}
+			else
+			{
+				result += static_cast<uint16_t>(cp);
+			}
+		}
+		return result;
+	}
+
+	template <class output_it>
+	void char32_to_utf8(output_it&& inserter, const uint32_t ch)
+	{
+		if (ch < 0x80)
+		{
+			*inserter++ = static_cast<uint8_t>(ch);
+		}
+		else if (ch < 0x800)
+		{
+			*inserter++ = static_cast<uint8_t>(0xC0 | ch >> 6);
+			*inserter++ = static_cast<uint8_t>(0x80 | ch >> 0 & 0x3F);
+		}
+		else if (ch < 0x10000)
+		{
+			*inserter++ = static_cast<uint8_t>(0xE0 | ch >> 12);
+			*inserter++ = static_cast<uint8_t>(0x80 | ch >> 6 & 0x3F);
+			*inserter++ = static_cast<uint8_t>(0x80 | ch >> 0 & 0x3F);
+		}
+		else
+		{
+			*inserter++ = static_cast<uint8_t>(ch >> 18 | 0xf0);
+			*inserter++ = static_cast<uint8_t>(ch >> 12 & 0x3f | 0x80);
+			*inserter++ = static_cast<uint8_t>(ch >> 6 & 0x3f | 0x80);
+			*inserter++ = static_cast<uint8_t>(ch & 0x3f | 0x80);
+		}
+	}
+
+	inline void utf16_to_utf8(const std::wstring_view s, std::u8string& result)
+	{
+		result.clear();
+		result.reserve(std::max(result.capacity(), s.size()));
+		auto inserter = std::back_inserter(result);
+
+		auto start = s.begin();
+		const auto end = s.end();
+
+		while (start != end)
+		{
+			uint32_t cp = mask16(*start++);
+
+			if (is_lead_surrogate(cp))
+			{
+				if (start != end)
+				{
+					const uint32_t trail_surrogate = mask16(*start++);
+
+					if (is_trail_surrogate(trail_surrogate))
+					{
+						cp = (cp << 10) + trail_surrogate + SURROGATE_OFFSET;
+					}
+					else
+					{
+						throw std::invalid_argument("Invalid input string");
+					}
+				}
+				else
+				{
+					throw std::invalid_argument("Invalid input string");
+				}
+			}
+			else if (is_trail_surrogate(cp))
+			{
+				throw std::invalid_argument("Invalid input string");
+			}
+
+			char32_to_utf8(inserter, cp);
+		}
+	}
+
+	inline std::u8string utf16_to_utf8(const std::wstring_view s)
+	{
+		std::u8string result;
+		utf16_to_utf8(s, result);
+		return result;
+	};
+
+	inline std::u8string to_lower(const std::u8string_view s)
+	{
+		std::u8string result;
+		result.reserve(s.size());
+		auto inserter = std::back_inserter(result);
+
+		auto i = s.begin();
+		while (i < s.end())
+		{
+			const auto cp = pop_utf8_char(i, s.end());
+			char32_to_utf8(inserter, to_lower(cp));
+		}
+
+		return result;
+	}
+
+	inline std::u8string to_upper(const std::u8string_view s)
+	{
+		std::u8string result;
+		result.reserve(s.size());
+		auto inserter = std::back_inserter(result);
+
+		auto i = s.begin();
+		while (i < s.end())
+		{
+			const auto cp = pop_utf8_char(i, s.end());
+			char32_to_utf8(inserter, to_upper(cp));
+		}
+
+		return result;
+	}
+
+	constexpr int icmp(const std::u8string_view ll, const std::u8string_view rr)
+	{
+		if (ll.data() == rr.data() || (ll.empty() && rr.empty())) return 0;
+		if (ll.empty()) return -1;
+		if (rr.empty()) return 1;
+
+		auto cl = 0;
+		auto cr = 0;
+
+		auto il = ll.begin();
+		auto ir = rr.begin();
+		const auto el = ll.end();
+		const auto er = rr.end();
+
+		while (il < el && ir < er)
+		{
+			cl = to_lower(pop_utf8_char(il, el));
+			cr = to_lower(pop_utf8_char(ir, er));
+			if (cl < cr) return -1;
+			if (cl > cr) return 1;
+		}
+
+		if (il == el) cl = 0;
+		if (ir == er) cr = 0;
+		return cl - cr;
+	}
+
+	[[nodiscard]] constexpr std::u8string_view unquote(const std::u8string_view text)
+	{
+		if (text.size() > 1 && text.front() == '"' && text.back() == '"')
+		{
+			return text.substr(1, text.length() - 2);
+		}
+		if (text.size() > 1 && text.front() == '\'' && text.back() == '\'')
+		{
+			return text.substr(1, text.length() - 2);
+		}
+
+		return text;
+	}
+
+
+	std::u8string url_encode(std::u8string_view input);
+
+	class ipoint
+	{
+	public:
+		int32_t x = 0, y = 0;
+
+		constexpr ipoint(const int xx = 0, const int yy = 0) : x(xx), y(yy)
+		{
+		}
+
+		bool operator==(const ipoint& other) const = default;
+
+		constexpr ipoint operator -() const
+		{
+			return ipoint(-x, -y);
+		}
+
+		constexpr ipoint operator +(const ipoint& point) const
+		{
+			return ipoint(x + point.x, y + point.y);
+		}
+	};
+
+	class isize
+	{
+	public:
+		int32_t cx = 0, cy = 0;
+
+		constexpr isize(const int xx = 0, const int yy = 0) : cx(xx), cy(yy)
+		{
+		}
+
+		bool operator==(const isize& other) const = default;
+	};
+
+	class irect
+	{
+	public:
+		int32_t left = 0, top = 0, right = 0, bottom = 0;
+
+		irect(const int l = 0, const int t = 0, const int r = 0, const int b = 0)
+			: left(l), top(t), right(r), bottom(b)
+		{
+		}
+
+		[[nodiscard]] int width() const
+		{
+			return right - left;
+		}
+
+		[[nodiscard]] int height() const
+		{
+			return bottom - top;
+		}
+
+		[[nodiscard]] irect offset(const ipoint& pt) const
+		{
+			return irect(left + pt.x, top + pt.y, right + pt.x, bottom + pt.y);
+		}
+
+		[[nodiscard]] irect offset(const int x, const int y) const
+		{
+			return irect(left + x, top + y, right + x, bottom + y);
+		}
+
+		[[nodiscard]] bool intersects(const irect& other) const
+		{
+			return left < other.right &&
+				top < other.bottom &&
+				right > other.left &&
+				bottom > other.top;
+		}
+
+		[[nodiscard]] irect inflate(const int xy) const
+		{
+			return irect(left - xy, top - xy, right + xy, bottom + xy);
+		}
+
+		[[nodiscard]] irect inflate(const int x, const int y) const
+		{
+			return irect(left - x, top - y, right + x, bottom + y);
+		}
+
+		[[nodiscard]] irect inflate(const isize& s) const
+		{
+			return irect(left - s.cx, top - s.cy, right + s.cx, bottom + s.cy);
+		}
+
+		[[nodiscard]] bool contains(const ipoint& point) const
+		{
+			return left <= point.x && right >= point.x && top <= point.y && bottom >= point.y;
+		}
+	};
+
+	[[nodiscard]] constexpr int clamp(const int v, const int lo, const int hi)
+	{
+		return std::clamp(v, lo, std::max(lo, hi));
+	}
+
+	uint32_t fnv1a_i(std::u8string_view sv);
+	uint64_t fnv1a_i_64(std::u8string_view sv);
+
+	struct color_t
+	{
+		uint8_t r = 0;
+		uint8_t g = 0;
+		uint8_t b = 0;
+
+		constexpr color_t() = default;
+
+		constexpr color_t(const uint8_t r, const uint8_t g, const uint8_t b) : r(r), g(g), b(b)
+		{
+		}
+
+		bool operator==(const color_t&) const = default;
+		auto operator<=>(const color_t&) const = default;
+
+		[[nodiscard]] constexpr uint32_t rgb() const
+		{
+			return (r & 0xff) | (g & 0xff) << 8 | (b & 0xff) << 16;
+		}
+
+		static constexpr uint8_t clamp_byte(const int n)
+		{
+			return static_cast<uint8_t>(n > 255 ? 255 : n < 0 ? 0 : n);
+		}
+
+		[[nodiscard]] constexpr color_t lighten(const int n = 32) const
+		{
+			return {clamp_byte(r + n), clamp_byte(g + n), clamp_byte(b + n)};
+		}
+
+		[[nodiscard]] constexpr color_t darken(const int n = 32) const
+		{
+			return lighten(-n);
+		}
+
+		[[nodiscard]] constexpr color_t emphasize(const int n = 48) const
+		{
+			const bool is_light = r > 0x80 || g > 0x80 || b > 0x80;
+			return lighten(is_light ? -n : n);
+		}
+	};
+
+	class file_path
+	{
+		std::u8string _path;
+
+	public:
+		file_path(const std::u8string_view path) : _path(path)
+		{
+			for (auto& c : _path)
+			{
+				if (c == u8'/') c = u8'\\';
+			}
+			while (_path.size() > 1 && _path.back() == u8'\\')
+			{
+				if (_path.size() == 3 && _path[1] == u8':')
+					break;
+				_path.pop_back();
+			}
+		}
+
+		file_path() = default;
+
+		[[nodiscard]] const char8_t* c_str() const
+		{
+			return _path.c_str();
+		}
+
+		[[nodiscard]] std::u8string_view view() const
+		{
+			return _path;
+		}
+
+		bool operator==(const file_path& other) const
+		{
+			return icmp(_path, other._path) == 0;
+		}
+
+		static constexpr std::u8string_view::size_type find_ext(const std::u8string_view path)
+		{
+			const auto last = path.find_last_of(u8"./\\");
+			if (last == std::u8string_view::npos || path[last] != '.') return path.size();
+			return last;
+		}
+
+		static constexpr std::u8string_view::size_type find_last_slash(const std::u8string_view path)
+		{
+			const auto last = path.find_last_of(u8"/\\");
+			if (last == std::u8string_view::npos) return 0;
+			return last + 1;
+		}
+
+		[[nodiscard]] std::u8string without_extension() const
+		{
+			return _path.substr(0, find_ext(_path));
+		}
+
+		[[nodiscard]] std::u8string extension() const
+		{
+			return _path.substr(find_ext(_path));
+		}
+
+		file_path combine(const std::u8string& name, const std::u8string& extension) const
+		{
+			const auto with_name = combine(name);
+			auto result = std::u8string{with_name.without_extension()};
+
+			if (!extension.empty())
+			{
+				if (extension[0] != L'.') result += L'.';
+				result += extension;
+			}
+			return file_path{result};
+		}
+
+		static constexpr bool is_path_sep(const char8_t c)
+		{
+			return c == L'\\' || c == L'/';
+		}
+
+		[[nodiscard]] file_path combine(const std::u8string_view part) const
+		{
+			auto result = _path;
+
+			if (!part.empty())
+			{
+				if (!is_path_sep(result.back()) && !is_path_sep(part[0])) result += '\\';
+				result += part;
+			}
+			return file_path{result};
+		}
+
+		[[nodiscard]] bool exists() const;
+
+		[[nodiscard]] bool is_save_path() const
+		{
+			return _path.find_first_of(u8"/\\") != std::u8string::npos;
+		}
+
+		[[nodiscard]] bool empty() const
+		{
+			return _path.empty();
+		}
+
+		[[nodiscard]] std::u8string name() const
+		{
+			return _path.substr(find_last_slash(_path));
+		}
+
+		[[nodiscard]] file_path folder() const
+		{
+			return file_path{_path.substr(0, find_last_slash(_path))};
+		}
+
+		static file_path module_folder();
+
+		static file_path app_data_folder();
+	};
+
+	struct ihash
+	{
+		size_t operator()(const file_path& path) const
+		{
+			return fnv1a_i(path.view());
+		}
+
+		size_t operator()(const std::u8string_view s) const
+		{
+			return fnv1a_i(s);
+		}
+	};
+
+	struct iless
+	{
+		bool operator()(const file_path& l, const file_path& r) const
+		{
+			return icmp(l.view(), r.view()) < 0;
+		}
+
+		bool operator()(const std::u8string_view l, const std::u8string_view r) const
+		{
+			return icmp(l, r) < 0;
+		}
+	};
+
+	struct ieq
+	{
+		bool operator()(const file_path& l, const file_path& r) const
+		{
+			return icmp(l.view(), r.view()) == 0;
+		}
+
+		bool operator()(const std::u8string_view l, const std::u8string_view r) const
+		{
+			return icmp(l, r) == 0;
+		}
+	};
+
+	namespace detail
+	{
+		template <typename T>
+		auto to_fmt_arg(T&& arg)
+		{
+			using D = std::remove_cvref_t<T>;
+			if constexpr (std::is_same_v<D, std::u8string_view> || std::is_same_v<D, std::u8string>)
+			{
+				const std::u8string_view sv = arg;
+				return std::string_view(reinterpret_cast<const char*>(sv.data()), sv.size());
+			}
+			else
+			{
+				return std::forward<T>(arg);
+			}
+		}
+	}
+
+	template <typename... Args>
+	[[nodiscard]] std::u8string format(const std::u8string_view fmt, Args&&... args)
+	{
+		const auto char_fmt = std::string_view(reinterpret_cast<const char*>(fmt.data()), fmt.size());
+		auto arg_tuple = std::tuple{detail::to_fmt_arg(std::forward<Args>(args))...};
+		return std::apply([&char_fmt](auto&... cargs) -> std::u8string
+		{
+			const auto r = std::vformat(char_fmt, std::make_format_args(cargs...));
+			return std::u8string(reinterpret_cast<const char8_t*>(r.data()), r.size());
+		}, arg_tuple);
+	}
+
+	template <>
+	[[nodiscard]] inline std::u8string format(const std::u8string_view fmt)
+	{
+		const auto char_fmt = std::string_view(reinterpret_cast<const char*>(fmt.data()), fmt.size());
+		const auto r = std::vformat(char_fmt, std::make_format_args());
+		return std::u8string(reinterpret_cast<const char8_t*>(r.data()), r.size());
+	}
+
+
+	[[nodiscard]] constexpr bool is_empty(const char8_t* sz)
+	{
+		return sz == nullptr || sz[0] == 0;
+	}
+
+	[[nodiscard]] constexpr bool is_empty(const wchar_t* sz)
+	{
+		return sz == nullptr || sz[0] == 0;
+	}
+
+	inline int32_t stoi(const std::u8string_view u8_string)
+	{
+		const auto sv = std::string_view(reinterpret_cast<const char*>(u8_string.data()), u8_string.size());
+		int32_t result = 0;
+		std::from_chars(sv.data(), sv.data() + sv.size(), result);
+		return result;
+	}
+
+	inline double stod(const std::u8string_view u8_string)
+	{
+		const auto sv = std::string_view(reinterpret_cast<const char*>(u8_string.data()), u8_string.size());
+		double result = 0.0;
+		std::from_chars(sv.data(), sv.data() + sv.size(), result);
+		return result;
+	}
+
+
 	// Key codes (match Windows VK_ values)
 	//
 	namespace platform_key
@@ -40,6 +739,7 @@ namespace pf
 		constexpr unsigned int Insert = 0x2D;
 		constexpr unsigned int Delete = 0x2E;
 		constexpr unsigned int F1 = 0x70;
+		constexpr unsigned int F2 = 0x71;
 		constexpr unsigned int F3 = 0x72;
 		constexpr unsigned int F5 = 0x74;
 		constexpr unsigned int F6 = 0x75;
@@ -70,13 +770,13 @@ namespace pf
 	};
 
 	// Format a key binding as human-readable text (e.g. "Ctrl+S", "Ctrl+Shift+F")
-	std::wstring format_key_binding(const key_binding& kb);
+	std::u8string format_key_binding(const key_binding& kb);
 
 	// Menu definitions
 	//
 	struct menu_command
 	{
-		std::wstring text;
+		std::u8string text;
 		int id = 0;
 		std::function<void()> action;
 		std::function<bool()> is_enabled;
@@ -87,7 +787,7 @@ namespace pf
 		menu_command() = default;
 
 		// Leaf item with action + optional enabled/checked + optional key binding
-		menu_command(std::wstring t, const int cmd_id,
+		menu_command(std::u8string t, const int cmd_id,
 		             std::function<void()> act,
 		             std::function<bool()> en = nullptr,
 		             std::function<bool()> chk = nullptr,
@@ -99,7 +799,7 @@ namespace pf
 		}
 
 		// Submenu item
-		menu_command(std::wstring t, const int cmd_id,
+		menu_command(std::u8string t, const int cmd_id,
 		             std::function<void()> act,
 		             std::function<bool()> en,
 		             std::function<bool()> chk,
@@ -108,46 +808,6 @@ namespace pf
 			  is_enabled(std::move(en)), is_checked(std::move(chk)),
 			  children(std::move(ch))
 		{
-		}
-	};
-
-	// Runtime accelerator table — maps key bindings to actions
-	//
-	class accelerator_table
-	{
-		static uint32_t pack_key(const unsigned int key, const uint8_t modifiers)
-		{
-			return (static_cast<uint32_t>(modifiers) << 16) | (key & 0xFFFF);
-		}
-
-		std::unordered_map<uint32_t, std::function<void()>> _entries;
-
-	public:
-		void add(const key_binding binding, std::function<void()> action)
-		{
-			_entries[pack_key(binding.key, binding.modifiers)] = std::move(action);
-		}
-
-		[[nodiscard]] bool dispatch(const unsigned int key, const uint8_t modifiers) const
-		{
-			const auto it = _entries.find(pack_key(key, modifiers));
-			if (it != _entries.end())
-			{
-				it->second();
-				return true;
-			}
-			return false;
-		}
-
-		void add_from_menu(const std::vector<menu_command>& items)
-		{
-			for (const auto& item : items)
-			{
-				if (!item.accel.empty() && item.action)
-					add(item.accel, item.action);
-				if (!item.children.empty())
-					add_from_menu(item.children);
-			}
 		}
 	};
 
@@ -167,7 +827,7 @@ namespace pf
 	}
 
 
-	// Message types for frame_reactor
+	// Message types for frame_reactor (non-mouse, non-keyboard messages)
 	//
 	enum class message_type : unsigned int
 	{
@@ -178,6 +838,17 @@ namespace pf
 		erase_background,
 		timer,
 		sys_color_change,
+		command,
+		close,
+		dpi_changed,
+		init_dialog,
+		drop_files,
+	};
+
+	// Mouse message types — dispatched via handle_mouse
+	//
+	enum class mouse_message_type : unsigned int
+	{
 		left_button_dbl_clk,
 		left_button_down,
 		right_button_down,
@@ -186,14 +857,34 @@ namespace pf
 		mouse_wheel,
 		mouse_leave,
 		mouse_activate,
-		char_input,
-		key_down,
 		context_menu,
-		command,
-		close,
-		dpi_changed,
-		init_dialog,
-		set_cursor_msg,
+		set_cursor,
+	};
+
+	// Bundled mouse parameters
+	struct mouse_params
+	{
+		ipoint point;
+		bool left_button = false;
+		bool control = false;
+		bool shift = false;
+		int16_t wheel_delta = 0;
+		uint32_t hit_test = 0; // for set_cursor: HTCLIENT etc.
+	};
+
+	// Keyboard message types — dispatched via handle_keyboard
+	//
+	enum class keyboard_message_type : unsigned int
+	{
+		key_down,
+		char_input,
+	};
+
+	// Bundled keyboard parameters
+	struct keyboard_params
+	{
+		unsigned int vk = 0; // virtual key code (for key_down)
+		char8_t ch = 0; // character (for char_input)
 	};
 
 	// Extract signed mouse coordinates from packed lParam (handles negative values on multi-monitor)
@@ -224,7 +915,7 @@ namespace pf
 	struct measure_context
 	{
 		virtual ~measure_context() = default;
-		virtual isize measure_text(std::wstring_view text, const font& f) const = 0;
+		virtual isize measure_text(std::u8string_view text, const font& f) const = 0;
 		virtual isize measure_char(const font& f) const = 0;
 	};
 
@@ -240,9 +931,9 @@ namespace pf
 		virtual void fill_solid_rect(int x, int y, int cx, int cy, color_t color) = 0;
 
 		// Text output
-		virtual void draw_text(int x, int y, const irect& clip, std::wstring_view text,
+		virtual void draw_text(int x, int y, const irect& clip, std::u8string_view text,
 		                       const font& f, color_t text_color, color_t bg_color) = 0;
-		virtual isize measure_text(std::wstring_view text, const font& f) const = 0;
+		virtual isize measure_text(std::u8string_view text, const font& f) const = 0;
 
 		// Line drawing
 		virtual void draw_lines(std::span<const ipoint> points, color_t color) = 0;
@@ -284,10 +975,10 @@ namespace pf
 		virtual void move_window(const irect& bounds) = 0;
 		virtual void show(bool visible) = 0;
 		virtual bool is_visible() const = 0;
-		virtual void set_text(std::wstring_view text) = 0;
+		virtual void set_text(std::u8string_view text) = 0;
 		// Clipboard
-		virtual std::wstring text_from_clipboard() = 0;
-		virtual bool text_to_clipboard(std::wstring_view text) = 0;
+		virtual std::u8string text_from_clipboard() = 0;
+		virtual bool text_to_clipboard(std::u8string_view text) = 0;
 
 		// Window placement
 		struct placement
@@ -304,16 +995,20 @@ namespace pf
 		virtual bool is_key_down(unsigned int vk) const = 0;
 		virtual bool is_key_down_async(unsigned int vk) const = 0;
 		// Child windows
-		virtual window_frame_ptr create_child(std::wstring_view class_name, uint32_t style,
+		virtual window_frame_ptr create_child(std::u8string_view class_name, uint32_t style,
 		                                      color_t background) const & = 0;
 		virtual void close() = 0;
-		virtual int message_box(std::wstring_view text, std::wstring_view title, uint32_t style) = 0;
+		virtual int message_box(std::u8string_view text, std::u8string_view title, uint32_t style) = 0;
 		// Menu
 		virtual void set_menu(std::vector<menu_command> menu_def) = 0;
 		// Measure context
 		virtual std::unique_ptr<measure_context> create_measure_context() const = 0;
 		// Popup menu
 		virtual void show_popup_menu(const std::vector<menu_command>& items, const ipoint& screen_pt) = 0;
+		// DPI
+		virtual double get_dpi_scale() const = 0;
+		// Drag and drop
+		virtual void accept_drop_files(bool accept) = 0;
 	};
 
 	// frame_reactor — Event handler for window_frame
@@ -322,8 +1017,21 @@ namespace pf
 		virtual ~frame_reactor() = default;
 		virtual uint32_t handle_message(window_frame_ptr window, message_type message, uintptr_t wParam,
 		                                intptr_t lParam) = 0;
-		virtual void on_paint(window_frame_ptr& window, draw_context& draw) = 0;
-		virtual void on_size(window_frame_ptr& window, isize extent, measure_context& measure) = 0;
+
+		virtual uint32_t handle_mouse(window_frame_ptr window, mouse_message_type message,
+		                              const mouse_params& params)
+		{
+			return 0;
+		}
+
+		virtual uint32_t handle_keyboard(window_frame_ptr window, keyboard_message_type message,
+		                                 const keyboard_params& params)
+		{
+			return 0;
+		}
+
+		virtual void handle_paint(window_frame_ptr& window, draw_context& draw) = 0;
+		virtual void handle_size(window_frame_ptr& window, isize extent, measure_context& measure) = 0;
 	};
 
 	// Cursor position (global, not window-specific)
@@ -360,11 +1068,11 @@ namespace pf
 	// File system
 	//
 	bool is_directory(const file_path& path);
-	std::wstring current_directory();
+	file_path current_directory();
 
 	// File dialog
-	file_path open_file_path(std::wstring_view title, std::wstring_view filters);
-	file_path save_file_path(std::wstring_view title, const file_path& default_path, std::wstring_view filters);
+	file_path open_file_path(std::u8string_view title, std::u8string_view filters);
+	file_path save_file_path(std::u8string_view title, const file_path& default_path, std::u8string_view filters);
 
 	// File iteration
 	struct file_attributes_t
@@ -410,20 +1118,22 @@ namespace pf
 	void platform_sleep(int milliseconds);
 
 	// Resource loading
-	void* platform_load_resource(std::wstring_view name, std::wstring_view type);
+	void* platform_load_resource(std::u8string_view name, std::u8string_view type);
 
-	void platform_show_error(std::wstring_view message, std::wstring_view title);
+	void platform_show_error(std::u8string_view message, std::u8string_view title);
 
 	// Platform locale
-	std::wstring platform_language();
+	std::u8string platform_language();
 
 	// Spell checking
 	struct spell_checker
 	{
 		virtual ~spell_checker() = default;
-		virtual bool is_word_valid(std::wstring_view word) = 0;
-		virtual std::vector<std::wstring> suggest(std::wstring_view word) = 0;
-		virtual void add_word(std::wstring_view word) = 0;
+		virtual bool available() const = 0;
+		virtual std::u8string diagnostics() const = 0;
+		virtual bool is_word_valid(std::u8string_view word) = 0;
+		virtual std::vector<std::u8string> suggest(std::u8string_view word) = 0;
+		virtual void add_word(std::u8string_view word) = 0;
 	};
 
 	std::unique_ptr<spell_checker> create_spell_checker();
@@ -440,15 +1150,33 @@ namespace pf
 
 	file_handle_ptr open_for_read(const file_path& path);
 
+	// Writable file handle
+	struct writable_file_handle
+	{
+		virtual ~writable_file_handle() = default;
+		virtual uint32_t write(const uint8_t* buffer, uint32_t bytes) = 0;
+	};
+
+	using writable_file_handle_ptr = std::shared_ptr<writable_file_handle>;
+
+	writable_file_handle_ptr open_file_for_write(const file_path& path);
+
 	// File operations
-	bool platform_move_file_replace(const wchar_t* source, const wchar_t* dest);
-	std::wstring platform_temp_file_path(const wchar_t* prefix);
-	std::wstring platform_last_error_message();
+	bool platform_move_file_replace(const char8_t* source, const char8_t* dest);
+	std::u8string platform_temp_file_path(const char8_t* prefix);
+	std::u8string platform_last_error_message();
+	bool platform_recycle_file(const file_path& path);
+	bool platform_rename_file(const file_path& old_path, const file_path& new_path);
+	bool platform_create_directory(const file_path& path);
+	bool platform_copy_file(const file_path& source, const file_path& dest, bool fail_if_exists);
+
+	// Drag and drop
+	std::vector<file_path> dropped_file_paths(uintptr_t drop_handle);
 
 	// Clipboard
 	bool platform_clipboard_has_text();
-	std::wstring platform_text_from_clipboard();
-	bool platform_text_to_clipboard(std::wstring_view text);
+	std::u8string platform_text_from_clipboard();
+	bool platform_text_to_clipboard(std::u8string_view text);
 
 	// Bitmap resource loading
 	struct bitmap_data
@@ -458,22 +1186,75 @@ namespace pf
 		std::vector<uint32_t> pixels;
 	};
 
-	std::optional<bitmap_data> platform_load_bitmap_resource(std::wstring_view resName);
+	std::optional<bitmap_data> platform_load_bitmap_resource(std::u8string_view resName);
 
 
-	void debug_trace(const std::wstring& msg);
+	void debug_trace(const std::u8string& msg);
+	void write_stdout(std::u8string_view text);
 
 	// Configuration (INI file)
-	std::wstring config_read(std::wstring_view section, std::wstring_view key, std::wstring_view default_value = {});
-	void config_write(std::wstring_view section, std::wstring_view key, std::wstring_view value);
+	std::u8string config_read(std::u8string_view section, std::u8string_view key,
+	                          std::u8string_view default_value = {});
+	void config_write(std::u8string_view section, std::u8string_view key, std::u8string_view value);
 
 	// background tasks
 	void run_async(std::function<void()> task);
 	void run_ui(std::function<void()> task);
+
+	// network
+	bool is_online();
+
+	using web_params = std::vector<std::pair<std::u8string, std::u8string>>;
+
+	enum class web_request_verb
+	{
+		POST,
+		GET
+	};
+
+	struct web_request
+	{
+		std::u8string command;
+		std::u8string path;
+		std::u8string body;
+
+		web_params query;
+		web_params headers;
+		web_params form_data;
+
+		std::u8string file_form_data_name;
+		std::u8string file_name;
+		file_path upload_file_path;
+
+		file_path download_file_path;
+
+		web_request_verb verb = web_request_verb::GET;
+	};
+
+	struct web_response
+	{
+		std::u8string headers;
+		std::u8string body;
+		std::u8string content_type;
+		int status_code = 0;
+	};
+
+	struct web_host;
+	using web_host_ptr = std::shared_ptr<web_host>;
+
+	web_host_ptr connect_to_host(std::u8string_view host, bool secure = true, int port = 0,
+	                             std::u8string_view user_agent = {});
+	web_response send_request(const web_host_ptr& host, const web_request& req);
 }
+
+struct app_init_result
+{
+	bool start_gui = true;
+	int exit_code = 0;
+};
 
 
 // App callbacks implemented by the application layer
-bool app_init(const pf::window_frame_ptr& main_frame, std::span<const std::wstring_view> params);
+app_init_result app_init(const pf::window_frame_ptr& main_frame, std::span<const std::u8string_view> params);
 void app_idle();
 void app_destroy();

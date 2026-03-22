@@ -1,14 +1,15 @@
-#pragma once
-
 // view_list.h — Base class for panel views: scrolling, selection, keyboard navigation, collapsible items
 
+#pragma once
+
 #include "ui.h"
+#include "view_base.h"
 
 struct list_view_item
 {
-	irect bounds;
+	pf::irect bounds;
 
-	std::wstring name;
+	std::u8string name;
 	index_item_ptr source;
 
 	int depth = 0;
@@ -23,7 +24,7 @@ struct list_view_item
 
 using list_view_item_ptr = std::shared_ptr<list_view_item>;
 
-class list_view : public pf::frame_reactor
+class list_view : public view_base
 {
 protected:
 	app_events& _events;
@@ -33,19 +34,13 @@ protected:
 	list_view_item_ptr _hover_item;
 	bool _focused = false;
 
-	isize _extent;
-	isize _font_char_size = {10, 10};
-	ipoint _offset;
-	int _y_max = 0;
+	pf::isize _font_extent = {10, 10};
 	int _header_height = 0;
-	bool _hover_tracking = false;
-
-	custom_scrollbar _vscroll{custom_scrollbar::orientation::vertical};
 
 
 	// Virtual hooks for derived classes
 
-	virtual void draw_header(pf::window_frame_ptr& window, pf::draw_context& dc, const irect& header_rect)
+	virtual void draw_header(pf::window_frame_ptr& window, pf::draw_context& dc, const pf::irect& header_rect)
 	{
 	}
 
@@ -55,18 +50,18 @@ protected:
 
 		if (expanded)
 		{
-			const ipoint pts[] = {{cx - size, cy - size / 2}, {cx, cy + size / 2}, {cx + size, cy - size / 2}};
+			const pf::ipoint pts[] = {{cx - size, cy - size / 2}, {cx, cy + size / 2}, {cx + size, cy - size / 2}};
 			dc.draw_lines(pts, ui::line_color);
 		}
 		else
 		{
-			const ipoint pts[] = {{cx - size / 2, cy - size}, {cx + size / 2, cy}, {cx - size / 2, cy + size}};
+			const pf::ipoint pts[] = {{cx - size / 2, cy - size}, {cx + size / 2, cy}, {cx - size / 2, cy + size}};
 			dc.draw_lines(pts, ui::line_color);
 		}
 	}
 
 	void draw_item(pf::draw_context& dc, const list_view_item_ptr& item,
-	               const irect& bounds, const bool selected, const bool hovered)
+	               const pf::irect& bounds, const bool selected, const bool hovered)
 	{
 		auto styles = _events.styles();
 		const auto indent = styles.padding_x + item->depth * styles.indent;
@@ -85,7 +80,7 @@ protected:
 
 			auto text_bounds = bounds;
 			text_bounds.left += indent + 14;
-			text_bounds = text_bounds.Inflate(-styles.padding_x, -styles.padding_y);
+			text_bounds = text_bounds.inflate(-styles.padding_x, -styles.padding_y);
 			dc.draw_text(text_bounds.left, text_bounds.top, text_bounds, item->name,
 			             font_spec, ui::folder_text_color, bg);
 		}
@@ -93,9 +88,9 @@ protected:
 		{
 			auto text_bounds = bounds;
 			text_bounds.left += indent + 4;
-			text_bounds = text_bounds.Inflate(-styles.padding_x, -styles.padding_y);
+			text_bounds = text_bounds.inflate(-styles.padding_x, -styles.padding_y);
 
-			const auto line_str = std::format(L"{}: ", item->line_number + 1);
+			const auto line_str = pf::format(u8"{}: ", item->line_number + 1);
 			const auto line_sz = dc.measure_text(line_str, font_spec);
 
 			auto line_rect = text_bounds;
@@ -106,12 +101,12 @@ protected:
 			auto context_rect = text_bounds;
 			context_rect.left += line_sz.cx;
 
-			const auto avail_width = context_rect.Width();
+			const auto avail_width = context_rect.width();
 			const auto& name = item->name;
 			const auto name_len = static_cast<int>(name.size());
 			const auto full_width = dc.measure_text(name, font_spec).cx;
 
-			std::wstring display_text;
+			std::u8string display_text;
 			int display_match_start = item->text_match_start;
 
 			if (full_width <= avail_width || item->text_match_length <= 0)
@@ -120,7 +115,7 @@ protected:
 			}
 			else
 			{
-				const auto ellipsis_width = dc.measure_text(L"...", font_spec).cx;
+				const auto ellipsis_width = dc.measure_text(u8"...", font_spec).cx;
 				const int match_start = item->text_match_start;
 				const int match_end = match_start + item->text_match_length;
 				int vis_start = match_start;
@@ -156,10 +151,10 @@ protected:
 				const bool suffix = vis_end < name_len;
 
 				display_text.clear();
-				if (prefix) display_text += L"...";
+				if (prefix) display_text += u8"...";
 				display_match_start = static_cast<int>(display_text.size()) + (match_start - vis_start);
 				display_text += name.substr(vis_start, vis_end - vis_start);
-				if (suffix) display_text += L"...";
+				if (suffix) display_text += u8"...";
 			}
 
 			if (item->line_match_pos >= 0 && item->text_match_length > 0 &&
@@ -174,7 +169,7 @@ protected:
 				const auto before_sz = dc.measure_text(before_text, font_spec);
 				const auto match_sz = dc.measure_text(match_text, font_spec);
 
-				constexpr auto highlight_color = color_t(220, 140, 0);
+				constexpr auto highlight_color = pf::color_t(220, 140, 0);
 
 				auto seg_rect = context_rect;
 				seg_rect.right = seg_rect.left + before_sz.cx;
@@ -199,36 +194,36 @@ protected:
 		{
 			auto text_bounds = bounds;
 			text_bounds.left += indent + 4;
-			text_bounds = text_bounds.Inflate(-styles.padding_x, -styles.padding_y);
+			text_bounds = text_bounds.inflate(-styles.padding_x, -styles.padding_y);
 
 			auto text_color = ui::text_color;
 			if (_events.is_path_modified(item->source))
-				text_color = color_t{255, 80, 80};
+				text_color = pf::color_t{255, 80, 80};
 
 			const auto text_sz = dc.measure_text(item->name, font_spec);
-			auto display_text = std::wstring_view(item->name);
-			std::wstring ellipsized;
-			if (text_sz.cx > text_bounds.Width())
+			auto display_text = std::u8string_view(item->name);
+			std::u8string ellipsized;
+			if (text_sz.cx > text_bounds.width())
 			{
-				const auto ellipsis_sz = dc.measure_text(L"...", font_spec);
-				const auto avail = text_bounds.Width() - ellipsis_sz.cx;
+				const auto ellipsis_sz = dc.measure_text(u8"...", font_spec);
+				const auto avail = text_bounds.width() - ellipsis_sz.cx;
 				size_t fit = display_text.size();
 				while (fit > 0 && dc.measure_text(display_text.substr(0, fit), font_spec).cx > avail)
 					--fit;
-				ellipsized = std::wstring(display_text.substr(0, fit)) + L"...";
+				ellipsized = std::u8string(display_text.substr(0, fit)) + u8"...";
 				display_text = ellipsized;
 			}
 			dc.draw_text(text_bounds.left, text_bounds.top, text_bounds, display_text, font_spec, text_color, bg);
 		}
 	}
 
-	virtual void on_item_selected(const list_view_item_ptr& item, bool activated)
+	virtual void on_item_selected(const pf::window_frame_ptr& window, const list_view_item_ptr& item, bool activated)
 	{
 	}
 
 	virtual uint32_t on_timer(pf::window_frame_ptr& window, uint32_t id) { return 0; }
 
-	virtual uint32_t on_char(pf::window_frame_ptr& window, wchar_t ch) { return 0; }
+	virtual uint32_t on_char(pf::window_frame_ptr& window, char8_t ch) { return 0; }
 
 	virtual uint32_t on_key_down(pf::window_frame_ptr& window, const unsigned int vk)
 	{
@@ -276,6 +271,11 @@ public:
 	{
 	}
 
+	[[nodiscard]] list_view_item_ptr selected_item() const
+	{
+		return _selected_item;
+	}
+
 	void navigate_next(const pf::window_frame_ptr& window, const bool forward, const bool skip_groups = false)
 	{
 		if (_items.empty()) return;
@@ -290,7 +290,7 @@ public:
 				_selected_item = pick;
 				ensure_visible(window, _selected_item);
 				window->invalidate();
-				on_item_selected(_selected_item, false);
+				on_item_selected(window, _selected_item, false);
 			}
 			return;
 		}
@@ -317,11 +317,11 @@ public:
 			_selected_item = next;
 			ensure_visible(window, _selected_item);
 			window->invalidate();
-			on_item_selected(next, false);
+			on_item_selected(window, next, false);
 		}
 	}
 
-	[[nodiscard]] int scroll_y() const { return _offset.y; }
+	[[nodiscard]] int scroll_y() const { return _scroll_offset.y; }
 
 	~list_view() override = default;
 
@@ -338,11 +338,27 @@ public:
 			update_focus(window);
 			return 0;
 		}
-		if (msg == mt::char_input) return on_char(window, static_cast<wchar_t>(wParam));
-		if (msg == mt::key_down) return on_key_down(window, static_cast<unsigned int>(wParam));
-		if (msg == mt::set_cursor_msg)
+		return 0;
+	}
+
+	uint32_t handle_keyboard(pf::window_frame_ptr window, const pf::keyboard_message_type msg,
+	                         const pf::keyboard_params& params) override
+	{
+		using kt = pf::keyboard_message_type;
+
+		if (msg == kt::char_input) return on_char(window, params.ch);
+		if (msg == kt::key_down) return on_key_down(window, params.vk);
+		return 0;
+	}
+
+	uint32_t handle_mouse(const pf::window_frame_ptr window, const pf::mouse_message_type msg,
+	                      const pf::mouse_params& params) override
+	{
+		using mt = pf::mouse_message_type;
+
+		if (msg == mt::set_cursor)
 		{
-			if ((lParam & 0xFFFF) == 1 /*HTCLIENT*/)
+			if (params.hit_test == 1 /*HTCLIENT*/)
 			{
 				window->set_cursor_shape(pf::cursor_shape::arrow);
 				return 1;
@@ -350,33 +366,31 @@ public:
 			return 0;
 		}
 		if (msg == mt::left_button_down)
-			return on_left_button_down(window, pf::point_from_lparam(lParam));
+			return on_left_button_down(window, params.point);
 		if (msg == mt::left_button_up) return on_left_button_up(window);
 		if (msg == mt::left_button_dbl_clk)
 			return 0; // ignore double-click; single click already handled it
 		if (msg == mt::mouse_move)
-			return on_mouse_move(window, pf::point_from_lparam(lParam),
-			                     static_cast<uint32_t>(wParam));
+			return on_mouse_move(window, params.point);
 		if (msg == mt::mouse_leave) return on_mouse_leave(window);
 		if (msg == mt::mouse_wheel)
 		{
-			const auto keys = static_cast<uint32_t>(wParam & 0xFFFF);
-			const auto delta = static_cast<short>(wParam >> 16 & 0xFFFF);
-			if (keys & 0x0008 /*MK_CONTROL*/)
+			if (params.control)
 			{
-				zoom(window, delta > 0 ? 1 : -1);
+				zoom(window, params.wheel_delta > 0 ? 1 : -1);
 				return 0;
 			}
-			scroll_to(window, _offset.y - delta / 2);
+			scroll_to(window, _scroll_offset.y - params.wheel_delta / 2);
 			return 0;
 		}
 		return 0;
 	}
 
-	void on_size(pf::window_frame_ptr& window, const isize extent,
-	             pf::measure_context& measure) override
+	void handle_size(pf::window_frame_ptr& window, const pf::isize extent,
+	                 pf::measure_context& measure) override
 	{
-		_extent = extent;
+		_view_extent = extent;
+		_vscroll.set_dpi_scale(_events.styles().dpi_scale);
 		layout_list(measure);
 		window->invalidate();
 	}
@@ -385,7 +399,7 @@ public:
 	{
 		const auto styles = _events.styles();
 		const auto font_spec = styles.list_font;
-		_font_char_size = measure.measure_char(font_spec);
+		_font_extent = measure.measure_char(font_spec);
 		layout_list(styles);
 	}
 
@@ -397,33 +411,33 @@ public:
 	void layout_list(const view_styles& styles)
 	{
 		int y = _header_height + styles.list_top_pad;
-		const auto single_line_height = _font_char_size.cy;
+		const auto single_line_height = _font_extent.cy;
 		const auto item_height = single_line_height + styles.padding_y * 2;
 
 		for (const auto& i : _items)
 		{
-			irect bounds;
+			pf::irect bounds;
 			bounds.left = 0;
 			bounds.top = y;
-			bounds.right = _extent.cx;
+			bounds.right = _view_extent.cx;
 			bounds.bottom = y + item_height;
 
 			i->bounds = bounds;
 			y += item_height;
 		}
 
-		_y_max = y + styles.list_scroll_pad;
+		_content_extent.cy = y + styles.list_scroll_pad;
 	}
 
-	void on_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override
+	void handle_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override
 	{
-		const auto r = window->get_client_rect();
+		const auto r = client_rect();
 		dc.fill_solid_rect(r, ui::tool_wnd_clr);
 
 		const auto hh = _header_height;
 		if (hh > 0)
 		{
-			const irect header_rect = {r.left, r.top, r.right, r.top + hh};
+			const pf::irect header_rect = {r.left, r.top, r.right, r.top + hh};
 			draw_header(window, dc, header_rect);
 		}
 
@@ -435,7 +449,7 @@ public:
 			while (lo <= hi)
 			{
 				const int mid = lo + (hi - lo) / 2;
-				if (_items[mid]->bounds.bottom <= _offset.y)
+				if (_items[mid]->bounds.bottom <= _scroll_offset.y)
 					lo = mid + 1;
 				else
 					hi = mid - 1;
@@ -446,7 +460,7 @@ public:
 		for (int idx = first_visible; idx < static_cast<int>(_items.size()); idx++)
 		{
 			const auto& i = _items[idx];
-			auto bounds = i->bounds.Offset(0, -_offset.y);
+			auto bounds = i->bounds.offset(0, -_scroll_offset.y);
 
 			if (bounds.top >= r.bottom)
 				break;
@@ -468,16 +482,16 @@ public:
 
 		auto scrollbar_rect = r;
 		scrollbar_rect.top = items_top;
-		_vscroll.update(_y_max, _extent.cy - hh, _offset.y);
+		_vscroll.update(_content_extent.cy, _view_extent.cy - hh, _scroll_offset.y);
 		_vscroll.draw(dc, scrollbar_rect);
 	}
 
 	bool can_scroll() const
 	{
-		return _y_max > _extent.cy;
+		return _content_extent.cy > _view_extent.cy;
 	}
 
-	list_view_item_ptr selection_from_point(const ipoint& pt) const
+	list_view_item_ptr selection_from_point(const pf::ipoint& pt) const
 	{
 		if (_items.empty()) return nullptr;
 
@@ -509,7 +523,8 @@ public:
 		}
 	}
 
-	void select_list_item(const pf::window_frame_ptr& window, const list_view_item_ptr& item)
+	void select_list_item(const pf::window_frame_ptr& window, const list_view_item_ptr& item,
+	                      const bool activated = true)
 	{
 		for (const auto& i : _items)
 		{
@@ -518,13 +533,13 @@ public:
 				_selected_item = i;
 				ensure_visible(window, i);
 				window->invalidate();
-				on_item_selected(i, true);
+				on_item_selected(window, i, activated);
 				return;
 			}
 		}
 	}
 
-	uint32_t on_left_button_down(const pf::window_frame_ptr& window, const ipoint& point)
+	uint32_t on_left_button_down(const pf::window_frame_ptr& window, const pf::ipoint& point)
 	{
 		window->set_focus();
 
@@ -532,15 +547,12 @@ public:
 		if (point.y < hh)
 			return 0;
 
-		const auto rc = irect(0, hh, _extent.cx, _extent.cy);
+		const auto rc = pf::irect(0, hh, _view_extent.cx, _view_extent.cy);
 
-		if (_vscroll.begin_tracking(point, rc, window))
+		if (!_vscroll.handle_mouse(pf::mouse_message_type::left_button_down, point, rc, window,
+		                           [this, &window](const int pos) { scroll_to(window, pos); }))
 		{
-			window->invalidate();
-		}
-		else
-		{
-			const auto scroll_pt = ipoint(point.x, point.y + _offset.y);
+			const auto scroll_pt = pf::ipoint(point.x, point.y + _scroll_offset.y);
 			const auto i = selection_from_point(scroll_pt);
 
 			if (i)
@@ -548,78 +560,67 @@ public:
 				set_hover(window, i);
 				select_list_item(window, i);
 			}
+
+			window->invalidate();
 		}
 
-		window->invalidate();
 		return 0;
 	}
 
-	uint32_t on_mouse_move(const pf::window_frame_ptr& window, const ipoint& point, uint32_t keys)
+	uint32_t on_mouse_move(const pf::window_frame_ptr& window, const pf::ipoint& point)
 	{
-		if (!_hover_tracking)
-		{
-			window->track_mouse_leave();
-			_hover_tracking = true;
-		}
+		const auto hh = _header_height;
+		const auto rc = pf::irect(0, hh, _view_extent.cx, _view_extent.cy);
 
-		if (_vscroll._tracking)
+		_vscroll.handle_mouse(pf::mouse_message_type::mouse_move, point, rc, window, [this, &window](const int pos)
 		{
-			const auto hh = _header_height;
-			const auto rc = irect(0, hh, _extent.cx, _extent.cy);
-			const auto new_pos = _vscroll.track_to(point, rc);
-			scroll_to(window, new_pos);
-		}
-		else
-		{
-			const auto rc = irect(0, 0, _extent.cx, _extent.cy);
-			_vscroll.set_hover(_vscroll.hit_test(point, rc));
-		}
+			scroll_to(window, pos);
+		});
 
-		if (point.y >= _header_height)
+		if (!_vscroll._tracking)
 		{
-			const auto scroll_pt = ipoint(point.x, point.y + _offset.y);
-			set_hover(window, selection_from_point(scroll_pt));
-		}
-		else
-		{
-			set_hover(window, nullptr);
+			if (point.y >= _header_height)
+			{
+				const auto scroll_pt = pf::ipoint(point.x, point.y + _scroll_offset.y);
+				set_hover(window, selection_from_point(scroll_pt));
+			}
+			else
+			{
+				set_hover(window, nullptr);
+			}
 		}
 		return 0;
 	}
 
 	uint32_t on_left_button_up(const pf::window_frame_ptr& window)
 	{
-		if (_vscroll._tracking)
-		{
-			_vscroll.end_tracking(window);
-			window->invalidate();
-		}
+		_vscroll.handle_mouse(pf::mouse_message_type::left_button_up, {}, {}, window,
+		                      [this, &window](const int pos) { scroll_to(window, pos); });
 		return 0;
 	}
 
 	uint32_t on_mouse_leave(const pf::window_frame_ptr& window)
 	{
 		_hover_item = nullptr;
-		_hover_tracking = false;
-		_vscroll.set_hover(false);
+		_vscroll.handle_mouse(pf::mouse_message_type::mouse_leave, {}, {}, window);
 		window->invalidate();
 		return 0;
 	}
 
 	void scroll_to(const pf::window_frame_ptr& window, int offset)
 	{
-		offset = clamp(offset, 0, _y_max - _extent.cy);
+		offset = std::clamp(offset, 0, _content_extent.cy - _view_extent.cy);
 
-		if (_offset.y != offset)
+		if (_scroll_offset.y != offset)
 		{
-			_offset.y = offset;
+			_scroll_offset.y = offset;
 			window->invalidate();
 		}
 	}
 
 	void zoom(const pf::window_frame_ptr& window, const int delta)
 	{
-		_events.on_zoom(delta, false);
+		_events.on_zoom(delta, zoom_target::list);
 	}
 
 	void ensure_visible(const pf::window_frame_ptr& window, const list_view_item_ptr& item)
@@ -627,12 +628,12 @@ public:
 		if (!item) return;
 
 		const auto hh = _header_height;
-		const auto visible_top = _offset.y + hh;
-		const auto visible_bottom = _offset.y + _extent.cy;
+		const auto visible_top = _scroll_offset.y + hh;
+		const auto visible_bottom = _scroll_offset.y + _view_extent.cy;
 
 		if (item->bounds.top < visible_top)
 			scroll_to(window, item->bounds.top - hh);
 		else if (item->bounds.bottom > visible_bottom)
-			scroll_to(window, item->bounds.bottom - _extent.cy);
+			scroll_to(window, item->bounds.bottom - _view_extent.cy);
 	}
 };

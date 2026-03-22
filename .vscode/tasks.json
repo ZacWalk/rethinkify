@@ -6,7 +6,7 @@
             "type": "process",
             "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\MSBuild\\Current\\Bin\\MSBuild.exe",
             "args": [
-                "${workspaceFolder}/Rethinkify.sln",
+                "${workspaceFolder}/rethinkify.sln",
                 "/p:Configuration=Debug",
                 "/p:Platform=x64",
                 "/m"
@@ -15,6 +15,19 @@
                 "kind": "build",
                 "isDefault": true
             },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Build Rethinkify (Release)",
+            "type": "process",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "args": [
+                "${workspaceFolder}/rethinkify.sln",
+                "/p:Configuration=Release",
+                "/p:Platform=x64",
+                "/m"
+            ],
+            "group": "build",
             "problemMatcher": "$msCompile"
         }
     ]

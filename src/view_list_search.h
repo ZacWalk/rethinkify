@@ -1,27 +1,25 @@
-#pragma once
-
 // view_list_search.h — Search panel: text input, result display, navigation
 
+#pragma once
+
+#include "commands.h"
 #include "view_list.h"
 
 
 class search_list_view final : public list_view
 {
-	edit_box _edit;
-	isize _edit_font_char_size = {10, 10};
+	edit_box_widget _input;
 
-	std::wstring _last_searched;
+	std::u8string _last_searched;
 	int _result_count = 0;
 
-	caret_blinker _caret;
-
-	irect edit_box_rect() const
+	pf::irect edit_box_rect() const
 	{
 		const auto styles = _events.styles();
 		const auto m = styles.edit_box_margin;
 		const auto ef = styles.edit_font;
 		const auto h = ef.size + styles.edit_box_inner_pad * 2;
-		return irect(m, m, _extent.cx - m, m + h);
+		return pf::irect(m, m, _view_extent.cx - m, m + h);
 	}
 
 	int edit_inner_pad() const
@@ -31,19 +29,48 @@ class search_list_view final : public list_view
 
 	void update_caret(const pf::window_frame_ptr& window)
 	{
-		if (!window || !window->has_focus()) return;
-		_caret.reset(window);
-		_events.invalidate(invalid::search_list);
+		_input.reset_caret(window);
+		_events.invalidate(invalid::search_layout);
 	}
 
 	uint32_t on_timer(pf::window_frame_ptr& window, const uint32_t id) override
 	{
-		if (_caret.on_timer(id))
+		if (_input.on_timer(id))
 			window->invalidate_rect(edit_box_rect());
 		return 0;
 	}
 
 protected:
+	std::vector<pf::menu_command> build_context_menu_items(const list_view_item_ptr& hit)
+	{
+		std::vector<pf::menu_command> items;
+		if (!hit || !hit->source)
+			return items;
+
+		if (hit->is_group)
+		{
+			items.emplace_back(hit->expanded ? u8"Collapse" : u8"Expand", 0, [this, hit]
+			{
+				toggle_header_collapse(hit);
+			});
+			items.emplace_back();
+		}
+		else
+		{
+			items.emplace_back(u8"Open Result", 0, [this, hit]
+			{
+				_events.open_path_and_select(hit->source, hit->line_number, hit->line_match_pos,
+				                             hit->text_match_length);
+			});
+			items.emplace_back();
+		}
+
+		items.push_back(_events.command_menu_item(command_id::edit_copy, nullptr,
+		                                          [hit] { return hit && hit->source; }, nullptr,
+		                                          u8"Copy &Path"));
+		return items;
+	}
+
 	int calc_header_height() const
 	{
 		const auto styles = _events.styles();
@@ -53,7 +80,7 @@ protected:
 		return m + h + m;
 	}
 
-	void draw_header(pf::window_frame_ptr& window, pf::draw_context& dc, const irect& header_rect) override
+	void draw_header(pf::window_frame_ptr& window, pf::draw_context& dc, const pf::irect& header_rect) override
 	{
 		dc.fill_solid_rect(header_rect, ui::tool_wnd_clr);
 
@@ -67,32 +94,32 @@ protected:
 
 		const auto styles = _events.styles();
 		const auto pad = styles.edit_box_inner_pad;
-		const auto text_rect = eb.Inflate(-pad, -pad);
+		const auto text_rect = eb.inflate(-pad, -pad);
 
 		const auto ef = styles.edit_font;
 
-		const auto char_sz = dc.measure_text(L"X", ef);
-		const auto text_y = eb.top + (eb.Height() - char_sz.cy) / 2;
+		const auto char_sz = dc.measure_text(u8"X", ef);
+		const auto text_y = eb.top + (eb.height() - char_sz.cy) / 2;
 		constexpr auto bg_color = ui::tool_wnd_clr.darken(16);
 
-		if (_edit.text.empty())
+		if (_input.edit.text.empty())
 		{
 			// Placeholder text — centered in edit box
-			constexpr std::wstring_view placeholder = L"Search...";
+			constexpr std::u8string_view placeholder = u8"Search...";
 			const auto ph_sz = dc.measure_text(placeholder, ef);
-			const auto ph_x = eb.left + (eb.Width() - ph_sz.cx) / 2;
+			const auto ph_x = eb.left + (eb.width() - ph_sz.cx) / 2;
 			dc.draw_text(ph_x, text_y, text_rect, placeholder, ef, ui::handle_hover_color, bg_color);
 		}
 		else
 		{
-			_edit.draw_selection(dc, eb.left + pad, text_y, char_sz.cy, ef);
-			dc.draw_text(eb.left + pad, text_y, text_rect, _edit.text, ef, ui::text_color, bg_color);
+			_input.edit.draw_selection(dc, eb.left + pad, text_y, char_sz.cy, ef);
+			dc.draw_text(eb.left + pad, text_y, text_rect, _input.edit.text, ef, ui::text_color, bg_color);
 		}
 
 		// Draw result count below edit box
 		if (!_last_searched.empty())
 		{
-			const auto count_text = std::format(L"{} results", _result_count);
+			const auto count_text = pf::format(u8"{} results", _result_count);
 			auto count_rect = header_rect;
 			count_rect.top = eb.bottom + 2;
 			count_rect.left = eb.left + pad;
@@ -101,11 +128,12 @@ protected:
 				             ui::darker_text_color, ui::tool_wnd_clr);
 		}
 
-		if (has_focus && _caret.visible)
-			_edit.draw_caret(dc, eb.left + edit_inner_pad(), text_y, char_sz.cy, ef);
+		if (has_focus && _input.caret.visible)
+			_input.edit.draw_caret(dc, eb.left + edit_inner_pad(), text_y, char_sz.cy, ef);
 	}
 
-	void on_item_selected(const list_view_item_ptr& item, const bool activated) override
+	void on_item_selected(const pf::window_frame_ptr& window, const list_view_item_ptr& item,
+	                      const bool activated) override
 	{
 		if (item->is_group && activated)
 		{
@@ -120,27 +148,22 @@ protected:
 		}
 	}
 
-	void on_size(pf::window_frame_ptr& window, const isize extent,
-	             pf::measure_context& measure) override
+	void handle_size(pf::window_frame_ptr& window, const pf::isize extent,
+	                 pf::measure_context& measure) override
 	{
-		const auto styles = _events.styles();
-		_edit_font_char_size = measure.measure_char(styles.edit_font);
 		_header_height = calc_header_height();
-		list_view::on_size(window, extent, measure);
+		list_view::handle_size(window, extent, measure);
 	}
 
 	void update_focus(pf::window_frame_ptr& window) override
 	{
-		if (window->has_focus())
-			_caret.start(window);
-		else
-			_caret.stop(window);
+		_input.update_focus(window, window->has_focus());
 		list_view::update_focus(window);
 	}
 
-	uint32_t on_char(pf::window_frame_ptr& window, const wchar_t ch) override
+	uint32_t on_char(pf::window_frame_ptr& window, const char8_t ch) override
 	{
-		if (ch == L'\r' || ch == L'\n')
+		if (ch == u8'\r' || ch == u8'\n')
 		{
 			if (_selected_item && _selected_item->is_group)
 			{
@@ -153,9 +176,8 @@ protected:
 			return 0;
 		}
 
-		const bool modified = _edit.on_char(window, ch);
-		update_caret(window);
-		_events.invalidate(invalid::search_list);
+		const bool modified = _input.on_char(window, ch);
+		_events.invalidate(invalid::search_layout);
 		if (modified) trigger_search();
 		return 0;
 	}
@@ -164,11 +186,13 @@ protected:
 	{
 		namespace pk = pf::platform_key;
 
+		if (_selected_item && _events.invoke_menu_accelerator(window, build_context_menu_items(_selected_item), vk))
+			return 0;
+
 		bool text_modified = false;
-		if (_edit.on_key_down(window, vk, text_modified))
+		if (_input.on_key_down(window, vk, text_modified))
 		{
-			update_caret(window);
-			_events.invalidate(invalid::search_list);
+			_events.invalidate(invalid::search_layout);
 			if (text_modified) trigger_search();
 			return 0;
 		}
@@ -193,10 +217,10 @@ protected:
 
 		if (vk == pk::F5)
 		{
-			if (!_edit.text.empty())
+			if (!_input.edit.text.empty())
 			{
-				_last_searched = _edit.text;
-				_events.on_search(_edit.text);
+				_last_searched = _input.edit.text;
+				_events.on_search(_input.edit.text);
 			}
 			return 0;
 		}
@@ -209,18 +233,29 @@ public:
 	{
 	}
 
+	uint32_t handle_mouse(pf::window_frame_ptr window, const pf::mouse_message_type msg,
+	                      const pf::mouse_params& params) override
+	{
+		if (msg == pf::mouse_message_type::context_menu)
+		{
+			on_context_menu(window, params.point);
+			return 0;
+		}
+		return list_view::handle_mouse(std::move(window), msg, params);
+	}
+
 	void trigger_search()
 	{
-		if (_edit.text != _last_searched)
+		if (_input.edit.text != _last_searched)
 		{
-			_last_searched = _edit.text;
-			_events.on_search(_edit.text);
+			_last_searched = _input.edit.text;
+			_events.on_search(_input.edit.text);
 		}
 	}
 
 	struct search_key
 	{
-		file_path path;
+		pf::file_path path;
 		int line_number = -1;
 		int match_pos = -1;
 
@@ -234,7 +269,7 @@ public:
 	{
 		size_t operator()(const search_key& key) const
 		{
-			size_t h = ihash{}(key.path);
+			size_t h = pf::ihash{}(key.path);
 			h ^= std::hash<int>{}(key.line_number) + 0x9e3779b9 + (h << 6) + (h >> 2);
 			h ^= std::hash<int>{}(key.match_pos) + 0x9e3779b9 + (h << 6) + (h >> 2);
 			return h;
@@ -276,16 +311,16 @@ public:
 		return i;
 	}
 
-	std::wstring relative_path(const index_item_ptr& item) const
+	std::u8string relative_path(const index_item_ptr& item) const
 	{
 		const auto root = _events.root_item();
 		if (!root) return item->name;
 		const auto root_view = root->path.view();
 		const auto item_view = item->path.view();
 		if (item_view.length() > root_view.length() &&
-			str::icmp(item_view.substr(0, root_view.length()), root_view) == 0)
+			pf::icmp(item_view.substr(0, root_view.length()), root_view) == 0)
 		{
-			auto rel = std::wstring(item_view.substr(root_view.length()));
+			auto rel = std::u8string(item_view.substr(root_view.length()));
 			if (!rel.empty() && (rel[0] == L'\\' || rel[0] == L'/'))
 				rel = rel.substr(1);
 			return rel;
@@ -299,14 +334,14 @@ public:
 
 		if (found != _key_to_item.end())
 		{
-			found->second->name = std::format(L"{} ({})", relative_path(item),
-			                                  static_cast<int>(item->search_results.size()));
+			found->second->name = pf::format(u8"{} ({})", relative_path(item),
+			                                 static_cast<int>(item->search_results.size()));
 			return found->second;
 		}
 
 		auto i = std::make_shared<list_view_item>();
-		i->name = std::format(L"{} ({})", relative_path(item),
-		                      static_cast<int>(item->search_results.size()));
+		i->name = pf::format(u8"{} ({})", relative_path(item),
+		                     static_cast<int>(item->search_results.size()));
 		i->source = item;
 		i->depth = 0;
 		i->is_group = true;
@@ -381,21 +416,34 @@ public:
 		for (const auto& i : _items)
 			if (!i->is_group) _result_count++;
 
-		_events.invalidate(invalid::search_list);
+		_events.invalidate(invalid::search_layout);
 		layout_list();
 	}
 
 
 	void refresh_search()
 	{
-		if (!_edit.text.empty())
+		if (!_input.edit.text.empty())
 		{
-			_last_searched = _edit.text;
-			_events.on_search(_edit.text);
+			_last_searched = _input.edit.text;
+			_events.on_search(_input.edit.text);
 		}
 	}
 
 private:
+	void on_context_menu(const pf::window_frame_ptr& window, const pf::ipoint& screen_pt)
+	{
+		window->set_focus();
+		const auto client_pt = window->screen_to_client(screen_pt);
+		const auto scroll_pt = pf::ipoint(client_pt.x, client_pt.y + _scroll_offset.y);
+		const auto hit = selection_from_point(scroll_pt);
+		if (hit)
+			select_list_item(window, hit, false);
+		const auto items = build_context_menu_items(hit ? hit : _selected_item);
+		if (!items.empty())
+			window->show_popup_menu(items, screen_pt);
+	}
+
 	void toggle_header_collapse(const list_view_item_ptr& header_item)
 	{
 		const auto si = header_item;

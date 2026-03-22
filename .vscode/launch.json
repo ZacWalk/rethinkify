@@ -5,10 +5,19 @@
             "name": "Rethinkify (Debug x64)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/Exe/rethinkify64d.exe",
+            "program": "${workspaceFolder}/exe/rethinkify64d.exe",
             "args": [],
-            "cwd": "${workspaceFolder}/Exe",
+            "cwd": "${workspaceFolder}/exe",
             "preLaunchTask": "Build Rethinkify"
+        },
+        {
+            "name": "Rethinkify (Release x64)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/exe/rethinkify64.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/exe",
+            "preLaunchTask": "Build Rethinkify (Release)"
         }
     ]
 }

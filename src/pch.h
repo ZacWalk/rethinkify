@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+#include <charconv>
 #include <cstdio>
 #include <cstdarg>
 
@@ -31,5 +32,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "platform.h"
+#include "util.h"
 
-extern const wchar_t* g_app_name;
+
+extern std::u8string g_app_name;

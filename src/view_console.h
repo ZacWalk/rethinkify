@@ -1,110 +1,359 @@
-#pragma once
-
 // view_console.h — Console view: command input, scrollable history, output display
 
-#include "ui.h"
+#pragma once
 
-class console_view final : public pf::frame_reactor
+#include "commands.h"
+#include "view_text.h"
+
+class console_view final : public text_view
 {
-	app_events& _events;
 	commands& _commands;
 
-	edit_box _edit;
-	custom_scrollbar _vscroll{custom_scrollbar::orientation::vertical};
-
-	isize _extent = {1, 1};
-	isize _font_char_size = {10, 10};
+	edit_box_widget _input;
 	int _history_index = -1;
-	bool _focused = false;
-	bool _hover_tracking = false;
+	std::vector<uint16_t> _wrap_breaks;
+	std::vector<int> _wrap_offsets;
+	std::vector<int> _wrap_line_y;
+	std::vector<int> _input_wrap_breaks;
+	int _total_visual_rows = 0;
 
-	int _scroll_offset = 0;
-	int _content_height = 0;
+	static constexpr std::u8string_view prompt_text = u8"> ";
 
-	caret_blinker _caret;
+	[[nodiscard]] int prompt_columns() const
+	{
+		return static_cast<int>(prompt_text.size());
+	}
+
+	[[nodiscard]] int input_visual_rows() const
+	{
+		return std::max(1, static_cast<int>(_input_wrap_breaks.size()) + 1);
+	}
+
+	[[nodiscard]] int line_gap() const
+	{
+		return std::max(2, _font_extent.cy / 5);
+	}
+
+	[[nodiscard]] int row_pitch() const
+	{
+		return _font_extent.cy + line_gap();
+	}
+
+	[[nodiscard]] int prompt_bottom_padding() const
+	{
+		return std::max(4, _font_extent.cy / 3);
+	}
+
+	[[nodiscard]] int content_top_padding() const
+	{
+		return _font_extent.cy;
+	}
+
+	[[nodiscard]] int line_content_offset(const int line) const
+	{
+		return content_top_padding() + line * row_pitch();
+	}
 
 	[[nodiscard]] int edit_box_height() const
 	{
-		const auto styles = _events.styles();
-		return _font_char_size.cy + styles.edit_box_inner_pad * 2;
+		return _font_extent.cy * input_visual_rows() + line_gap() * std::max(0, input_visual_rows() - 1) +
+			prompt_bottom_padding();
 	}
 
-	[[nodiscard]] irect edit_box_rect() const
+	[[nodiscard]] int input_top() const
 	{
-		const auto styles = _events.styles();
-		const auto m = styles.edit_box_margin;
-		const auto h = edit_box_height();
-		return irect(m, _extent.cy - h - m, _extent.cx - m, _extent.cy - m);
+		return line_content_offset(_total_visual_rows) - _scroll_offset.y + text_top();
 	}
 
-	[[nodiscard]] irect output_rect() const
+	[[nodiscard]] pf::irect edit_box_rect() const
 	{
-		const auto styles = _events.styles();
-		const auto eb = edit_box_rect();
-		return irect(0, 1, _extent.cx, eb.top - styles.edit_box_margin);
+		const auto top = input_top();
+		return full_width_band_rect(top, edit_box_height());
 	}
 
-	void update_caret(const pf::window_frame_ptr& window)
+	[[nodiscard]] bool is_in_edit_box(const pf::ipoint& pt) const
 	{
-		if (!window || !window->has_focus()) return;
-		_caret.reset(window);
-		window->invalidate();
+		return edit_box_rect().contains(pt);
 	}
 
-	uint32_t on_char(const pf::window_frame_ptr& window, const wchar_t ch)
+	[[nodiscard]] int output_pad_left() const
 	{
-		if (ch == L'\r' || ch == L'\n')
+		return _font_extent.cx / 2;
+	}
+
+	[[nodiscard]] int wrap_width() const
+	{
+		const auto scrollbar_width = static_cast<int>(custom_scrollbar::base_hover_track_width * _events.styles().
+			dpi_scale);
+		const auto available_width = _view_extent.cx - output_pad_left() - scrollbar_width - _font_extent.cx;
+		if (available_width <= 0 || _font_extent.cx <= 0)
+			return 1;
+		return std::max(1, available_width / _font_extent.cx);
+	}
+
+	void rebuild_input_wrap_state()
+	{
+		_input_wrap_breaks.clear();
+		const auto& text = _input.edit.text;
+		if (text.empty())
+			return;
+
+		const int first_row_cols = std::max(1, wrap_width() - prompt_columns());
+		const int other_row_cols = std::max(1, wrap_width());
+		int row_cols = first_row_cols;
+		int col = 0;
+
+		for (int i = 0; i < static_cast<int>(text.size()); ++i)
 		{
-			if (!_edit.text.empty())
+			const int advance = pf::is_utf8_continuation(text[i]) ? 0 : 1;
+			if (col > 0 && col + advance > row_cols)
 			{
-				_commands.execute(_edit.text);
-				_edit.text.clear();
-				_edit.cursor_pos = 0;
-				_edit.sel_anchor = 0;
-				_history_index = -1;
-				scroll_to_bottom(window);
+				_input_wrap_breaks.push_back(i);
+				col = advance;
+				row_cols = other_row_cols;
 			}
-			window->invalidate();
-			return 0;
+			else
+			{
+				col += advance;
+			}
 		}
-
-		if (_edit.on_char(window, ch))
-			_history_index = -1;
-
-		update_caret(window);
-		window->invalidate();
-		return 0;
 	}
 
-	uint32_t on_key_down(const pf::window_frame_ptr& window, const unsigned int vk)
+	[[nodiscard]] int input_row_start(const int row) const
 	{
-		namespace pk = pf::platform_key;
+		if (row <= 0 || _input_wrap_breaks.empty())
+			return 0;
+		return _input_wrap_breaks[std::min(row - 1, static_cast<int>(_input_wrap_breaks.size()) - 1)];
+	}
 
-		if (vk == pk::Up)
-		{
-			navigate_history(window, -1);
+	[[nodiscard]] int input_row_end(const int row) const
+	{
+		if (row < 0)
 			return 0;
+		if (row >= static_cast<int>(_input_wrap_breaks.size()))
+			return static_cast<int>(_input.edit.text.size());
+		return _input_wrap_breaks[row];
+	}
+
+	[[nodiscard]] int input_row_for_pos(const int pos) const
+	{
+		for (int row = 0; row < static_cast<int>(_input_wrap_breaks.size()); ++row)
+		{
+			if (pos < _input_wrap_breaks[row])
+				return row;
 		}
-		if (vk == pk::Down)
+		return static_cast<int>(_input_wrap_breaks.size());
+	}
+
+	[[nodiscard]] int input_row_x(const int row) const
+	{
+		const auto pad = _events.styles().edit_box_margin;
+		if (row == 0)
+			return pad + prompt_columns() * _font_extent.cx;
+		return pad;
+	}
+
+	void rebuild_wrap_state()
+	{
+		const auto& output = _commands.output();
+		const auto line_count = static_cast<int>(output.size());
+
+		_wrap_breaks.clear();
+		_wrap_offsets.assign(line_count + 1, 0);
+		_wrap_line_y.assign(line_count + 1, 0);
+
+		const auto cols = wrap_width();
+		for (int i = 0; i < line_count; ++i)
 		{
-			navigate_history(window, 1);
-			return 0;
-		}
-		if (vk == pk::Escape)
-		{
-			_events.set_focus(view_focus::text);
-			return 0;
+			_wrap_offsets[i] = static_cast<int>(_wrap_breaks.size());
+			const auto& text = output[i].text;
+			auto char_advance = [&](const int j, const int) -> int
+			{
+				return pf::is_utf8_continuation(text[j]) ? 0 : 1;
+			};
+			const auto breaks = calc_word_breaks(text, cols, char_advance);
+			for (const auto brk : breaks)
+				_wrap_breaks.push_back(static_cast<uint16_t>(brk));
+			_wrap_line_y[i + 1] = _wrap_line_y[i] + static_cast<int>(breaks.size()) + 1;
 		}
 
-		bool text_modified = false;
-		if (_edit.on_key_down(window, vk, text_modified))
-		{
-			update_caret(window);
-			window->invalidate();
+		_wrap_offsets[line_count] = static_cast<int>(_wrap_breaks.size());
+		_total_visual_rows = _wrap_line_y[line_count];
+		rebuild_input_wrap_state();
+	}
+
+	[[nodiscard]] std::span<const uint16_t> line_breaks(const int line_index) const
+	{
+		if (_wrap_offsets.empty() || line_index < 0 || line_index >= static_cast<int>(_wrap_offsets.size()) - 1)
+			return {};
+		return {
+			_wrap_breaks.data() + _wrap_offsets[line_index],
+			static_cast<size_t>(_wrap_offsets[line_index + 1] - _wrap_offsets[line_index])
+		};
+	}
+
+	[[nodiscard]] int visual_row_to_line_index(const int visual_row) const
+	{
+		if (_wrap_line_y.empty())
 			return 0;
+		int low = 0;
+		int high = static_cast<int>(_wrap_line_y.size()) - 2;
+		while (low <= high)
+		{
+			const int mid = (low + high) / 2;
+			if (_wrap_line_y[mid] <= visual_row)
+				low = mid + 1;
+			else
+				high = mid - 1;
+		}
+		return std::clamp(high, 0, static_cast<int>(_wrap_line_y.size()) - 2);
+	}
+
+	[[nodiscard]] int line_sub_row(const int line_index, const int visual_row) const
+	{
+		if (_wrap_line_y.empty() || line_index < 0 || line_index >= static_cast<int>(_wrap_line_y.size()) - 1)
+			return 0;
+		return std::max(0, visual_row - _wrap_line_y[line_index]);
+	}
+
+	[[nodiscard]] int row_start_col(const int line_index, const int sub_row) const
+	{
+		const auto breaks = line_breaks(line_index);
+		if (sub_row <= 0 || breaks.empty())
+			return 0;
+		const auto row_index = std::min(sub_row - 1, static_cast<int>(breaks.size()) - 1);
+		return breaks[row_index];
+	}
+
+	[[nodiscard]] int row_end_col(const int line_index, const int sub_row) const
+	{
+		const auto& output = _commands.output();
+		if (line_index < 0 || line_index >= static_cast<int>(output.size()))
+			return 0;
+		const auto breaks = line_breaks(line_index);
+		if (sub_row < 0 || sub_row >= static_cast<int>(breaks.size()))
+			return static_cast<int>(output[line_index].text.size());
+		return breaks[sub_row];
+	}
+
+	[[nodiscard]] std::u8string input_selection_text() const
+	{
+		if (!_input.edit.has_selection())
+			return {};
+		const auto start = _input.edit.sel_start();
+		const auto end = _input.edit.sel_end();
+		return _input.edit.text.substr(start, end - start);
+	}
+
+	[[nodiscard]] text_location output_hit_test(const pf::ipoint& pt) const
+	{
+		const auto& output = _commands.output();
+		if (output.empty() || _total_visual_rows <= 0)
+			return {};
+
+		const int content_y = pt.y - text_top() + _scroll_offset.y;
+		int visual_row = row_pitch() > 0
+			                 ? (content_y - content_top_padding()) / row_pitch()
+			                 : 0;
+		visual_row = std::clamp(visual_row, 0, std::max(0, _total_visual_rows - 1));
+		const int line = visual_row_to_line_index(visual_row);
+		const int sub_row = line_sub_row(line, visual_row);
+		const int start_col = row_start_col(line, sub_row);
+		const int end_col = row_end_col(line, sub_row);
+
+		int col = _font_extent.cx > 0
+			          ? std::max(0, (pt.x - output_pad_left()) / _font_extent.cx)
+			          : 0;
+		col = std::clamp(start_col + col, start_col, end_col);
+
+		return {col, line};
+	}
+
+	void sync_output()
+	{
+		rebuild_wrap_state();
+		_max_lines = _total_visual_rows + input_visual_rows();
+		_content_extent.cy = content_top_padding() + _total_visual_rows * row_pitch() + edit_box_height();
+	}
+
+	void recalc_vert_scrollbar() override
+	{
+		const int visible_height = _view_extent.cy - text_top();
+		const int max_y = std::max(0, _content_extent.cy - visible_height);
+		if (_scroll_offset.y > max_y)
+		{
+			_scroll_offset.y = max_y;
+			_events.invalidate(invalid::windows);
 		}
 
-		return 0;
+		const int visible_rows = row_pitch() > 0
+			                         ? std::max(1, (visible_height + row_pitch() - 1) / row_pitch())
+			                         : 1;
+		const int scroll_row = row_pitch() > 0 ? _scroll_offset.y / row_pitch() : 0;
+		_vscroll.update(_max_lines + 2, visible_rows, scroll_row);
+	}
+
+	void scroll_output_to_bottom()
+	{
+		sync_output();
+		const int max_y = std::max(0, _content_extent.cy - (_view_extent.cy - text_top()));
+		if (_scroll_offset.y != max_y)
+		{
+			_scroll_offset.y = max_y;
+			recalc_vert_scrollbar();
+			_events.invalidate(invalid::console);
+		}
+	}
+
+	std::vector<pf::menu_command> build_context_menu_items() const
+	{
+		std::vector<pf::menu_command> items;
+		items.push_back(_events.command_menu_item(command_id::edit_copy, nullptr,
+		                                          [this]
+		                                          {
+			                                          return _input.edit.has_selection() || has_current_selection();
+		                                          }));
+		items.push_back(_events.command_menu_item(command_id::edit_paste));
+		return items;
+	}
+
+	void on_context_menu(const pf::window_frame_ptr& window, const pf::ipoint& screen_pt)
+	{
+		window->set_focus();
+		const auto items = build_context_menu_items();
+		if (!items.empty())
+			window->show_popup_menu(items, screen_pt);
+	}
+
+	bool paste_into_input(const pf::window_frame_ptr& window, const std::u8string_view text)
+	{
+		if (text.empty())
+			return false;
+
+		std::u8string clean;
+		clean.reserve(text.size());
+		for (const auto ch : text)
+		{
+			if (ch != u8'\r' && ch != u8'\n')
+				clean += ch;
+		}
+
+		if (clean.empty())
+			return false;
+
+		_input.edit.insert_at_cursor(clean);
+		sync_output();
+		_history_index = -1;
+		if (window)
+		{
+			_input.reset_caret(window);
+			window->invalidate_rect(edit_box_rect());
+		}
+		else
+		{
+			_events.invalidate(invalid::console);
+		}
+		return true;
 	}
 
 	void navigate_history(const pf::window_frame_ptr& window, const int direction)
@@ -127,10 +376,11 @@ class console_view final : public pf::frame_reactor
 				if (_history_index >= static_cast<int>(history.size()))
 				{
 					_history_index = -1;
-					_edit.text.clear();
-					_edit.cursor_pos = 0;
-					_edit.sel_anchor = 0;
-					update_caret(window);
+					_input.edit.text.clear();
+					_input.edit.cursor_pos = 0;
+					_input.edit.sel_anchor = 0;
+					sync_output();
+					_input.reset_caret(window);
 					window->invalidate();
 					return;
 				}
@@ -139,230 +389,618 @@ class console_view final : public pf::frame_reactor
 
 		if (_history_index >= 0 && _history_index < static_cast<int>(history.size()))
 		{
-			_edit.text = history[_history_index];
-			_edit.cursor_pos = static_cast<int>(_edit.text.length());
-			_edit.sel_anchor = _edit.cursor_pos;
+			_input.edit.text = history[_history_index];
+			_input.edit.cursor_pos = static_cast<int>(_input.edit.text.length());
+			_input.edit.sel_anchor = _input.edit.cursor_pos;
 		}
 
-		update_caret(window);
+		sync_output();
+		scroll_output_to_bottom();
+		_input.reset_caret(window);
 		window->invalidate();
 	}
 
-	void scroll_by(const pf::window_frame_ptr& window, const int lines)
+	void draw_edit_box_background(pf::draw_context& dc) const
 	{
-		const auto line_h = _font_char_size.cy;
-		const auto out_rect = output_rect();
-		const auto max_scroll = std::max(0, _content_height - out_rect.Height());
-		_scroll_offset = clamp(_scroll_offset + lines * line_h, 0, max_scroll);
-		window->invalidate();
+		const auto eb = edit_box_rect();
+		if (eb.bottom <= text_top() || eb.top >= _view_extent.cy)
+			return;
+
+		dc.fill_solid_rect(eb, focus_band_color());
 	}
 
-	void scroll_to_bottom(const pf::window_frame_ptr& window)
+	void draw_scrollbar_lane(pf::draw_context& dc, const pf::irect& bounds) const
 	{
-		const auto line_h = _font_char_size.cy;
-		const auto out_rect = output_rect();
-		const auto total = static_cast<int>(_commands.output().size()) * line_h;
-		const auto max_scroll = std::max(0, total - out_rect.Height());
-		_scroll_offset = max_scroll;
-		window->invalidate();
+		if (!_vscroll.can_scroll())
+			return;
+
+		const auto lane_width = _vscroll.hover_track_width();
+		const auto lane_left = std::max(bounds.left, bounds.right - lane_width);
+		dc.fill_solid_rect(pf::irect(lane_left, bounds.top, bounds.right, bounds.bottom),
+		                   style_to_color(style::normal_bkgnd));
 	}
 
-	void update_focus(const pf::window_frame_ptr& window)
+	void draw_edit_box_foreground(pf::draw_context& dc) const
 	{
-		const bool focused = window->has_focus();
-		if (_focused != focused)
+		const auto styles = _events.styles();
+		const auto font = styles.console_font;
+		const auto pad = styles.edit_box_margin;
+		const auto eb = edit_box_rect();
+		if (eb.bottom <= text_top() || eb.top >= _view_extent.cy)
+			return;
+
+		const auto eb_bg = focus_band_color();
+		const auto prompt_y = centered_text_top(eb.top, row_pitch());
+		dc.draw_text(pad, prompt_y, eb, prompt_text, font,
+		             ui::handle_hover_color, eb_bg);
+
+		for (int row = 0; row < input_visual_rows(); ++row)
 		{
-			_focused = focused;
-			if (_focused)
-				_caret.start(window);
-			else
-				_caret.stop(window);
-			window->invalidate();
+			const int row_band_top = eb.top + row * row_pitch();
+			const int row_y = centered_text_top(row_band_top, row_pitch());
+			const int row_start = input_row_start(row);
+			const int row_end = input_row_end(row);
+			const int row_x = eb.left + input_row_x(row);
+			const auto row_text = _input.edit.text.substr(row_start, row_end - row_start);
+
+			if (_input.edit.has_selection())
+			{
+				const int sel_start = std::clamp(_input.edit.sel_start(), row_start, row_end);
+				const int sel_end = std::clamp(_input.edit.sel_end(), row_start, row_end);
+				auto x = row_x;
+
+				if (sel_start > row_start)
+				{
+					const auto pre = _input.edit.text.substr(row_start, sel_start - row_start);
+					const auto w = dc.measure_text(pre, font).cx;
+					dc.draw_text(x, row_y, pf::irect(x, row_y, x + w, row_y + _font_extent.cy), pre, font,
+					             ui::text_color, eb_bg);
+					x += w;
+				}
+				if (sel_end > sel_start)
+				{
+					const auto mid = _input.edit.text.substr(sel_start, sel_end - sel_start);
+					const auto w = dc.measure_text(mid, font).cx;
+					dc.draw_text(x, row_y, pf::irect(x, row_y, x + w, row_y + _font_extent.cy), mid, font,
+					             style_to_color(style::sel_text), style_to_color(style::sel_bkgnd));
+					x += w;
+				}
+				if (sel_end < row_end)
+				{
+					const auto post = _input.edit.text.substr(sel_end, row_end - sel_end);
+					dc.draw_text(x, row_y, pf::irect(x, row_y, eb.right, row_y + _font_extent.cy), post, font,
+					             ui::text_color, eb_bg);
+				}
+			}
+			else if (!row_text.empty())
+			{
+				dc.draw_text(row_x, row_y, pf::irect(row_x, row_y, eb.right, row_y + _font_extent.cy), row_text, font,
+				             ui::text_color, eb_bg);
+			}
+		}
+
+		if (_focused && _input.caret.visible)
+		{
+			const int caret_row = input_row_for_pos(_input.edit.cursor_pos);
+			const int row_start = input_row_start(caret_row);
+			const auto before = _input.edit.text.substr(row_start, _input.edit.cursor_pos - row_start);
+			const int caret_x = eb.left + input_row_x(caret_row) + dc.measure_text(before, font).cx;
+			const int caret_y = centered_text_top(eb.top + caret_row * row_pitch(), row_pitch());
+			const int caret_w = std::max(1, static_cast<int>(2 * styles.dpi_scale));
+			dc.fill_solid_rect(caret_x, caret_y, caret_w, _font_extent.cy, ui::text_color);
 		}
 	}
 
 public:
 	console_view(app_events& events, commands& cmds)
-		: _events(events), _commands(cmds)
+		: text_view(events), _commands(cmds)
 	{
 	}
 
-	uint32_t handle_message(pf::window_frame_ptr window, const pf::message_type msg,
+	~console_view() override = default;
+
+	void zoom(const pf::window_frame_ptr& window, const int delta) override
+	{
+		_events.on_zoom(delta, zoom_target::console);
+	}
+
+	void on_mouse_wheel(pf::window_frame_ptr& window, const int zDelta) override
+	{
+		sync_output();
+		set_scroll_pixel(_scroll_offset.y + zDelta * row_pitch());
+	}
+
+	void handle_size(pf::window_frame_ptr& window, const pf::isize extent,
+	                 pf::measure_context& measure) override
+	{
+		_view_extent = extent;
+		const auto styles = _events.styles();
+		_font_extent = measure.measure_char(styles.console_font);
+		_screen_lines = row_pitch() > 0 ? extent.cy / row_pitch() : 0;
+
+		sync_output();
+		_vscroll.set_dpi_scale(styles.dpi_scale);
+
+		_events.invalidate(invalid::doc_scrollbar);
+		window->invalidate();
+	}
+
+	uint32_t handle_message(const pf::window_frame_ptr window, const pf::message_type msg,
 	                        const uintptr_t wParam, const intptr_t lParam) override
 	{
 		using mt = pf::message_type;
 
-		if (msg == mt::create) return 0;
-		if (msg == mt::erase_background) return 1;
-		if (msg == mt::set_cursor_msg)
+		if (msg == mt::timer)
 		{
-			if ((lParam & 0xFFFF) == 1 /*HTCLIENT*/)
+			if (_input.on_timer(static_cast<uint32_t>(wParam)))
+				window->invalidate_rect(edit_box_rect());
+			return 0;
+		}
+
+		return text_view::handle_message(window, msg, wParam, lParam);
+	}
+
+	uint32_t handle_mouse(const pf::window_frame_ptr window, const pf::mouse_message_type msg,
+	                      const pf::mouse_params& params) override
+	{
+		using mt = pf::mouse_message_type;
+
+		{
+			const auto rc = client_rect();
+
+			if (_vscroll.handle_mouse(msg, params.point, rc, window, [this](const int pos)
 			{
-				window->set_cursor_shape(pf::cursor_shape::arrow);
+				sync_output();
+				set_scroll_pixel(line_content_offset(std::clamp(pos, 0, std::max(0, _max_lines - 1))));
+			}))
+				return 0;
+		}
+
+		if (msg == mt::set_cursor)
+		{
+			if (params.hit_test == 1)
+			{
+				auto pt = pf::platform_cursor_pos();
+				pt = window->screen_to_client(pt);
+				window->set_cursor_shape(is_in_edit_box(pt) ? pf::cursor_shape::ibeam : pf::cursor_shape::ibeam);
 				return 1;
 			}
 			return 0;
 		}
-		if (msg == mt::timer)
+
+		if (msg == mt::left_button_down || msg == mt::left_button_dbl_clk)
 		{
-			if (_caret.on_timer(static_cast<uint32_t>(wParam)))
-				window->invalidate_rect(edit_box_rect());
-			return 0;
+			if (is_in_edit_box(params.point))
+			{
+				window->set_focus();
+				scroll_output_to_bottom();
+				window->invalidate();
+				return 0;
+			}
 		}
-		if (msg == mt::set_focus || msg == mt::kill_focus)
-		{
-			update_focus(window);
-			return 0;
-		}
+
 		if (msg == mt::left_button_down)
 		{
 			window->set_focus();
-			const auto point = pf::point_from_lparam(lParam);
-			const auto out_rc = output_rect();
-			if (_vscroll.begin_tracking(point, out_rc, window))
-				window->invalidate();
-			return 0;
-		}
-		if (msg == mt::left_button_up)
-		{
-			if (_vscroll._tracking)
-			{
-				_vscroll.end_tracking(window);
-				window->invalidate();
-			}
-			return 0;
-		}
-		if (msg == mt::mouse_move)
-		{
-			if (!_hover_tracking)
-			{
-				window->track_mouse_leave();
-				_hover_tracking = true;
-			}
-			const auto point = pf::point_from_lparam(lParam);
-			if (_vscroll._tracking)
-			{
-				const auto rc = output_rect();
-				const auto new_pos = _vscroll.track_to(point, rc);
-				if (new_pos != _scroll_offset)
-				{
-					_scroll_offset = new_pos;
-					window->invalidate();
-				}
-			}
+			if (_commands.output().empty())
+				return 0;
+			const auto pos = output_hit_test(params.point);
+			const bool shift = window->is_key_down(pf::platform_key::Shift);
+
+			if (shift && has_current_selection())
+				_output_sel = text_selection(_sel_anchor, pos).normalize();
 			else
 			{
-				const auto rc = output_rect();
-				if (_vscroll.set_hover(_vscroll.hit_test(point, rc)))
-					window->invalidate();
+				_sel_anchor = pos;
+				_output_sel = text_selection(pos, pos);
 			}
-			return 0;
-		}
-		if (msg == mt::mouse_leave)
-		{
-			_hover_tracking = false;
-			if (_vscroll.set_hover(false))
-				window->invalidate();
-			return 0;
-		}
-		if (msg == mt::mouse_wheel)
-		{
-			const auto keys = static_cast<uint32_t>(wParam & 0xFFFF);
-			const auto delta = static_cast<short>(wParam >> 16 & 0xFFFF);
-			if (keys & 0x0008 /*MK_CONTROL*/)
-			{
-				_events.on_zoom(delta > 0 ? 1 : -1, false);
-				return 0;
-			}
-			scroll_by(window, delta > 0 ? -2 : 2);
-			return 0;
-		}
-		if (msg == mt::char_input)
-			return on_char(window, static_cast<wchar_t>(wParam));
-		if (msg == mt::key_down)
-			return on_key_down(window, static_cast<unsigned int>(wParam));
 
-		return 0;
+			_selecting = true;
+			window->set_capture();
+			window->invalidate();
+			return 0;
+		}
+
+		if (msg == mt::left_button_dbl_clk)
+		{
+			if (_commands.output().empty())
+				return 0;
+			const auto pos = output_hit_test(params.point);
+			const auto& output = _commands.output();
+
+			if (pos.y >= 0 && pos.y < static_cast<int>(output.size()))
+			{
+				const auto& text = output[pos.y].text;
+				const auto len = static_cast<int>(text.size());
+				int start = pos.x;
+				int end = pos.x;
+
+				while (start > 0 && start <= len && text[start - 1] != u8' ' && text[start - 1] != u8'\t')
+					start--;
+				while (end < len && text[end] != u8' ' && text[end] != u8'\t')
+					end++;
+
+				_sel_anchor = text_location(start, pos.y);
+				_output_sel = text_selection(start, pos.y, end, pos.y);
+				_selecting = true;
+				window->set_capture();
+				window->invalidate();
+			}
+			return 0;
+		}
+
+		if (msg == mt::mouse_move && _selecting)
+		{
+			if (_commands.output().empty())
+				return 0;
+			const auto pos = output_hit_test(params.point);
+			_output_sel = text_selection(_sel_anchor, pos).normalize();
+			window->invalidate();
+			return 0;
+		}
+
+		if (msg == mt::left_button_up && _selecting)
+		{
+			_selecting = false;
+			window->release_capture();
+			return 0;
+		}
+
+		if (msg == mt::context_menu)
+		{
+			on_context_menu(window, params.point);
+			return 0;
+		}
+
+		return text_view::handle_mouse(window, msg, params);
 	}
 
-	void on_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override
+	void on_char(pf::window_frame_ptr& window, const char8_t ch) override
+	{
+		if (ch == u8'\r' || ch == u8'\n')
+		{
+			if (!_input.edit.text.empty())
+			{
+				_commands.execute(_input.edit.text);
+				_input.edit.text.clear();
+				_input.edit.cursor_pos = 0;
+				_input.edit.sel_anchor = 0;
+				_history_index = -1;
+				_output_sel = {};
+				scroll_output_to_bottom();
+			}
+			window->invalidate();
+			return;
+		}
+
+		if (_input.on_char(window, ch))
+		{
+			_history_index = -1;
+			scroll_output_to_bottom();
+		}
+
+		window->invalidate();
+	}
+
+	bool on_key_down(pf::window_frame_ptr& window, const unsigned int vk) override
+	{
+		namespace pk = pf::platform_key;
+		const bool ctrl = window->is_key_down(pk::Control);
+		const bool shift = window->is_key_down(pk::Shift);
+
+		if (vk == pk::Escape)
+		{
+			_events.set_focus(view_focus::text);
+			return true;
+		}
+
+		if (ctrl && !shift && vk == 'A')
+		{
+			select_all();
+			window->invalidate();
+			return true;
+		}
+
+		if (ctrl && !shift && vk == 'V')
+		{
+			if (paste_into_input(window, clipboard_text()))
+				scroll_output_to_bottom();
+			return true;
+		}
+
+		if (shift && !ctrl && vk == pk::Insert)
+		{
+			if (paste_into_input(window, clipboard_text()))
+				scroll_output_to_bottom();
+			return true;
+		}
+
+		if (!ctrl && !shift)
+		{
+			if (vk == pk::Up)
+			{
+				navigate_history(window, -1);
+				return true;
+			}
+			if (vk == pk::Down)
+			{
+				navigate_history(window, 1);
+				return true;
+			}
+		}
+
+		if (ctrl && vk == pk::Up)
+		{
+			scroll_by(-1);
+			return true;
+		}
+		if (ctrl && vk == pk::Down)
+		{
+			scroll_by(1);
+			return true;
+		}
+
+		if (ctrl && !shift && vk == pk::Home)
+		{
+			scroll_to_top();
+			return true;
+		}
+		if (ctrl && !shift && vk == pk::End)
+		{
+			scroll_output_to_bottom();
+			return true;
+		}
+
+		if (text_view::on_key_down(window, vk))
+			return true;
+
+		bool text_modified = false;
+		if (_input.on_key_down(window, vk, text_modified))
+		{
+			if (text_modified)
+			{
+				_history_index = -1;
+				scroll_output_to_bottom();
+			}
+			window->invalidate();
+			return true;
+		}
+
+		return false;
+	}
+
+	void draw_view(pf::window_frame_ptr& window, pf::draw_context& draw) const override
 	{
 		const auto styles = _events.styles();
 		const auto font = styles.console_font;
-		const auto pad = styles.edit_box_inner_pad;
-		const auto margin = styles.edit_box_margin;
-		const auto r = irect(0, 0, _extent.cx, _extent.cy);
-		constexpr auto bg = ui::tool_wnd_clr.darken(8);
+		const auto rcClient = client_rect();
+		const auto bg = style_to_color(style::normal_bkgnd);
 
-		dc.fill_solid_rect(r, bg);
+		draw.fill_solid_rect(rcClient, bg);
+		draw.fill_solid_rect(0, 0, _view_extent.cx, 1, ui::handle_color);
 
-		// Separator line at top
-		dc.fill_solid_rect(0, 0, _extent.cx, 1, ui::handle_color);
-
-		// Output area
-		const auto out_rect = output_rect();
 		const auto& output = _commands.output();
-		const auto line_h = _font_char_size.cy;
+		const auto pad_left = output_pad_left();
+		const auto sel = _output_sel.normalize();
+		const auto has_sel = has_current_selection();
+		const auto sel_fg = style_to_color(style::sel_text);
+		const auto sel_bg = style_to_color(style::sel_bkgnd);
+		int visual_row = row_pitch() > 0 ? std::max(0, (_scroll_offset.y - content_top_padding()) / row_pitch()) : 0;
+		auto y = line_content_offset(visual_row) - _scroll_offset.y + text_top();
 
-		_content_height = static_cast<int>(output.size()) * line_h;
-		_vscroll.update(_content_height, out_rect.Height(), _scroll_offset);
-
-		int y = out_rect.top - _scroll_offset;
-		for (const auto& line : output)
+		while (y < rcClient.bottom && visual_row < _total_visual_rows)
 		{
-			if (y + line_h > out_rect.top && y < out_rect.bottom)
+			const int line_idx = visual_row_to_line_index(visual_row);
+			const int sub_row = line_sub_row(line_idx, visual_row);
+			const int row_start = row_start_col(line_idx, sub_row);
+			const int row_end = row_end_col(line_idx, sub_row);
+			const auto& full_text = output[line_idx].text;
+			const auto row_text = full_text.substr(row_start, std::max(0, row_end - row_start));
+
+			if (y + _font_extent.cy > 0 && y < rcClient.bottom)
 			{
-				const auto text_color = line.is_command
-					                        ? ui::folder_text_color
-					                        : ui::darker_text_color;
-				const auto text_rect = irect(margin, y,
-				                             out_rect.right - margin, y + line_h);
-				dc.draw_text(text_rect.left, text_rect.top, text_rect,
-				             line.text, font, text_color, bg);
+				const auto text_color = output[line_idx].is_command ? ui::folder_text_color : ui::darker_text_color;
+				const auto line_rect = pf::irect(pad_left, y, rcClient.right, y + _font_extent.cy);
+
+				if (has_sel && line_idx >= sel._start.y && line_idx <= sel._end.y && !row_text.empty())
+				{
+					const int sb = (line_idx == sel._start.y)
+						               ? std::clamp(sel._start.x, row_start, row_end)
+						               : row_start;
+					const int se = (line_idx == sel._end.y) ? std::clamp(sel._end.x, row_start, row_end) : row_end;
+					auto x = pad_left;
+
+					if (sb > row_start)
+					{
+						const auto pre = full_text.substr(row_start, sb - row_start);
+						const auto w = static_cast<int>(pre.size()) * _font_extent.cx;
+						draw.draw_text(x, y, pf::irect(x, y, x + w, y + _font_extent.cy), pre, font, text_color, bg);
+						x += w;
+					}
+					if (sb < se)
+					{
+						const auto mid = full_text.substr(sb, se - sb);
+						const auto w = static_cast<int>(mid.size()) * _font_extent.cx;
+						draw.draw_text(x, y, pf::irect(x, y, x + w, y + _font_extent.cy), mid, font, sel_fg, sel_bg);
+						x += w;
+					}
+					if (se < row_end)
+					{
+						const auto post = full_text.substr(se, row_end - se);
+						draw.draw_text(x, y, pf::irect(x, y, rcClient.right, y + _font_extent.cy), post, font,
+						               text_color,
+						               bg);
+					}
+					if (sub_row == static_cast<int>(line_breaks(line_idx).size()) && line_idx < sel._end.y)
+					{
+						const auto eol_x = pad_left + static_cast<int>(row_text.size()) * _font_extent.cx;
+						draw.fill_solid_rect(eol_x, y, _font_extent.cx, _font_extent.cy, sel_bg);
+					}
+				}
+				else if (!row_text.empty())
+				{
+					draw.draw_text(pad_left, y, line_rect, row_text, font, text_color, bg);
+				}
 			}
-			y += line_h;
+
+			visual_row++;
+			y += row_pitch();
 		}
 
-		_vscroll.draw(dc, out_rect);
-
-		// Edit box
-		const auto eb = edit_box_rect();
-		constexpr auto eb_bg = ui::tool_wnd_clr.darken(16);
-		dc.fill_solid_rect(eb, eb_bg);
-
-		edit_box::draw_border(dc, eb, _focused);
-
-		// Prompt
-		constexpr std::wstring_view prompt = L"> ";
-		const auto prompt_sz = dc.measure_text(prompt, font);
-		const auto text_y = eb.top + (eb.Height() - _font_char_size.cy) / 2;
-		dc.draw_text(eb.left + pad, text_y, eb, prompt, font,
-		             ui::handle_hover_color, eb_bg);
-
-		const auto text_x = eb.left + pad + prompt_sz.cx;
-
-		// Edit text
-		if (!_edit.text.empty())
-		{
-			_edit.draw_selection(dc, text_x, text_y, _font_char_size.cy, font);
-
-			auto text_rect = eb;
-			text_rect.left = text_x;
-			dc.draw_text(text_x, text_y, text_rect, _edit.text, font,
-			             ui::text_color, eb_bg);
-		}
-
-		if (_focused && _caret.visible)
-			_edit.draw_caret(dc, text_x, text_y, _font_char_size.cy, font);
+		draw_edit_box_background(draw);
+		draw_scrollbar_lane(draw, rcClient);
+		_vscroll.draw(draw, rcClient);
+		draw_edit_box_foreground(draw);
 	}
 
-	void on_size(pf::window_frame_ptr& window, const isize extent,
-	             pf::measure_context& measure) override
+	void render_line(const int line_num, std::u8string& out) const override
 	{
-		_extent = extent;
-		const auto styles = _events.styles();
-		_font_char_size = measure.measure_char(styles.console_font);
-		window->invalidate();
+		const auto& output = _commands.output();
+		if (line_num >= 0 && line_num < static_cast<int>(output.size()))
+			out = output[line_num].text;
+		else
+			out.clear();
+	}
+
+	void select_all() override
+	{
+		const auto& output = _commands.output();
+		if (output.empty()) return;
+
+		const auto last = static_cast<int>(output.size()) - 1;
+		const auto last_len = static_cast<int>(output[last].text.size());
+		_sel_anchor = text_location(0, 0);
+		_output_sel = text_selection(0, 0, last_len, last);
+	}
+
+	[[nodiscard]] bool can_copy_text() const override
+	{
+		return _input.edit.has_selection() || !_commands.output().empty();
+	}
+
+	[[nodiscard]] bool can_cut_text() const override
+	{
+		return _input.edit.has_selection() || !_input.edit.text.empty();
+	}
+
+	[[nodiscard]] bool can_paste_text() const override
+	{
+		return !clipboard_text().empty();
+	}
+
+	[[nodiscard]] bool can_delete_text() const override
+	{
+		return _input.edit.has_selection() || _input.edit.cursor_pos < static_cast<int>(_input.edit.text.size());
+	}
+
+	bool copy_text_to_clipboard() override
+	{
+		if (_input.edit.has_selection())
+			return set_clipboard(input_selection_text());
+		return text_view::copy_text_to_clipboard();
+	}
+
+	bool cut_text_to_clipboard() override
+	{
+		if (_input.edit.text.empty())
+			return false;
+
+		const std::u8string text = _input.edit.has_selection() ? input_selection_text() : _input.edit.text;
+		if (!set_clipboard(text))
+			return false;
+
+		if (_input.edit.has_selection())
+			_input.edit.delete_selection();
+		else
+		{
+			_input.edit.text.clear();
+			_input.edit.cursor_pos = 0;
+			_input.edit.sel_anchor = 0;
+		}
+
+		sync_output();
+		_events.invalidate(invalid::console);
+		return true;
+	}
+
+	bool paste_text_from_clipboard() override
+	{
+		const auto ok = paste_into_input({}, clipboard_text());
+		if (ok)
+			scroll_output_to_bottom();
+		return ok;
+	}
+
+	bool delete_selected_text() override
+	{
+		if (_input.edit.has_selection())
+		{
+			_input.edit.delete_selection();
+			sync_output();
+			_events.invalidate(invalid::console);
+			return true;
+		}
+		if (_input.edit.cursor_pos >= static_cast<int>(_input.edit.text.size()))
+			return false;
+		_input.edit.text.erase(_input.edit.cursor_pos, 1);
+		_input.edit.sel_anchor = _input.edit.cursor_pos;
+		sync_output();
+		_events.invalidate(invalid::console);
+		return true;
+	}
+
+	[[nodiscard]] bool word_wrap() const override { return true; }
+
+	void scroll_by(const int delta)
+	{
+		set_scroll_pixel(_scroll_offset.y + delta * row_pitch());
+	}
+
+	std::u8string select_text() const override
+	{
+		const auto& output = _commands.output();
+		if (output.empty()) return {};
+
+		if (!has_current_selection())
+		{
+			std::u8string result;
+			for (const auto& line : output)
+			{
+				if (!result.empty()) result += u8'\n';
+				result += line.text;
+			}
+			return result;
+		}
+
+		const auto sel = _output_sel.normalize();
+		const auto line_count = static_cast<int>(output.size());
+		std::u8string result;
+
+		for (int i = sel._start.y; i <= sel._end.y && i < line_count; i++)
+		{
+			if (!result.empty()) result += u8'\n';
+			const auto& text = output[i].text;
+			const auto len = static_cast<int>(text.size());
+			const int start_col = (i == sel._start.y) ? std::clamp(sel._start.x, 0, len) : 0;
+			const int end_col = (i == sel._end.y) ? std::clamp(sel._end.x, 0, len) : len;
+
+			if (start_col < end_col)
+				result += text.substr(start_col, end_col - start_col);
+		}
+
+		return result;
+	}
+
+	void update_focus(pf::window_frame_ptr& window) override
+	{
+		const bool focused = window->has_focus();
+
+		if (_focused != focused)
+		{
+			_focused = focused;
+			_input.update_focus(window, _focused);
+			window->invalidate();
+		}
 	}
 };
 
