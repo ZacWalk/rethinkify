@@ -1,28 +1,28 @@
-#pragma once
+// ui.h — UI types: color constants, edit_box, caret_blinker, splitter, custom_scrollbar, table_layout
 
-// ui.h — UI types: color constants, edit_box, caret_blinker, splitter, custom_scrollbar
+#pragma once
 
 #include "platform.h"
 
 namespace ui
 {
-	constexpr color_t handle_color{0x44, 0x44, 0x44};
-	constexpr color_t focus_handle_color{40, 100, 220};
-	constexpr color_t main_wnd_clr{0x22, 0x22, 0x22};
-	constexpr color_t tool_wnd_clr{0x33, 0x33, 0x33};
-	constexpr color_t handle_hover_color{0x66, 0x66, 0x66};
-	constexpr color_t handle_tracking_color{0x11, 0x66, 0xCC};
-	constexpr color_t text_color{0xFF, 0xFF, 0xFF};
-	constexpr color_t folder_text_color{0xEE, 0xCC, 0x22};
-	constexpr color_t darker_text_color{0xCC, 0xCC, 0xCC};
-	constexpr color_t line_color{0x22, 0x55, 0xAA};
-	constexpr color_t window_background{33, 33, 33};
+	constexpr pf::color_t handle_color{0x44, 0x44, 0x44};
+	constexpr pf::color_t focus_handle_color{40, 100, 220};
+	constexpr pf::color_t main_wnd_clr{0x22, 0x22, 0x22};
+	constexpr pf::color_t tool_wnd_clr{0x33, 0x33, 0x33};
+	constexpr pf::color_t handle_hover_color{0x66, 0x66, 0x66};
+	constexpr pf::color_t handle_tracking_color{0x11, 0x66, 0xCC};
+	constexpr pf::color_t text_color{0xFF, 0xFF, 0xFF};
+	constexpr pf::color_t folder_text_color{0xEE, 0xCC, 0x22};
+	constexpr pf::color_t darker_text_color{0xCC, 0xCC, 0xCC};
+	constexpr pf::color_t line_color{0x22, 0x55, 0xAA};
+	constexpr pf::color_t window_background{33, 33, 33};
 }
 
 
 struct edit_box
 {
-	std::wstring text;
+	std::u8string text;
 	int cursor_pos = 0;
 	int sel_anchor = 0;
 
@@ -40,7 +40,7 @@ struct edit_box
 		sel_anchor = s;
 	}
 
-	void insert_at_cursor(const std::wstring_view t)
+	void insert_at_cursor(const std::u8string_view t)
 	{
 		if (has_selection()) delete_selection();
 		text.insert(cursor_pos, t);
@@ -49,7 +49,7 @@ struct edit_box
 	}
 
 	// Returns true if text was modified
-	bool on_char(const pf::window_frame_ptr& w, const wchar_t ch)
+	bool on_char(const pf::window_frame_ptr& w, const char8_t ch)
 	{
 		if (ch == 0x01) // Ctrl+A
 		{
@@ -72,7 +72,7 @@ struct edit_box
 			const auto clip = w->text_from_clipboard();
 			if (!clip.empty())
 			{
-				std::wstring clean;
+				std::u8string clean;
 				clean.reserve(clip.size());
 				for (const auto c : clip)
 					if (c != L'\r' && c != L'\n')
@@ -117,7 +117,7 @@ struct edit_box
 
 		if (ch >= L' ')
 		{
-			insert_at_cursor(std::wstring_view(&ch, 1));
+			insert_at_cursor(std::u8string_view(&ch, 1));
 			return true;
 		}
 
@@ -199,11 +199,11 @@ struct edit_box
 		return false;
 	}
 
-	ipoint caret_position(const irect& box_rect, const int inner_pad,
-	                      const isize& char_sz, const pf::font& font,
-	                      const pf::window_frame_ptr& w) const
+	pf::ipoint caret_position(const pf::irect& box_rect, const int inner_pad,
+	                          const pf::isize& char_sz, const pf::font& font,
+	                          const pf::window_frame_ptr& w) const
 	{
-		const auto text_y = box_rect.top + (box_rect.Height() - char_sz.cy) / 2;
+		const auto text_y = box_rect.top + (box_rect.height() - char_sz.cy) / 2;
 
 		if (text.empty() || cursor_pos == 0)
 		{
@@ -217,14 +217,15 @@ struct edit_box
 
 	// --- Common drawing helpers for edit-box-based views ---
 
-	static void draw_border(pf::draw_context& dc, const irect& box, const bool focused)
+	static void draw_border(pf::draw_context& dc, const pf::irect& box, const bool focused,
+	                        const double dpi_scale = 1.0)
 	{
-		constexpr int thickness = 2;
+		const int thickness = std::max(1, static_cast<int>(2 * dpi_scale));
 		const auto color = focused ? ui::focus_handle_color : ui::handle_color;
-		dc.fill_solid_rect(box.left, box.top, box.Width(), thickness, color);
-		dc.fill_solid_rect(box.left, box.bottom - thickness, box.Width(), thickness, color);
-		dc.fill_solid_rect(box.left, box.top, thickness, box.Height(), color);
-		dc.fill_solid_rect(box.right - thickness, box.top, thickness, box.Height(), color);
+		dc.fill_solid_rect(box.left, box.top, box.width(), thickness, color);
+		dc.fill_solid_rect(box.left, box.bottom - thickness, box.width(), thickness, color);
+		dc.fill_solid_rect(box.left, box.top, thickness, box.height(), color);
+		dc.fill_solid_rect(box.right - thickness, box.top, thickness, box.height(), color);
 	}
 
 	void draw_selection(pf::draw_context& dc, const int text_x, const int text_y,
@@ -233,18 +234,19 @@ struct edit_box
 		if (!has_selection()) return;
 		const auto before_sz = dc.measure_text(text.substr(0, sel_start()), font);
 		const auto sel_sz = dc.measure_text(text.substr(sel_start(), sel_end() - sel_start()), font);
-		dc.fill_solid_rect(irect(text_x + before_sz.cx, text_y,
-		                         text_x + before_sz.cx + sel_sz.cx, text_y + char_cy),
-		                   color_t(88, 88, 88));
+		dc.fill_solid_rect(pf::irect(text_x + before_sz.cx, text_y,
+		                             text_x + before_sz.cx + sel_sz.cx, text_y + char_cy),
+		                   pf::color_t(88, 88, 88));
 	}
 
 	void draw_caret(pf::draw_context& dc, const int text_x, const int text_y,
-	                const int char_cy, const pf::font& font) const
+	                const int char_cy, const pf::font& font, const double dpi_scale = 1.0) const
 	{
 		int caret_x = text_x;
 		if (!text.empty() && cursor_pos > 0)
 			caret_x += dc.measure_text(text.substr(0, cursor_pos), font).cx;
-		dc.fill_solid_rect(caret_x, text_y, 2, char_cy, ui::text_color);
+		const int caret_w = std::max(1, static_cast<int>(2 * dpi_scale));
+		dc.fill_solid_rect(caret_x, text_y, caret_w, char_cy, ui::text_color);
 	}
 };
 
@@ -304,90 +306,96 @@ struct splitter
 {
 	enum class orientation { vertical, horizontal };
 
-	orientation orient;
-	double ratio = 0.5;
-	bool is_tracking = false;
-	bool is_hover = false;
+	orientation _orient;
+	double _ratio = 0.5;
+	bool _tracking = false;
+	bool _hover = false;
+	double _dpi_scale = 1.0;
 
-	static constexpr int bar_width = 5;
+	static constexpr int base_bar_width = 5;
 	static constexpr double min_ratio = 0.05;
 	static constexpr double max_ratio = 0.95;
 
+	[[nodiscard]] int bar_width() const { return static_cast<int>(base_bar_width * _dpi_scale); }
+
+	void set_dpi_scale(const double s) { _dpi_scale = s; }
+
 	splitter(const orientation o, const double initial_ratio)
-		: orient(o), ratio(initial_ratio)
+		: _orient(o), _ratio(initial_ratio)
 	{
 	}
 
-	[[nodiscard]] int split_pos(const irect& bounds) const
+	[[nodiscard]] int split_pos(const pf::irect& bounds) const
 	{
-		if (orient == orientation::vertical)
-			return static_cast<int>(bounds.left + (bounds.right - bounds.left) * ratio);
-		return static_cast<int>(bounds.top + (bounds.bottom - bounds.top) * ratio);
+		if (_orient == orientation::vertical)
+			return static_cast<int>(bounds.left + (bounds.right - bounds.left) * _ratio);
+		return static_cast<int>(bounds.top + (bounds.bottom - bounds.top) * _ratio);
 	}
 
-	[[nodiscard]] irect bar_rect(const irect& bounds) const
+	[[nodiscard]] pf::irect bar_rect(const pf::irect& bounds) const
 	{
 		const auto pos = split_pos(bounds);
-		if (orient == orientation::vertical)
-			return {pos - bar_width, bounds.top, pos + bar_width, bounds.bottom};
-		return {bounds.left, pos - bar_width, bounds.right, pos + bar_width};
+		const auto bw = bar_width();
+		if (_orient == orientation::vertical)
+			return {pos - bw, bounds.top, pos + bw, bounds.bottom};
+		return {bounds.left, pos - bw, bounds.right, pos + bw};
 	}
 
-	[[nodiscard]] bool hit_test(const irect& bounds, const ipoint& pt) const
+	[[nodiscard]] bool hit_test(const pf::irect& bounds, const pf::ipoint& pt) const
 	{
-		return bar_rect(bounds).Contains(pt);
+		return bar_rect(bounds).contains(pt);
 	}
 
-	void update_ratio(const irect& bounds, const ipoint& pt)
+	void update_ratio(const pf::irect& bounds, const pf::ipoint& pt)
 	{
-		if (orient == orientation::vertical)
+		if (_orient == orientation::vertical)
 		{
 			const auto width = bounds.right - bounds.left;
 			if (width > 0)
-				ratio = (pt.x - bounds.left) / static_cast<double>(width);
+				_ratio = (pt.x - bounds.left) / static_cast<double>(width);
 		}
 		else
 		{
 			const auto height = bounds.bottom - bounds.top;
 			if (height > 0)
-				ratio = (pt.y - bounds.top) / static_cast<double>(height);
+				_ratio = (pt.y - bounds.top) / static_cast<double>(height);
 		}
 
-		if (ratio < min_ratio) ratio = min_ratio;
-		if (ratio > max_ratio) ratio = max_ratio;
+		if (_ratio < min_ratio) _ratio = min_ratio;
+		if (_ratio > max_ratio) _ratio = max_ratio;
 	}
 
-	[[nodiscard]] color_t color() const
+	[[nodiscard]] pf::color_t color() const
 	{
-		if (is_tracking) return ui::handle_tracking_color;
-		if (is_hover) return ui::handle_hover_color;
+		if (_tracking) return ui::handle_tracking_color;
+		if (_hover) return ui::handle_hover_color;
 		return ui::handle_color;
 	}
 
 	[[nodiscard]] pf::cursor_shape cursor() const
 	{
-		return orient == orientation::vertical
+		return _orient == orientation::vertical
 			       ? pf::cursor_shape::size_we
 			       : pf::cursor_shape::size_ns;
 	}
 
-	void draw(pf::draw_context& dc, const irect& bounds) const
+	void draw(pf::draw_context& dc, const pf::irect& bounds) const
 	{
 		dc.fill_solid_rect(bar_rect(bounds), color());
 	}
 
-	bool begin_tracking(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	bool begin_tracking(const pf::irect& bounds, const pf::ipoint& pt, const pf::window_frame_ptr& window)
 	{
 		if (!hit_test(bounds, pt)) return false;
-		is_tracking = true;
+		_tracking = true;
 		window->set_capture();
 		window->set_cursor_shape(cursor());
 		return true;
 	}
 
-	bool track_to(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	bool track_to(const pf::irect& bounds, const pf::ipoint& pt, const pf::window_frame_ptr& window)
 	{
-		if (!is_tracking) return false;
+		if (!_tracking) return false;
 		update_ratio(bounds, pt);
 		window->invalidate();
 		return true;
@@ -395,20 +403,20 @@ struct splitter
 
 	void end_tracking(const pf::window_frame_ptr& window)
 	{
-		if (is_tracking)
+		if (_tracking)
 		{
-			is_tracking = false;
+			_tracking = false;
 			window->release_capture();
 			window->invalidate();
 		}
 	}
 
-	bool update_hover(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	bool update_hover(const pf::irect& bounds, const pf::ipoint& pt, const pf::window_frame_ptr& window)
 	{
 		const auto new_hover = hit_test(bounds, pt);
-		if (new_hover == is_hover) return false;
-		is_hover = new_hover;
-		if (is_hover)
+		if (new_hover == _hover) return false;
+		_hover = new_hover;
+		if (_hover)
 		{
 			window->track_mouse_leave();
 			window->set_cursor_shape(cursor());
@@ -419,9 +427,9 @@ struct splitter
 
 	void clear_hover(const pf::window_frame_ptr& window)
 	{
-		if (is_hover)
+		if (_hover)
 		{
-			is_hover = false;
+			_hover = false;
 			window->invalidate();
 		}
 	}
@@ -439,13 +447,23 @@ struct custom_scrollbar
 
 	bool _hover = false;
 	bool _tracking = false;
+	bool _hover_tracking = false;
 	int _tracking_start_mouse = 0;
 	int _tracking_start_pos = 0;
 
-	static constexpr int thumb_thickness = 8;
-	static constexpr int edge_margin = 4;
-	static constexpr int hover_track_width = 26;
-	static constexpr int hit_margin = 32;
+	static constexpr int base_thumb_thickness = 8;
+	static constexpr int base_edge_margin = 4;
+	static constexpr int base_hover_track_width = 26;
+	static constexpr int base_hit_margin = 32;
+
+	double _dpi_scale = 1.0;
+
+	[[nodiscard]] int thumb_thickness() const { return static_cast<int>(base_thumb_thickness * _dpi_scale); }
+	[[nodiscard]] int edge_margin() const { return static_cast<int>(base_edge_margin * _dpi_scale); }
+	[[nodiscard]] int hover_track_width() const { return static_cast<int>(base_hover_track_width * _dpi_scale); }
+	[[nodiscard]] int hit_margin() const { return static_cast<int>(base_hit_margin * _dpi_scale); }
+
+	void set_dpi_scale(const double s) { _dpi_scale = s; }
 
 	custom_scrollbar(const orientation o) : _orient(o)
 	{
@@ -463,59 +481,64 @@ struct custom_scrollbar
 		_position = position;
 	}
 
-	bool hit_test(const ipoint& pt, const irect& client) const
+	bool hit_test(const pf::ipoint& pt, const pf::irect& client) const
 	{
 		if (!can_scroll()) return false;
 		if (_orient == orientation::vertical)
-			return pt.x >= client.right - hit_margin && pt.y >= client.top && pt.y < client.bottom;
-		return pt.y >= client.bottom - hit_margin && pt.x >= client.left && pt.x < client.right;
+			return pt.x >= client.right - hit_margin() && pt.y >= client.top && pt.y < client.bottom;
+		return pt.y >= client.bottom - hit_margin() && pt.x >= client.left && pt.x < client.right;
 	}
 
-	void draw(pf::draw_context& dc, const irect& client) const
+	void draw(pf::draw_context& dc, const pf::irect& client) const
 	{
 		if (!can_scroll()) return;
 
+		const auto tt = thumb_thickness();
+		const auto em = edge_margin();
+		const auto htw = hover_track_width();
+		const auto scaled_pad = static_cast<int>(10 * _dpi_scale);
+
 		if (_orient == orientation::vertical)
 		{
-			const auto extent = client.Height();
+			const auto extent = client.height();
 			const auto y = pf::mul_div(_position, extent, _content_size) + client.top;
-			const auto cy = std::max(pf::mul_div(_page_size, extent, _content_size), thumb_thickness);
+			const auto cy = std::max(pf::mul_div(_page_size, extent, _content_size), tt);
 			const auto right = client.right;
 			auto x_pad = 0;
 
 			if (_hover || _tracking)
 			{
-				dc.fill_solid_rect(irect(right - hover_track_width, client.top, right, client.bottom),
+				dc.fill_solid_rect(pf::irect(right - htw, client.top, right, client.bottom),
 				                   ui::handle_color);
-				x_pad = 10;
+				x_pad = scaled_pad;
 			}
 
 			const auto c = _tracking ? ui::handle_tracking_color : ui::handle_hover_color;
-			dc.fill_solid_rect(irect(right - thumb_thickness - edge_margin - x_pad, y,
-			                         right - edge_margin, y + cy), c);
+			dc.fill_solid_rect(pf::irect(right - tt - em - x_pad, y,
+			                             right - em, y + cy), c);
 		}
 		else
 		{
-			const auto extent = client.Width();
+			const auto extent = client.width();
 			const auto x = pf::mul_div(_position, extent, _content_size) + client.left;
-			const auto cx = std::max(pf::mul_div(_page_size, extent, _content_size), thumb_thickness);
+			const auto cx = std::max(pf::mul_div(_page_size, extent, _content_size), tt);
 			const auto bottom = client.bottom;
 			auto y_pad = 0;
 
 			if (_hover || _tracking)
 			{
-				dc.fill_solid_rect(irect(client.left, bottom - hover_track_width, client.right, bottom),
+				dc.fill_solid_rect(pf::irect(client.left, bottom - htw, client.right, bottom),
 				                   ui::handle_color);
-				y_pad = 10;
+				y_pad = scaled_pad;
 			}
 
 			const auto c = _tracking ? ui::handle_tracking_color : ui::handle_hover_color;
-			dc.fill_solid_rect(irect(x, bottom - thumb_thickness - edge_margin - y_pad,
-			                         x + cx, bottom - edge_margin), c);
+			dc.fill_solid_rect(pf::irect(x, bottom - tt - em - y_pad,
+			                             x + cx, bottom - em), c);
 		}
 	}
 
-	bool begin_tracking(const ipoint& pt, const irect& client, const pf::window_frame_ptr& window)
+	bool begin_tracking(const pf::ipoint& pt, const pf::irect& client, const pf::window_frame_ptr& window)
 	{
 		if (!hit_test(pt, client)) return false;
 		_tracking = true;
@@ -525,16 +548,16 @@ struct custom_scrollbar
 		return true;
 	}
 
-	int track_to(const ipoint& pt, const irect& client) const
+	int track_to(const pf::ipoint& pt, const pf::irect& client) const
 	{
 		if (!_tracking) return _position;
 		const int delta_mouse = _orient == orientation::vertical
 			                        ? pt.y - _tracking_start_mouse
 			                        : pt.x - _tracking_start_mouse;
-		const int extent = _orient == orientation::vertical ? client.Height() : client.Width();
+		const int extent = _orient == orientation::vertical ? client.height() : client.width();
 		if (extent <= 0) return _position;
 		const auto delta_content = pf::mul_div(delta_mouse, _content_size, extent);
-		return clamp(_tracking_start_pos + delta_content, 0, _content_size - _page_size);
+		return std::clamp(_tracking_start_pos + delta_content, 0, _content_size - _page_size);
 	}
 
 	void end_tracking(const pf::window_frame_ptr& window)
@@ -552,4 +575,378 @@ struct custom_scrollbar
 		_hover = hover;
 		return true;
 	}
+
+	// Unified mouse handling — returns the new scroll position via on_scroll when tracking.
+	// Returns true if the message was consumed by the scrollbar.
+	bool handle_mouse(const pf::mouse_message_type msg, const pf::ipoint& pt, const pf::irect& client,
+	                  const pf::window_frame_ptr& window,
+	                  const std::function<void(int)>& on_scroll = {})
+	{
+		using mt = pf::mouse_message_type;
+
+		if (msg == mt::left_button_down)
+		{
+			if (begin_tracking(pt, client, window))
+			{
+				window->invalidate();
+				return true;
+			}
+			return false;
+		}
+		if (msg == mt::mouse_move)
+		{
+			if (_tracking)
+			{
+				const auto new_pos = track_to(pt, client);
+				if (on_scroll) on_scroll(new_pos);
+				window->invalidate();
+				return true;
+			}
+			if (set_hover(hit_test(pt, client)))
+				window->invalidate();
+			if (!_hover_tracking)
+			{
+				window->track_mouse_leave();
+				_hover_tracking = true;
+			}
+			return false;
+		}
+		if (msg == mt::left_button_up)
+		{
+			if (_tracking)
+			{
+				end_tracking(window);
+				window->invalidate();
+				return true;
+			}
+			return false;
+		}
+		if (msg == mt::mouse_leave)
+		{
+			_hover_tracking = false;
+			if (set_hover(false))
+				window->invalidate();
+			return false;
+		}
+		return false;
+	}
 };
+
+
+// edit_box_widget — Composite of edit_box + caret_blinker for views with text input fields.
+// Encapsulates the common focus/timer/key/char wiring shared by search_list_view and console_view.
+struct edit_box_widget
+{
+	edit_box edit;
+	caret_blinker caret;
+
+	void update_focus(const pf::window_frame_ptr& window, const bool focused)
+	{
+		if (focused)
+			caret.start(window);
+		else
+			caret.stop(window);
+	}
+
+	void reset_caret(const pf::window_frame_ptr& window)
+	{
+		if (window && window->has_focus())
+			caret.reset(window);
+	}
+
+	// Returns true if the timer was handled (caller should invalidate the edit rect)
+	bool on_timer(const uint32_t id)
+	{
+		return caret.on_timer(id);
+	}
+
+	// Returns true if text content was modified
+	bool on_char(const pf::window_frame_ptr& window, const char8_t ch)
+	{
+		const bool modified = edit.on_char(window, ch);
+		reset_caret(window);
+		return modified;
+	}
+
+	// Returns true if the key was handled. Sets text_modified if text content changed.
+	bool on_key_down(const pf::window_frame_ptr& window, const unsigned int vk, bool& text_modified)
+	{
+		if (edit.on_key_down(window, vk, text_modified))
+		{
+			reset_caret(window);
+			return true;
+		}
+		return false;
+	}
+};
+
+
+// table_layout — Shared table rendering helpers used by markdown and CSV views.
+namespace table_layout
+{
+	struct table_block
+	{
+		int start_line = -1;
+		int end_line = -1; // exclusive
+		int separator_line = -1;
+		std::vector<int> col_widths; // display width per column (in codepoints, may be capped)
+	};
+
+	inline std::u8string_view trim_cell(const std::u8string_view s)
+	{
+		const auto start = s.find_first_not_of(u8' ');
+		if (start == std::u8string_view::npos) return {};
+		const auto end = s.find_last_not_of(u8' ');
+		return s.substr(start, end - start + 1);
+	}
+
+	inline std::vector<std::u8string_view> split_pipe_cells(const std::u8string_view line)
+	{
+		std::vector<std::u8string_view> cells;
+		const auto len = static_cast<int>(line.size());
+		int pos = 0;
+
+		// skip leading whitespace
+		while (pos < len && line[pos] == u8' ') pos++;
+		// skip leading pipe
+		if (pos < len && line[pos] == u8'|') pos++;
+
+		while (pos < len)
+		{
+			const auto next = line.find(u8'|', pos);
+			if (next == std::u8string_view::npos)
+			{
+				const auto tail = trim_cell(line.substr(pos));
+				if (!tail.empty()) cells.push_back(line.substr(pos, len - pos));
+				break;
+			}
+			cells.push_back(line.substr(pos, next - pos));
+			pos = static_cast<int>(next) + 1;
+		}
+		return cells;
+	}
+
+	inline std::vector<std::u8string_view> split_csv_cells(const std::u8string_view line)
+	{
+		std::vector<std::u8string_view> cells;
+		const auto len = static_cast<int>(line.size());
+		int pos = 0;
+
+		while (pos <= len)
+		{
+			if (pos < len && line[pos] == u8'"')
+			{
+				// Quoted field: find matching close quote
+				const auto quote_start = pos + 1;
+				int end = quote_start;
+				while (end < len)
+				{
+					if (line[end] == u8'"')
+					{
+						if (end + 1 < len && line[end + 1] == u8'"')
+						{
+							end += 2; // escaped quote
+							continue;
+						}
+						break;
+					}
+					end++;
+				}
+				cells.push_back(line.substr(quote_start, end - quote_start));
+				pos = (end < len) ? end + 1 : end; // skip closing quote
+				if (pos < len && line[pos] == u8',') pos++; // skip delimiter
+			}
+			else
+			{
+				const auto next = line.find(u8',', pos);
+				if (next == std::u8string_view::npos)
+				{
+					cells.push_back(line.substr(pos));
+					break;
+				}
+				cells.push_back(line.substr(pos, next - pos));
+				pos = static_cast<int>(next) + 1;
+			}
+		}
+		return cells;
+	}
+
+	inline bool is_right_align_cell(const std::u8string_view text)
+	{
+		const auto trimmed = trim_cell(text);
+		if (trimmed.empty()) return false;
+
+		const auto len = static_cast<int>(trimmed.size());
+		int pos = 0;
+
+		// optional leading sign
+		if (pos < len && (trimmed[pos] == u8'+' || trimmed[pos] == u8'-')) pos++;
+
+		// optional currency symbol
+		if (pos < len && trimmed[pos] == u8'$') pos++;
+		else if (pos + 2 < len && static_cast<uint8_t>(trimmed[pos]) == 0xE2
+			&& static_cast<uint8_t>(trimmed[pos + 1]) == 0x82
+			&& static_cast<uint8_t>(trimmed[pos + 2]) == 0xAC)
+			pos += 3; // EUR
+		else if (pos + 1 < len && static_cast<uint8_t>(trimmed[pos]) == 0xC2
+			&& static_cast<uint8_t>(trimmed[pos + 1]) == 0xA3)
+			pos += 2; // GBP
+
+		bool has_digit = false;
+		while (pos < len)
+		{
+			const auto ch = trimmed[pos];
+			if (ch >= u8'0' && ch <= u8'9')
+			{
+				has_digit = true;
+				pos++;
+			}
+			else if (ch == u8',' || ch == u8'.' || ch == u8' ') pos++;
+			else if (ch == u8'%' && pos == len - 1) pos++;
+			else return false;
+		}
+		return has_digit;
+	}
+
+	inline void cap_col_widths(std::vector<int>& col_widths, const int avail_cols)
+	{
+		if (col_widths.empty()) return;
+
+		const auto num_cols = static_cast<int>(col_widths.size());
+		const auto overhead = 1 + num_cols * 3; // leading pipe + per-col: space+space+pipe
+		const auto budget = std::max(num_cols, avail_cols - overhead);
+
+		int total_natural = 0;
+		for (const auto w : col_widths) total_natural += w;
+
+		if (total_natural > budget && total_natural > 0)
+		{
+			for (auto& w : col_widths)
+				w = std::max(1, w * budget / total_natural);
+		}
+	}
+
+	// Draw pipe character(s) at x for the given number of sub-rows
+	inline void draw_pipe(pf::draw_context& draw, const int x, const int y, const int rows,
+	                      const pf::font& font, const int font_cx, const int font_cy,
+	                      const pf::color_t fg, const pf::color_t bg)
+	{
+		for (int r = 0; r < rows; r++)
+		{
+			const pf::irect pc{x, y + r * font_cy, x + font_cx, y + (r + 1) * font_cy};
+			draw.draw_text(x, y + r * font_cy, pc, u8"|", font, fg, bg);
+		}
+	}
+
+	// Compute how many visual rows a cell needs when word-wrapped to col_w columns
+	template <typename BreakFn>
+	int cell_visual_rows(const std::u8string_view text, const int col_w, BreakFn&& break_fn)
+	{
+		if (text.empty() || col_w <= 0) return 1;
+		const auto cps = pf::utf8_codepoint_count(text);
+		if (cps <= col_w) return 1;
+		const auto breaks = break_fn(text, col_w);
+		return static_cast<int>(breaks.size()) + 1;
+	}
+
+	// Draw a single table row with cells word-wrapped to their column widths.
+	// Returns the total height in visual rows consumed by this table row.
+	template <typename BreakFn>
+	int draw_table_row(pf::draw_context& draw, const int y, const int left_pad, const int right,
+	                   const std::vector<std::u8string_view>& cells, const table_block& table,
+	                   const pf::font& font, const int font_cx, const int font_cy,
+	                   const bool is_header, const pf::color_t bg, const pf::color_t pipe_color,
+	                   const pf::color_t text_color, BreakFn&& break_fn)
+	{
+		// first pass: compute max visual rows across all cells
+		int max_rows = 1;
+		for (size_t col = 0; col < table.col_widths.size(); col++)
+		{
+			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::u8string_view{};
+			const auto vr = cell_visual_rows(cell_raw, table.col_widths[col], break_fn);
+			if (vr > max_rows) max_rows = vr;
+		}
+
+		const auto row_height = max_rows * font_cy;
+		int x = left_pad;
+
+		// leading pipe
+		draw_pipe(draw, left_pad, y, max_rows, font, font_cx, font_cy, pipe_color, bg);
+		x = left_pad + font_cx;
+
+		for (size_t col = 0; col < table.col_widths.size(); col++)
+		{
+			const auto col_w = table.col_widths[col];
+			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::u8string_view{};
+			const auto ralign = !is_header && is_right_align_cell(cell_raw);
+			const auto cell_px = (col_w + 2) * font_cx;
+
+			// background fill for entire cell area
+			draw.fill_solid_rect(x, y, cell_px, row_height, bg);
+
+			// word-wrap the cell text
+			const auto breaks = break_fn(cell_raw, col_w);
+			const auto num_sub = static_cast<int>(breaks.size()) + 1;
+			const auto cell_len = static_cast<int>(cell_raw.size());
+
+			for (int r = 0; r < num_sub; r++)
+			{
+				const auto rs = r == 0 ? 0 : breaks[r - 1];
+				const auto re = r < static_cast<int>(breaks.size()) ? breaks[r] : cell_len;
+				auto chunk = cell_raw.substr(rs, re - rs);
+
+				// trim trailing spaces
+				while (!chunk.empty() && chunk.back() == u8' ')
+					chunk = chunk.substr(0, chunk.size() - 1);
+
+				const auto chunk_cps = pf::utf8_codepoint_count(chunk);
+				const auto sub_y = y + r * font_cy;
+
+				const auto text_x = ralign
+					                    ? x + (1 + col_w - chunk_cps) * font_cx
+					                    : x + font_cx;
+				const pf::irect tc{text_x, sub_y, text_x + chunk_cps * font_cx, sub_y + font_cy};
+				draw.draw_text(text_x, sub_y, tc, chunk, font, text_color, bg);
+			}
+
+			x += cell_px;
+
+			// trailing pipe
+			draw_pipe(draw, x, y, max_rows, font, font_cx, font_cy, pipe_color, bg);
+			x += font_cx;
+		}
+
+		// fill remainder
+		if (x < right)
+			draw.fill_solid_rect(x, y, right - x, row_height, bg);
+
+		return max_rows;
+	}
+
+	// Draw a horizontal separator row (dashes between pipes)
+	inline void draw_separator_row(pf::draw_context& draw, const int y, const int left_pad,
+	                               const int right, const table_block& table,
+	                               const pf::font& font, const int font_cx, const int font_cy,
+	                               const pf::color_t bg, const pf::color_t pipe_color)
+	{
+		int x = left_pad;
+
+		draw_pipe(draw, x, y, 1, font, font_cx, font_cy, pipe_color, bg);
+		x += font_cx;
+
+		for (const auto col_w : table.col_widths)
+		{
+			const auto dash_count = col_w + 2;
+			const std::u8string dashes(dash_count, u8'-');
+			const pf::irect dc{x, y, x + dash_count * font_cx, y + font_cy};
+			draw.draw_text(x, y, dc, dashes, font, pipe_color, bg);
+			x += dash_count * font_cx;
+
+			draw_pipe(draw, x, y, 1, font, font_cx, font_cy, pipe_color, bg);
+			x += font_cx;
+		}
+
+		if (x < right)
+			draw.fill_solid_rect(x, y, right - x, font_cy, bg);
+	}
+} // namespace table_layout

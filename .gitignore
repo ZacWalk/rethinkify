@@ -22,9 +22,9 @@
 /.vs
 /intermediate/
 /exe/*.ilk
-Exe/*.log
-src/Rethinkify.vcxproj.filters
-src/debug_trace.log
-debug_trace.log
-Exe/*.ini
-test_output.txt
+exe/*.log
+src/app.vcxproj.filters
+exe/*.ini
+/tmp/
+/exe/.env
+/.env

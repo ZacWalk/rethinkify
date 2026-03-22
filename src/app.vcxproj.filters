@@ -2,6 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="app.cpp" />
+    <ClCompile Include="app_commands.cpp" />
     <ClCompile Include="platform_win.cpp" />
     <ClCompile Include="tests.cpp" />
     <ClCompile Include="document.cpp" />
@@ -9,13 +10,15 @@
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="util.cpp" />
     <ClCompile Include="commands.cpp" />
+    <ClCompile Include="finance_scrape.cpp" />
+    <ClCompile Include="agent.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform.h" />
     <ClInclude Include="test.h" />
     <ClInclude Include="document.h" />
-    <ClInclude Include="view_text_base.h" />
     <ClInclude Include="view_text.h" />
+    <ClInclude Include="view_doc.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
@@ -24,21 +27,24 @@
     <ClInclude Include="view_list.h" />
     <ClInclude Include="view_list_files.h" />
     <ClInclude Include="view_list_search.h" />
-    <ClInclude Include="view_text_edit.h" />
-    <ClInclude Include="view_markdown.h" />
-    <ClInclude Include="view_hex.h" />
+    <ClInclude Include="view_doc_edit.h" />
+    <ClInclude Include="view_doc_markdown.h" />
+    <ClInclude Include="view_doc_hex.h" />
+    <ClInclude Include="view_doc_csv.h" />
     <ClInclude Include="app.h" />
     <ClInclude Include="app_state.h" />
-    <ClInclude Include="app_frame.h" />
     <ClInclude Include="view_console.h" />
     <ClInclude Include="commands.h" />
+    <ClInclude Include="finance.h" />
+    <ClInclude Include="agent.h" />
+    <ClInclude Include="view_base.h" />
+    <ClInclude Include="view_doc_chart.h" />
+    <ClInclude Include="command_calc.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\last.ico" />
-    <Image Include="res\next.ico" />
     <Image Include="res\app.ico" />
   </ItemGroup>
 </Project>

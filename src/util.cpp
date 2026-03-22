@@ -2,104 +2,7 @@
 
 #include "pch.h"
 #include "util.h"
-#include "platform.h"
 
-// ── UTF-8 ↔ UTF-16 conversions (pure C++) ──────────────────────────────────────
-
-namespace str
-{
-	std::string utf16_to_utf8(const std::wstring_view wstr)
-	{
-		std::string result;
-		result.reserve(wstr.size()); // optimistic: mostly ASCII
-
-		for (size_t i = 0; i < wstr.size(); ++i)
-		{
-			const auto ch = static_cast<uint32_t>(wstr[i]);
-
-			if (ch < 0x80)
-			{
-				result.push_back(static_cast<char>(ch));
-			}
-			else if (ch < 0x800)
-			{
-				result.push_back(static_cast<char>(0xC0 | (ch >> 6)));
-				result.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-			}
-			else if (ch >= 0xD800 && ch <= 0xDBFF && i + 1 < wstr.size())
-			{
-				// Surrogate pair → U+10000..U+10FFFF
-				const auto lo = static_cast<uint32_t>(wstr[++i]);
-				if (lo >= 0xDC00 && lo <= 0xDFFF)
-				{
-					const uint32_t cp = 0x10000 + ((ch - 0xD800) << 10) + (lo - 0xDC00);
-					result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
-					result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
-					result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-					result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-				}
-			}
-			else
-			{
-				result.push_back(static_cast<char>(0xE0 | (ch >> 12)));
-				result.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-				result.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-			}
-		}
-
-		return result;
-	}
-
-	std::wstring utf8_to_utf16(const std::string_view str)
-	{
-		std::wstring result;
-		result.reserve(str.size()); // optimistic: mostly ASCII
-
-		for (size_t i = 0; i < str.size();)
-		{
-			const auto b0 = static_cast<uint8_t>(str[i]);
-
-			if (b0 < 0x80)
-			{
-				result.push_back(b0);
-				++i;
-			}
-			else if ((b0 & 0xE0) == 0xC0 && i + 1 < str.size())
-			{
-				const auto cp = ((b0 & 0x1F) << 6)
-					| (static_cast<uint8_t>(str[i + 1]) & 0x3F);
-				result.push_back(static_cast<wchar_t>(cp));
-				i += 2;
-			}
-			else if ((b0 & 0xF0) == 0xE0 && i + 2 < str.size())
-			{
-				const auto cp = ((b0 & 0x0F) << 12)
-					| ((static_cast<uint8_t>(str[i + 1]) & 0x3F) << 6)
-					| (static_cast<uint8_t>(str[i + 2]) & 0x3F);
-				result.push_back(static_cast<wchar_t>(cp));
-				i += 3;
-			}
-			else if ((b0 & 0xF8) == 0xF0 && i + 3 < str.size())
-			{
-				// 4-byte → surrogate pair
-				const uint32_t cp = ((b0 & 0x07) << 18)
-					| ((static_cast<uint8_t>(str[i + 1]) & 0x3F) << 12)
-					| ((static_cast<uint8_t>(str[i + 2]) & 0x3F) << 6)
-					| (static_cast<uint8_t>(str[i + 3]) & 0x3F);
-				const uint32_t adj = cp - 0x10000;
-				result.push_back(static_cast<wchar_t>(0xD800 + (adj >> 10)));
-				result.push_back(static_cast<wchar_t>(0xDC00 + (adj & 0x3FF)));
-				i += 4;
-			}
-			else
-			{
-				++i; // skip invalid byte
-			}
-		}
-
-		return result;
-	}
-} // namespace str
 
 constexpr uint8_t F(const uint8_t x)
 {
@@ -653,69 +556,67 @@ void sha256::finish(uint8_t digest[32])
 
 // ── String utilities ────────────────────────────────────────────────────────────
 
-namespace str
+size_t find_in_text(const std::u8string_view text, const std::u8string_view pattern, const bool match_case)
 {
-	size_t find_in_text(const std::wstring_view text, const std::wstring_view pattern, const bool match_case)
+	if (text.empty()) return std::u8string_view::npos;
+	if (pattern.empty()) return std::u8string_view::npos;
+
+	const auto text_len = text.size();
+	const auto pat_len = pattern.size();
+
+	if (pat_len > text_len) return std::u8string_view::npos;
+
+	for (size_t pos = 0; pos <= text_len - pat_len; ++pos)
 	{
-		if (text.empty()) return std::wstring_view::npos;
-		if (pattern.empty()) return std::wstring_view::npos;
-
-		const auto text_len = text.size();
-		const auto pat_len = pattern.size();
-
-		if (pat_len > text_len) return std::wstring_view::npos;
-
-		for (size_t pos = 0; pos <= text_len - pat_len; ++pos)
+		bool found = true;
+		for (size_t j = 0; j < pat_len; ++j)
 		{
-			bool found = true;
-			for (size_t j = 0; j < pat_len; ++j)
+			const auto tc = text[pos + j];
+			const auto pc = pattern[j];
+			if (tc != pc && (match_case || pf::to_lower(tc) != pf::to_lower(pc)))
 			{
-				const auto tc = text[pos + j];
-				const auto pc = pattern[j];
-				if (tc != pc && (match_case || to_lower(tc) != to_lower(pc)))
-				{
-					found = false;
-					break;
-				}
+				found = false;
+				break;
 			}
-			if (found) return pos;
 		}
-		return std::wstring_view::npos;
+		if (found) return pos;
 	}
+	return std::u8string_view::npos;
+}
 
-	std::wstring combine(const std::vector<std::wstring>& lines, const std::wstring_view endl)
+std::u8string combine(const std::vector<std::u8string>& lines, const std::u8string_view endl)
+{
+	return join(lines, [](const std::u8string& s) -> std::u8string_view { return s; }, endl);
+}
+
+std::u8string replace(const std::u8string_view s, const std::u8string_view find,
+                      const std::u8string_view replacement)
+{
+	std::u8string result(s);
+	size_t pos = 0;
+	const auto findLength = find.size();
+	const auto replacementLength = replacement.size();
+
+	while ((pos = result.find(find, pos)) != std::u8string::npos)
 	{
-		return join(lines, [](const std::wstring& s) -> std::wstring_view { return s; }, endl);
+		result.replace(pos, findLength, replacement);
+		pos += replacementLength;
 	}
 
-	std::wstring replace(const std::wstring_view s, const std::wstring_view find,
-	                     const std::wstring_view replacement)
-	{
-		std::wstring result(s);
-		size_t pos = 0;
-		const auto findLength = find.size();
-		const auto replacementLength = replacement.size();
+	return result;
+}
 
-		while ((pos = result.find(find, pos)) != std::wstring::npos)
-		{
-			result.replace(pos, findLength, replacement);
-			pos += replacementLength;
-		}
-
-		return result;
-	}
-} // namespace str
 
 // ── Encoding / hashing ─────────────────────────────────────────────────────────
 
-std::wstring to_base64(const std::span<const uint8_t> input)
+std::u8string to_base64(const std::span<const uint8_t> input)
 {
 	static const std::string base64_chars =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz"
 		"0123456789+/";
 
-	std::wstring ret;
+	std::u8string ret;
 	int i = 0;
 	int j = 0;
 	uint8_t char_array_3[3];
@@ -757,10 +658,10 @@ std::wstring to_base64(const std::span<const uint8_t> input)
 	return ret;
 }
 
-std::wstring to_hex(const std::span<const uint8_t> src)
+std::u8string to_hex(const std::span<const uint8_t> src)
 {
-	static constexpr wchar_t digits[] = L"0123456789abcdef";
-	std::wstring result;
+	static constexpr char8_t digits[] = u8"0123456789abcdef";
+	std::u8string result;
 	result.reserve(src.size() * 2);
 
 	for (const auto ch : src)
@@ -772,7 +673,7 @@ std::wstring to_hex(const std::span<const uint8_t> src)
 	return result;
 }
 
-std::vector<uint8_t> hex_to_data(const std::wstring_view text)
+std::vector<uint8_t> hex_to_data(const std::u8string_view text)
 {
 	std::vector<uint8_t> result;
 
@@ -803,30 +704,4 @@ std::vector<uint8_t> calc_sha256(const std::string_view text)
 	h.finish(result);
 
 	return {result, result + 32};
-}
-
-uint32_t fnv1a_i(const std::wstring_view sv)
-{
-	uint32_t result = OFFSET_BASIS_32;
-
-	for (const auto s : sv)
-	{
-		result ^= str::to_lower(s);
-		result *= FNV_PRIME_32;
-	}
-
-	return result;
-}
-
-uint64_t fnv1a_i_64(const std::wstring_view sv)
-{
-	uint64_t result = OFFSET_BASIS_64;
-
-	for (const auto s : sv)
-	{
-		result ^= static_cast<uint64_t>(str::to_lower(s));
-		result *= FNV_PRIME_64;
-	}
-
-	return result;
 }
