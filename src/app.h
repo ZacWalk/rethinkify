@@ -51,6 +51,7 @@ namespace invalid
 	constexpr auto folder_list = 1 << 7;
 	constexpr auto search_list = 1 << 8;
 	constexpr auto populate_folder_list = 1 << 9;
+	constexpr auto console = 1 << 10;
 }
 
 enum class view_mode
@@ -83,6 +84,7 @@ enum class view_focus
 {
 	text,
 	list,
+	console,
 };
 
 // document_events — Narrow interface for document-to-host notifications.
@@ -103,14 +105,24 @@ struct view_styles
 
 	int list_font_height = 20;
 	int text_font_height = 24;
+	int console_font_height = 20;
 
 	pf::font list_font = {20, pf::font_name::calibri};
 	pf::font edit_font = {30, pf::font_name::calibri};
 	pf::font text_font = {24, pf::font_name::consolas};
+	pf::font console_font = {20, pf::font_name::consolas};
 
 	int padding_x = 5;
 	int padding_y = 5;
 	int indent = 16;
+
+	// Edit box / input field layout (DPI-scaled)
+	int edit_box_margin = 6;
+	int edit_box_inner_pad = 4;
+
+	// List view layout
+	int list_top_pad = 4;
+	int list_scroll_pad = 64;
 };
 
 // app_events — Full application event interface used by views and panels.

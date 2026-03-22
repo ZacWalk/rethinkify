@@ -1,6 +1,6 @@
 #pragma once
 
-// platform.h — Platform-independent types, constants, and API declarations.
+// platform.h — Platform-independent types, constants, window/draw abstractions, API declarations.
 // Must NOT include OS-specific headers. See platform_win.cpp for Win32 implementation.
 
 #include <functional>
@@ -68,6 +68,9 @@ namespace pf
 
 		[[nodiscard]] bool empty() const { return key == 0; }
 	};
+
+	// Format a key binding as human-readable text (e.g. "Ctrl+S", "Ctrl+Shift+F")
+	std::wstring format_key_binding(const key_binding& kb);
 
 	// Menu definitions
 	//

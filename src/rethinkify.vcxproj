@@ -247,10 +247,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="app_frame.h" />
+    <ClInclude Include="commands.h" />
     <ClInclude Include="platform.h" />
     <ClInclude Include="test.h" />
     <ClInclude Include="document.h" />
     <ClInclude Include="app.h" />
+    <ClInclude Include="view_console.h" />
     <ClInclude Include="view_text_base.h" />
     <ClInclude Include="view_text.h" />
     <ClInclude Include="resource.h" />
@@ -268,6 +270,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="app.cpp" />
+    <ClCompile Include="commands.cpp" />
     <ClCompile Include="platform_win.cpp" />
     <ClCompile Include="tests.cpp" />
     <ClCompile Include="document.cpp" />

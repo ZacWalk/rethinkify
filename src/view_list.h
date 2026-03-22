@@ -1,6 +1,6 @@
 #pragma once
 
-// view_list.h — Base class for panel views (folder browser, search results)
+// view_list.h — Base class for panel views: scrolling, selection, keyboard navigation, collapsible items
 
 #include "ui.h"
 
@@ -31,16 +31,16 @@ protected:
 	std::vector<list_view_item_ptr> _items;
 	list_view_item_ptr _selected_item;
 	list_view_item_ptr _hover_item;
-	bool _list_focused = false;
+	bool _focused = false;
 
 	isize _extent;
 	isize _font_char_size = {10, 10};
 	ipoint _offset;
 	int _y_max = 0;
 	int _header_height = 0;
-	bool _hover = false;
+	bool _hover_tracking = false;
 
-	custom_scrollbar _scrollbar{custom_scrollbar::orientation::vertical};
+	custom_scrollbar _vscroll{custom_scrollbar::orientation::vertical};
 
 
 	// Virtual hooks for derived classes
@@ -72,7 +72,7 @@ protected:
 		const auto indent = styles.padding_x + item->depth * styles.indent;
 
 		const auto bg = selected
-			                ? (_list_focused ? ui::focus_handle_color : ui::handle_color)
+			                ? (_focused ? ui::focus_handle_color : ui::handle_color)
 			                : (hovered ? ui::handle_hover_color : ui::tool_wnd_clr);
 
 		auto font_spec = styles.list_font;
@@ -264,9 +264,9 @@ protected:
 	virtual void update_focus(pf::window_frame_ptr& window)
 	{
 		const bool focused = window && window->has_focus();
-		if (_list_focused != focused)
+		if (_focused != focused)
 		{
-			_list_focused = focused;
+			_focused = focused;
 			window->invalidate();
 		}
 	}
@@ -396,7 +396,7 @@ public:
 
 	void layout_list(const view_styles& styles)
 	{
-		int y = _header_height + 4;
+		int y = _header_height + styles.list_top_pad;
 		const auto single_line_height = _font_char_size.cy;
 		const auto item_height = single_line_height + styles.padding_y * 2;
 
@@ -412,7 +412,7 @@ public:
 			y += item_height;
 		}
 
-		_y_max = y + 64;
+		_y_max = y + styles.list_scroll_pad;
 	}
 
 	void on_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override
@@ -461,15 +461,15 @@ public:
 			if (hovered)
 				dc.fill_solid_rect(bounds, ui::handle_hover_color);
 			if (selected)
-				dc.fill_solid_rect(bounds, _list_focused ? ui::focus_handle_color : ui::handle_color);
+				dc.fill_solid_rect(bounds, _focused ? ui::focus_handle_color : ui::handle_color);
 
 			draw_item(dc, i, bounds, selected, hovered);
 		}
 
 		auto scrollbar_rect = r;
 		scrollbar_rect.top = items_top;
-		_scrollbar.update(_y_max, _extent.cy - hh, _offset.y);
-		_scrollbar.draw(dc, scrollbar_rect);
+		_vscroll.update(_y_max, _extent.cy - hh, _offset.y);
+		_vscroll.draw(dc, scrollbar_rect);
 	}
 
 	bool can_scroll() const
@@ -534,7 +534,7 @@ public:
 
 		const auto rc = irect(0, hh, _extent.cx, _extent.cy);
 
-		if (_scrollbar.begin_tracking(point, rc, window))
+		if (_vscroll.begin_tracking(point, rc, window))
 		{
 			window->invalidate();
 		}
@@ -556,23 +556,23 @@ public:
 
 	uint32_t on_mouse_move(const pf::window_frame_ptr& window, const ipoint& point, uint32_t keys)
 	{
-		if (!_hover)
+		if (!_hover_tracking)
 		{
 			window->track_mouse_leave();
-			_hover = true;
+			_hover_tracking = true;
 		}
 
-		if (_scrollbar._tracking)
+		if (_vscroll._tracking)
 		{
 			const auto hh = _header_height;
 			const auto rc = irect(0, hh, _extent.cx, _extent.cy);
-			const auto new_pos = _scrollbar.track_to(point, rc);
+			const auto new_pos = _vscroll.track_to(point, rc);
 			scroll_to(window, new_pos);
 		}
 		else
 		{
 			const auto rc = irect(0, 0, _extent.cx, _extent.cy);
-			_scrollbar.set_hover(_scrollbar.hit_test(point, rc));
+			_vscroll.set_hover(_vscroll.hit_test(point, rc));
 		}
 
 		if (point.y >= _header_height)
@@ -589,9 +589,9 @@ public:
 
 	uint32_t on_left_button_up(const pf::window_frame_ptr& window)
 	{
-		if (_scrollbar._tracking)
+		if (_vscroll._tracking)
 		{
-			_scrollbar.end_tracking(window);
+			_vscroll.end_tracking(window);
 			window->invalidate();
 		}
 		return 0;
@@ -600,8 +600,8 @@ public:
 	uint32_t on_mouse_leave(const pf::window_frame_ptr& window)
 	{
 		_hover_item = nullptr;
-		_hover = false;
-		_scrollbar.set_hover(false);
+		_hover_tracking = false;
+		_vscroll.set_hover(false);
 		window->invalidate();
 		return 0;
 	}

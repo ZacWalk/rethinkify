@@ -13,48 +13,33 @@ class search_list_view final : public list_view
 	std::wstring _last_searched;
 	int _result_count = 0;
 
-	// Caret blink state
-	static constexpr uint32_t TIMER_CARET_BLINK = 1002;
-	static constexpr uint32_t CARET_BLINK_MS = 530;
-	bool _caret_visible = false;
-	bool _caret_blink_active = false;
-
-	static constexpr int edit_box_margin = 6;
-	static constexpr int edit_box_inner_pad = 4;
+	caret_blinker _caret;
 
 	irect edit_box_rect() const
 	{
 		const auto styles = _events.styles();
-		const auto m = static_cast<int>(edit_box_margin * styles.dpi_scale);
+		const auto m = styles.edit_box_margin;
 		const auto ef = styles.edit_font;
-		const auto h = ef.size + static_cast<int>(edit_box_inner_pad * 2 * styles.dpi_scale);
+		const auto h = ef.size + styles.edit_box_inner_pad * 2;
 		return irect(m, m, _extent.cx - m, m + h);
 	}
 
 	int edit_inner_pad() const
 	{
-		const auto styles = _events.styles();
-		return static_cast<int>(edit_box_inner_pad * styles.dpi_scale);
+		return _events.styles().edit_box_inner_pad;
 	}
 
 	void update_caret(const pf::window_frame_ptr& window)
 	{
 		if (!window || !window->has_focus()) return;
-		_caret_visible = true;
-		if (_caret_blink_active)
-			window->kill_timer(TIMER_CARET_BLINK);
-		_caret_blink_active = true;
-		window->set_timer(TIMER_CARET_BLINK, CARET_BLINK_MS);
+		_caret.reset(window);
 		_events.invalidate(invalid::search_list);
 	}
 
 	uint32_t on_timer(pf::window_frame_ptr& window, const uint32_t id) override
 	{
-		if (id == TIMER_CARET_BLINK && _caret_blink_active)
-		{
-			_caret_visible = !_caret_visible;
+		if (_caret.on_timer(id))
 			window->invalidate_rect(edit_box_rect());
-		}
 		return 0;
 	}
 
@@ -62,9 +47,9 @@ protected:
 	int calc_header_height() const
 	{
 		const auto styles = _events.styles();
-		const auto m = static_cast<int>(edit_box_margin * styles.dpi_scale);
+		const auto m = styles.edit_box_margin;
 		const auto ef = styles.edit_font;
-		const auto h = ef.size + static_cast<int>(edit_box_inner_pad * 2 * styles.dpi_scale);
+		const auto h = ef.size + styles.edit_box_inner_pad * 2;
 		return m + h + m;
 	}
 
@@ -77,18 +62,12 @@ protected:
 		// Edit box background
 		dc.fill_solid_rect(eb, ui::tool_wnd_clr.darken(16));
 
-		// Draw border — thick blue when focused
 		const auto has_focus = window->has_focus();
-		constexpr auto border_thickness = 2;
-		const auto border_color = has_focus ? ui::focus_handle_color : ui::handle_color;
-		dc.fill_solid_rect(eb.left, eb.top, eb.Width(), border_thickness, border_color);
-		dc.fill_solid_rect(eb.left, eb.bottom - border_thickness, eb.Width(), border_thickness, border_color);
-		dc.fill_solid_rect(eb.left, eb.top, border_thickness, eb.Height(), border_color);
-		dc.fill_solid_rect(eb.right - border_thickness, eb.top, border_thickness, eb.Height(), border_color);
+		edit_box::draw_border(dc, eb, has_focus);
 
-		auto styles = _events.styles();
-		const auto text_rect = eb.Inflate(-static_cast<int>(edit_box_inner_pad * styles.dpi_scale),
-		                                  -static_cast<int>(edit_box_inner_pad * styles.dpi_scale));
+		const auto styles = _events.styles();
+		const auto pad = styles.edit_box_inner_pad;
+		const auto text_rect = eb.Inflate(-pad, -pad);
 
 		const auto ef = styles.edit_font;
 
@@ -106,24 +85,7 @@ protected:
 		}
 		else
 		{
-			const auto pad = static_cast<int>(edit_box_inner_pad * styles.dpi_scale);
-
-			// Draw selection background if any
-			if (_edit.has_selection())
-			{
-				const auto before_sel = _edit.text.substr(0, _edit.sel_start());
-				const auto sel_text = _edit.text.substr(_edit.sel_start(), _edit.sel_end() - _edit.sel_start());
-				const auto before_sz = dc.measure_text(before_sel, ef);
-				const auto sel_sz = dc.measure_text(sel_text, ef);
-
-				irect sel_rect;
-				sel_rect.left = eb.left + pad + before_sz.cx;
-				sel_rect.top = text_y;
-				sel_rect.right = sel_rect.left + sel_sz.cx;
-				sel_rect.bottom = text_y + char_sz.cy;
-				dc.fill_solid_rect(sel_rect, color_t(88, 88, 88));
-			}
-
+			_edit.draw_selection(dc, eb.left + pad, text_y, char_sz.cy, ef);
 			dc.draw_text(eb.left + pad, text_y, text_rect, _edit.text, ef, ui::text_color, bg_color);
 		}
 
@@ -133,18 +95,14 @@ protected:
 			const auto count_text = std::format(L"{} results", _result_count);
 			auto count_rect = header_rect;
 			count_rect.top = eb.bottom + 2;
-			count_rect.left = eb.left + static_cast<int>(edit_box_inner_pad * styles.dpi_scale);
+			count_rect.left = eb.left + pad;
 			if (count_rect.top < count_rect.bottom)
 				dc.draw_text(count_rect.left, count_rect.top, count_rect, count_text, styles.list_font,
 				             ui::darker_text_color, ui::tool_wnd_clr);
 		}
 
-		// Draw caret
-		if (has_focus && _caret_visible)
-		{
-			const auto caret_pos = _edit.caret_position(eb, edit_inner_pad(), _edit_font_char_size, ef, window);
-			dc.fill_solid_rect(caret_pos.x, caret_pos.y, 2, char_sz.cy, ui::text_color);
-		}
+		if (has_focus && _caret.visible)
+			_edit.draw_caret(dc, eb.left + edit_inner_pad(), text_y, char_sz.cy, ef);
 	}
 
 	void on_item_selected(const list_view_item_ptr& item, const bool activated) override
@@ -173,20 +131,10 @@ protected:
 
 	void update_focus(pf::window_frame_ptr& window) override
 	{
-		const bool focused = window->has_focus();
-
-		if (focused)
-		{
-			_caret_visible = true;
-			_caret_blink_active = true;
-			window->set_timer(TIMER_CARET_BLINK, CARET_BLINK_MS);
-		}
+		if (window->has_focus())
+			_caret.start(window);
 		else
-		{
-			_caret_blink_active = false;
-			_caret_visible = false;
-			window->kill_timer(TIMER_CARET_BLINK);
-		}
+			_caret.stop(window);
 		list_view::update_focus(window);
 	}
 

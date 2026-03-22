@@ -21,11 +21,7 @@ protected:
 	custom_scrollbar _hscroll{custom_scrollbar::orientation::horizontal};
 	bool _hover_tracking = false;
 
-	// Caret blink state
-	static constexpr uint32_t TIMER_CARET_BLINK = 1002;
-	static constexpr uint32_t CARET_BLINK_MS = 530;
-	bool _caret_visible = false;
-	bool _caret_blink_active = false;
+	caret_blinker _caret;
 
 	// Word wrap state
 	bool _word_wrap = false;
@@ -58,49 +54,28 @@ public:
 
 	void start_caret_blink(const pf::window_frame_ptr& window)
 	{
-		if (window && !_caret_blink_active)
+		if (window && !_caret.active)
 		{
-			_caret_visible = true;
-			_caret_blink_active = true;
-			window->set_timer(TIMER_CARET_BLINK, CARET_BLINK_MS);
+			_caret.start(window);
 			_events.invalidate(invalid::invalidate);
 		}
 	}
 
 	void stop_caret_blink(const pf::window_frame_ptr& window) override
 	{
-		if (window && _caret_blink_active)
+		if (window && _caret.active)
 		{
-			_caret_blink_active = false;
-			_caret_visible = false;
-			window->kill_timer(TIMER_CARET_BLINK);
+			_caret.stop(window);
 			_events.invalidate(invalid::invalidate);
 		}
 	}
 
 	void reset_caret_blink(const pf::window_frame_ptr& window)
 	{
-		if (window && _is_focused)
+		if (window && _focused)
 		{
-			_caret_visible = true;
-			if (_caret_blink_active)
-				window->kill_timer(TIMER_CARET_BLINK);
-			_caret_blink_active = true;
-			window->set_timer(TIMER_CARET_BLINK, CARET_BLINK_MS);
+			_caret.reset(window);
 			_events.invalidate(invalid::invalidate);
-		}
-	}
-
-	void on_caret_timer(const pf::window_frame_ptr& window)
-	{
-		if (_caret_blink_active)
-		{
-			_caret_visible = !_caret_visible;
-			const auto r = caret_bounds();
-			if (r.Width() > 0)
-				window->invalidate_rect(r);
-			else
-				window->invalidate();
 		}
 	}
 
@@ -370,12 +345,12 @@ public:
 protected:
 	void update_focus(pf::window_frame_ptr& window) override
 	{
-		const bool was_focused = _is_focused;
+		const bool was_focused = _focused;
 		text_view_base::update_focus(window);
 
-		if (_is_focused != was_focused)
+		if (_focused != was_focused)
 		{
-			if (_is_focused)
+			if (_focused)
 				start_caret_blink(window);
 			else
 				stop_caret_blink(window);
@@ -383,7 +358,7 @@ protected:
 			invalidate_selection(window);
 			update_caret(window);
 
-			if (!_is_focused && _drag_selection)
+			if (!_focused && _drag_selection)
 			{
 				window->release_capture();
 				window->kill_timer(_drag_sel_timer);
@@ -394,9 +369,13 @@ protected:
 
 	void on_timer(const pf::window_frame_ptr& window, const uint32_t nIDEvent)
 	{
-		if (nIDEvent == TIMER_CARET_BLINK)
+		if (_caret.on_timer(nIDEvent))
 		{
-			on_caret_timer(window);
+			const auto r = caret_bounds();
+			if (r.Width() > 0)
+				window->invalidate_rect(r);
+			else
+				window->invalidate();
 			return;
 		}
 
@@ -1537,7 +1516,7 @@ protected:
 
 	virtual void draw_caret(pf::draw_context& draw) const
 	{
-		if (!_is_focused || !_caret_visible || _cursor_hidden)
+		if (!_focused || !_caret.visible || _cursor_hidden)
 			return;
 
 		const auto pos = _doc->cursor_pos();

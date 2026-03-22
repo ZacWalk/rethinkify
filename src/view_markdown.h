@@ -29,14 +29,16 @@ public:
 protected:
 	void update_focus(pf::window_frame_ptr& window) override
 	{
-		const bool was_focused = _is_focused;
+		// Reuse text_view's focus logic (selection invalidation, drag cleanup)
+		// but skip caret blink since this is a read-only rendered view
+		const bool was_focused = _focused;
 		text_view_base::update_focus(window);
 
-		if (_is_focused != was_focused)
+		if (_focused != was_focused)
 		{
 			invalidate_selection(window);
 
-			if (!_is_focused && _drag_selection)
+			if (!_focused && _drag_selection)
 			{
 				window->release_capture();
 				window->kill_timer(_drag_sel_timer);

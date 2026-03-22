@@ -3,6 +3,7 @@
 // app_state.h — Application state: document collection, file operations, testable app logic
 
 #include "document.h"
+#include "commands.h"
 
 
 struct search_result;
@@ -27,6 +28,7 @@ public:
 	[[nodiscard]] const index_item_ptr& root_folder() const { return _root_folder; }
 	[[nodiscard]] view_styles styles() const { return _styles; }
 	[[nodiscard]] view_mode get_mode() const { return _mode; }
+	[[nodiscard]] commands& get_commands() { return _commands; }
 
 	void invalidate(const uint32_t i)
 	{
@@ -112,10 +114,11 @@ public:
 		update_styles();
 	}
 
-	void initialize_styles(const int lh, const int th)
+	void initialize_styles(const int lh, const int th, const int ch = 20)
 	{
 		_styles.list_font_height = clamp(lh, 8, 72);
 		_styles.text_font_height = clamp(th, 8, 72);
+		_styles.console_font_height = clamp(ch, 8, 72);
 		update_styles();
 	}
 
@@ -334,6 +337,7 @@ private:
 	index_item_ptr _root_folder;
 	view_styles _styles;
 	view_mode _mode = view_mode::edit_text_files;
+	commands _commands;
 
 	int _next_new_doc_number = 1;
 	std::atomic<uint32_t> _invalid = 0;

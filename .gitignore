@@ -27,3 +27,4 @@ src/Rethinkify.vcxproj.filters
 src/debug_trace.log
 debug_trace.log
 Exe/*.ini
+test_output.txt

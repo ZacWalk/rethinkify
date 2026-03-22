@@ -13,7 +13,7 @@ protected:
 	document_ptr _doc;
 	app_events& _events;
 
-	bool _is_focused = false;
+	bool _focused = false;
 
 	isize _char_offset = {};
 	isize _extent = {1, 1};
@@ -44,9 +44,9 @@ public:
 	virtual void update_focus(pf::window_frame_ptr& window)
 	{
 		const bool focused = window->has_focus();
-		if (_is_focused != focused)
+		if (_focused != focused)
 		{
-			_is_focused = focused;
+			_focused = focused;
 			if (!_events.message_bar_text().empty()) _events.invalidate(invalid::invalidate);
 		}
 	}
@@ -199,16 +199,6 @@ public:
 
 	// --- view_base interface ---
 
-	virtual std::wstring text_from_clipboard(pf::window_frame_ptr& window)
-	{
-		return window->text_from_clipboard();
-	}
-
-	virtual bool text_to_clipboard(pf::window_frame_ptr& window, const std::wstring_view text)
-	{
-		return window->text_to_clipboard(text);
-	}
-
 	std::wstring clipboard_text() const
 	{
 		return pf::platform_text_from_clipboard();
@@ -294,7 +284,7 @@ protected:
 		const auto rcClient = client_rect();
 		const auto bar_h = message_bar_height();
 		const auto pad_y = _font_extent.cy / 4;
-		const auto bg = _is_focused ? ui::focus_handle_color : ui::handle_color;
+		const auto bg = _focused ? ui::focus_handle_color : ui::handle_color;
 		const irect bar_rc(0, 0, rcClient.right, bar_h);
 		const auto text_len = static_cast<int>(text.size());
 		const auto text_w = text_len * _font_extent.cx;

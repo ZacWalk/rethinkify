@@ -1163,6 +1163,59 @@ static std::wstring window_text(const HWND h)
 
 // ── Platform API implementations ───────────────────────────────────────────
 
+// ── Key binding formatting ─────────────────────────────────────────────────────
+
+std::wstring pf::format_key_binding(const key_binding& kb)
+{
+	if (kb.empty()) return {};
+
+	std::wstring result;
+
+	if (kb.modifiers & key_mod::ctrl)
+		result += L"Ctrl+";
+	if (kb.modifiers & key_mod::alt)
+		result += L"Alt+";
+	if (kb.modifiers & key_mod::shift)
+		result += L"Shift+";
+
+	switch (kb.key)
+	{
+	case platform_key::Back: result += L"Backspace"; break;
+	case platform_key::Tab: result += L"Tab"; break;
+	case platform_key::Return: result += L"Enter"; break;
+	case platform_key::Escape: result += L"Esc"; break;
+	case platform_key::Space: result += L"Space"; break;
+	case platform_key::Prior: result += L"Page Up"; break;
+	case platform_key::Next: result += L"Page Down"; break;
+	case platform_key::End: result += L"End"; break;
+	case platform_key::Home: result += L"Home"; break;
+	case platform_key::Left: result += L"Left"; break;
+	case platform_key::Up: result += L"Up"; break;
+	case platform_key::Right: result += L"Right"; break;
+	case platform_key::Down: result += L"Down"; break;
+	case platform_key::Insert: result += L"Ins"; break;
+	case platform_key::Delete: result += L"Del"; break;
+	case platform_key::F1: result += L"F1"; break;
+	case platform_key::F3: result += L"F3"; break;
+	case platform_key::F5: result += L"F5"; break;
+	case platform_key::F6: result += L"F6"; break;
+	case platform_key::F7: result += L"F7"; break;
+	case platform_key::F8: result += L"F8"; break;
+	case platform_key::F9: result += L"F9"; break;
+	case platform_key::F10: result += L"F10"; break;
+	default:
+		if (kb.key >= 'A' && kb.key <= 'Z')
+			result += static_cast<wchar_t>(kb.key);
+		else if (kb.key >= '0' && kb.key <= '9')
+			result += static_cast<wchar_t>(kb.key);
+		else
+			result += std::format(L"0x{:02X}", kb.key);
+		break;
+	}
+
+	return result;
+}
+
 // ── Cursor position (global) ───────────────────────────────────────────────────
 
 ipoint pf::platform_cursor_pos()

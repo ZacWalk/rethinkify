@@ -13,12 +13,11 @@
 #include "view_text_edit.h"
 #include "view_markdown.h"
 #include "view_hex.h"
+#include "view_console.h"
 
 #include "app_frame.h"
 
 auto g_app_name = L"Rethinkify";
-
-constexpr auto splitter_bar_width = 5;
 
 extern std::wstring run_all_tests();
 
@@ -124,67 +123,434 @@ color_t style_to_color(const style style_index)
 	return color_t(222, 222, 222);
 }
 
-static std::wstring make_about_text()
+static std::wstring make_about_text(const commands& cmds)
 {
-	return L"# Rethinkify\n"
+	std::wstring text =
+		L"# Rethinkify\n"
 		L"\n"
 		L"*A lightweight text editor written in C++ by Zac Walker*\n"
 		L"\n"
 		L"## Keyboard Shortcuts\n"
-		L"\n"
-		L"### File\n"
-		L"- **Ctrl+N** New document\n"
-		L"- **Ctrl+O** Open file\n"
-		L"- **Ctrl+S** Save file\n"
-		L"- **Ctrl+Shift+S** Save all modified files\n"
-		L"\n"
-		L"### Edit\n"
-		L"- **Ctrl+Z** Undo\n"
-		L"- **Ctrl+Y** Redo\n"
-		L"- **Ctrl+X** Cut\n"
-		L"- **Ctrl+C** Copy\n"
-		L"- **Ctrl+V** Paste\n"
-		L"- **Ctrl+A** Select all\n"
-		L"- **Ctrl+Shift+F** Search in files\n"
-		L"- **Ctrl+R** Reformat\n"
-		L"- **Tab** Indent\n"
-		L"- **Shift+Tab** Unindent\n"
-		L"- **Del** Delete\n"
-		L"- **Backspace** Delete back\n"
-		L"\n"
-		L"### Navigation\n"
-		L"- **Ctrl+Home** Go to beginning\n"
-		L"- **Ctrl+End** Go to end\n"
-		L"- **Home** Go to line start\n"
-		L"- **End** Go to line end\n"
-		L"- **Ctrl+Left** Word left\n"
-		L"- **Ctrl+Right** Word right\n"
-		L"- **Page Up / Page Down** Page navigation\n"
-		L"- **Ctrl+Up / Ctrl+Down** Scroll\n"
-		L"\n"
-		L"### View\n"
-		L"- **Ctrl++** Zoom in\n"
-		L"- **Ctrl+-** Zoom out\n"
-		L"- **Ctrl+0** Reset zoom\n"
-		L"- **Alt+Z** Toggle word wrap\n"
-		L"- **Ctrl+M** Toggle markdown preview\n"
-		L"- **Ctrl+Shift+P** Toggle spell check\n"
-		L"- **F5** Refresh\n"
-		L"- **F8** Next result\n"
-		L"- **Shift+F8** Previous result\n"
-		L"- **Ctrl+T** Run tests\n"
-		L"- **F1** About / Help\n"
-		L"- **Escape** Close about / Return to document\n"
+		L"\n";
+
+	for (const auto& cmd : cmds.defs())
+	{
+		if (cmd.accel.empty())
+			continue;
+
+		const auto key_text = pf::format_key_binding(cmd.accel);
+		text += std::format(L"- **{}** {}\n", key_text, cmd.description);
+	}
+
+	text +=
 		L"\n"
 		L"*Hold Shift with navigation keys to extend selection.*\n";
+
+	return text;
+}
+
+static void build_tree(std::wstring& out, const index_item_ptr& item,
+                       const std::wstring& prefix, const bool is_last)
+{
+	out += prefix;
+	out += is_last ? L"\x2514\x2500\x2500 " : L"\x251C\x2500\x2500 ";
+	out += item->name;
+	out += L'\n';
+
+	const auto child_prefix = prefix + (is_last ? L"    " : L"\x2502   ");
+
+	for (size_t i = 0; i < item->children.size(); ++i)
+		build_tree(out, item->children[i], child_prefix, i == item->children.size() - 1);
+}
+
+std::vector<command_def> app_frame::make_commands()
+{
+	std::vector<command_def> defs = {
+		// ── File ───────────────────────────────────────────────────────
+		{
+			{L"n", L"new"}, L"Create a new document",
+			L"&New", static_cast<int>(command_id::file_new), {'N', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_new();
+				return command_result{L"New document created.", true};
+			}
+		},
+		{
+			{L"o", L"open"}, L"Open a file",
+			L"&Open...", static_cast<int>(command_id::file_open), {'O', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_open();
+				return command_result{L"Open dialog shown.", true};
+			}
+		},
+		{
+			{L"s", L"save"}, L"Save the current file",
+			L"&Save", static_cast<int>(command_id::file_save), {'S', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_save();
+				return command_result{L"File saved.", true};
+			}
+		},
+		{
+			{L"sa", L"saveas"}, L"Save the current file as...",
+			L"Save &As...", static_cast<int>(command_id::file_save_as), {},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_save_as();
+				return command_result{L"Save As dialog shown.", true};
+			}
+		},
+		{
+			{L"ss", L"saveall"}, L"Save all modified files",
+			L"Save A&ll", static_cast<int>(command_id::file_save_all),
+			{'S', pf::key_mod::ctrl | pf::key_mod::shift},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				save_all();
+				return command_result{L"All files saved.", true};
+			}
+		},
+		{
+			{L"q", L"exit"}, L"Exit the application",
+			L"E&xit", static_cast<int>(command_id::app_exit), {},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_exit();
+				return command_result{L"", true};
+			}
+		},
+
+		// ── Edit ───────────────────────────────────────────────────────
+		{
+			{L"u", L"undo"}, L"Undo the last edit",
+			L"&Undo", static_cast<int>(command_id::edit_undo), {'Z', pf::key_mod::ctrl},
+			[this] { return doc()->can_undo(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				if (!doc()->can_undo())
+					return command_result{L"Nothing to undo.", false};
+				doc()->edit_undo();
+				return command_result{L"Undone.", true};
+			}
+		},
+		{
+			{L"y", L"redo"}, L"Redo the last undone edit",
+			L"&Redo", static_cast<int>(command_id::edit_redo), {'Y', pf::key_mod::ctrl},
+			[this] { return doc()->can_redo(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				if (!doc()->can_redo())
+					return command_result{L"Nothing to redo.", false};
+				doc()->edit_redo();
+				return command_result{L"Redone.", true};
+			}
+		},
+		{
+			{L"x", L"cut"}, L"Cut selection to clipboard",
+			L"Cu&t", static_cast<int>(command_id::edit_cut), {'X', pf::key_mod::ctrl},
+			[this] { return doc()->has_selection(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				if (!doc()->has_selection())
+					return command_result{L"No selection to cut.", false};
+				pf::platform_text_to_clipboard(doc()->edit_cut());
+				return command_result{L"Selection cut.", true};
+			}
+		},
+		{
+			{L"c", L"copy"}, L"Copy selection to clipboard",
+			L"&Copy", static_cast<int>(command_id::edit_copy), {'C', pf::key_mod::ctrl},
+			[this] { return doc()->has_selection(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				if (!doc()->has_selection())
+					return command_result{L"No selection to copy.", false};
+				pf::platform_text_to_clipboard(doc()->copy());
+				return command_result{L"Selection copied.", true};
+			}
+		},
+		{
+			{L"v", L"paste"}, L"Paste from clipboard",
+			L"&Paste", static_cast<int>(command_id::edit_paste), {'V', pf::key_mod::ctrl},
+			[] { return document::can_paste(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				doc()->edit_paste(pf::platform_text_from_clipboard());
+				return command_result{L"Pasted.", true};
+			}
+		},
+		{
+			{L"d", L"delete"}, L"Delete selection",
+			L"&Delete", static_cast<int>(command_id::edit_delete), {pf::platform_key::Delete, pf::key_mod::none},
+			[this] { return doc()->has_selection(); }, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				if (!doc()->has_selection())
+					return command_result{L"No selection to delete.", false};
+				doc()->edit_delete();
+				return command_result{L"Selection deleted.", true};
+			}
+		},
+		{
+			{L"f", L"find"}, L"Search in files: find <text>",
+			L"Search in &Files", static_cast<int>(command_id::edit_search_files),
+			{'F', pf::key_mod::ctrl | pf::key_mod::shift},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>& args)
+			{
+				if (args.empty())
+				{
+					toggle_search_mode();
+					return command_result{L"Search mode toggled.", true};
+				}
+				std::wstring text;
+				for (size_t i = 0; i < args.size(); ++i)
+				{
+					if (i > 0) text += L' ';
+					text += args[i];
+				}
+				if (!is_search(_state.get_mode()))
+					toggle_search_mode();
+				_state.execute_search_async(text, [this]() { _search->populate(); });
+				return command_result{std::format(L"Searching for '{}'...", text), true};
+			}
+		},
+		{
+			{L"a", L"selectall"}, L"Select all text",
+			L"Select &All", static_cast<int>(command_id::edit_select_all), {'A', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				doc()->select(doc()->all());
+				return command_result{L"All text selected.", true};
+			}
+		},
+		{
+			{L"rf", L"reformat"}, L"Reformat JSON document",
+			L"&Reformat", static_cast<int>(command_id::edit_reformat), {'R', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_edit_reformat();
+				return command_result{L"Document reformatted.", true};
+			}
+		},
+		{
+			{L"sd", L"sort"}, L"Sort lines and remove duplicates",
+			L"Sort && Remove Duplicates", static_cast<int>(command_id::edit_sort_remove_duplicates), {},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_edit_remove_duplicates();
+				return command_result{L"Sorted and removed duplicates.", true};
+			}
+		},
+		{
+			{L"sp", L"spellcheck"}, L"Toggle spell check",
+			L"&Spell Check", static_cast<int>(command_id::edit_spell_check),
+			{'P', pf::key_mod::ctrl | pf::key_mod::shift},
+			nullptr, [this] { return doc()->spell_check(); },
+			[this](const std::vector<std::wstring>&)
+			{
+				doc()->toggle_spell_check();
+				const auto on = doc()->spell_check();
+				return command_result{on ? L"Spell check enabled." : L"Spell check disabled.", true};
+			}
+		},
+
+		// ── View ───────────────────────────────────────────────────────
+		{
+			{L"ww", L"wordwrap"}, L"Toggle word wrap",
+			L"&Word Wrap", static_cast<int>(command_id::view_word_wrap), {'Z', pf::key_mod::alt},
+			nullptr, [this] { return _view->word_wrap(); },
+			[this](const std::vector<std::wstring>&)
+			{
+				_view->toggle_word_wrap();
+				const auto on = _view->word_wrap();
+				return command_result{on ? L"Word wrap enabled." : L"Word wrap disabled.", true};
+			}
+		},
+		{
+			{L"md", L"markdown"}, L"Toggle markdown preview",
+			L"&Markdown Preview", static_cast<int>(command_id::view_toggle_markdown), {'M', pf::key_mod::ctrl},
+			nullptr, [this] { return is_markdown(_state.get_mode()); },
+			[this](const std::vector<std::wstring>&)
+			{
+				toggle_markdown_view();
+				const auto on = is_markdown(_state.get_mode());
+				return command_result{on ? L"Markdown preview on." : L"Markdown preview off.", true};
+			}
+		},
+		{
+			{L"r", L"refresh"}, L"Refresh folder index",
+			L"&Refresh", static_cast<int>(command_id::view_refresh_folder), {pf::platform_key::F5, pf::key_mod::none},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_refresh();
+				return command_result{L"Folder refreshed.", true};
+			}
+		},
+		{
+			{L"fn", L"nextresult"}, L"Navigate to next search result",
+			L"&Next Result", static_cast<int>(command_id::view_next_result), {pf::platform_key::F8, pf::key_mod::none},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_navigate_next(true);
+				return command_result{L"", true};
+			}
+		},
+		{
+			{L"fp", L"prevresult"}, L"Navigate to previous search result",
+			L"&Previous Result", static_cast<int>(command_id::view_prev_result),
+			{pf::platform_key::F8, pf::key_mod::shift},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_navigate_next(false);
+				return command_result{L"", true};
+			}
+		},
+
+		// ── Help ───────────────────────────────────────────────────────
+		{
+			{L"t", L"test"}, L"Run all tests",
+			L"Run &Tests", static_cast<int>(command_id::help_run_tests), {'T', pf::key_mod::ctrl},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_run_tests();
+				return command_result{L"Tests complete.", true};
+			}
+		},
+		{
+			{L"ab", L"about"}, L"Show about / help overlay",
+			L"&About", static_cast<int>(command_id::app_about), {pf::platform_key::F1, pf::key_mod::none},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				on_about();
+				return command_result{L"", true};
+			}
+		},
+
+		// ── Console-only commands ──────────────────────────────────────
+		{
+			{L"?", L"h", L"help"}, L"List available commands",
+			{}, 0, {},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				return command_result{_state.get_commands().help_text(), true};
+			}
+		},
+		{
+			{L"ls", L"dir", L"tree"}, L"List folder contents as a tree",
+			{}, 0, {},
+			nullptr, nullptr,
+			[this](const std::vector<std::wstring>&)
+			{
+				const auto root = _state.root_folder();
+				if (!root || root->children.empty())
+					return command_result{L"No folder open.", false};
+
+				std::wstring out = root->name + L"\n";
+				for (size_t i = 0; i < root->children.size(); ++i)
+					build_tree(out, root->children[i], L"", i == root->children.size() - 1);
+				return command_result{out, true};
+			}
+		},
+	};
+	return defs;
 }
 
 app_frame::app_frame() : _state(*this),
                          _view(std::make_shared<text_edit_view>(*this)),
                          _list(std::make_shared<file_list_view>(*this)),
-                         _search(std::make_shared<search_list_view>(*this))
+                         _search(std::make_shared<search_list_view>(*this)),
+                         _console(std::make_shared<console_view>(*this, _state.get_commands()))
 {
 	_view->set_document(_state.active_item()->doc);
+	_state.get_commands().set_commands(make_commands());
+}
+
+std::vector<pf::menu_command> app_frame::build_menu()
+{
+	using cid = command_id;
+
+	auto& cmds = _state.get_commands();
+
+	auto item = [&](const command_id id) -> pf::menu_command
+	{
+		const auto* def = cmds.find_by_menu_id(static_cast<int>(id));
+		if (!def) return {};
+
+		auto text = def->menu_text;
+		if (!def->accel.empty())
+			text += L'\t' + pf::format_key_binding(def->accel);
+
+		auto fn = def->execute;
+		return {
+			std::move(text), def->menu_id,
+			[fn]() { fn({}); },
+			def->is_enabled, def->is_checked,
+			def->accel
+		};
+	};
+
+	auto sep = []() { return pf::menu_command{}; };
+
+	return {
+		{L"&File", 0, nullptr, nullptr, nullptr, {
+			item(cid::file_new),
+			item(cid::file_open),
+			item(cid::file_save),
+			item(cid::file_save_as),
+			item(cid::file_save_all),
+			sep(),
+			item(cid::app_exit),
+		}},
+		{L"&Edit", 0, nullptr, nullptr, nullptr, {
+			item(cid::edit_undo),
+			item(cid::edit_redo),
+			sep(),
+			item(cid::edit_cut),
+			item(cid::edit_copy),
+			item(cid::edit_paste),
+			item(cid::edit_delete),
+			sep(),
+			item(cid::edit_search_files),
+			item(cid::edit_select_all),
+			sep(),
+			item(cid::edit_reformat),
+			item(cid::edit_sort_remove_duplicates),
+			sep(),
+			item(cid::edit_spell_check),
+		}},
+		{L"&View", 0, nullptr, nullptr, nullptr, {
+			item(cid::view_word_wrap),
+			item(cid::view_toggle_markdown),
+			sep(),
+			item(cid::view_refresh_folder),
+			sep(),
+			item(cid::view_next_result),
+			item(cid::view_prev_result),
+		}},
+		{L"&Help", 0, nullptr, nullptr, nullptr, {
+			item(cid::help_run_tests),
+			item(cid::app_about),
+		}},
+	};
 }
 
 static index_item_ptr find_item_recursively(const index_item_ptr& item,
@@ -338,6 +704,8 @@ void app_frame::set_focus(const view_focus v)
 {
 	if (v == view_focus::list)
 		_list_window->set_focus();
+	else if (v == view_focus::console)
+		_console_window->set_focus();
 	else
 		_view_window->set_focus();
 }
@@ -347,10 +715,15 @@ void app_state::update_styles()
 	_styles.list_font = {_styles.list_font_height, pf::font_name::calibri};
 	_styles.edit_font = {(_styles.list_font_height * 3) / 2, pf::font_name::calibri};
 	_styles.text_font = {_styles.text_font_height, pf::font_name::consolas};
+	_styles.console_font = {_styles.console_font_height, pf::font_name::consolas};
 
 	_styles.padding_x = static_cast<int>(5 * _styles.dpi_scale);
 	_styles.padding_y = static_cast<int>(5 * _styles.dpi_scale);
 	_styles.indent = static_cast<int>(16 * _styles.dpi_scale);
+	_styles.edit_box_margin = static_cast<int>(6 * _styles.dpi_scale);
+	_styles.edit_box_inner_pad = static_cast<int>(4 * _styles.dpi_scale);
+	_styles.list_top_pad = static_cast<int>(4 * _styles.dpi_scale);
+	_styles.list_scroll_pad = static_cast<int>(64 * _styles.dpi_scale);
 }
 
 
@@ -534,81 +907,54 @@ uint32_t app_frame::handle_message(const pf::window_frame_ptr window,
 
 	if (msg == mt::left_button_down)
 	{
-		const auto x_pos = pf::point_from_lparam(lParam).x;
+		const auto pt = pf::point_from_lparam(lParam);
 		const auto rect = window->get_client_rect();
-		const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
 
-		_is_tracking_splitter = x_pos > split_pos - splitter_bar_width &&
-			x_pos < split_pos + splitter_bar_width;
-
-		if (_is_tracking_splitter)
+		if (!is_overlay(_state.get_mode()) && _panel_splitter.begin_tracking(rect, pt, window))
 		{
-			_window->set_capture();
-			_window->set_cursor_shape(pf::cursor_shape::size_we);
+			layout_views();
+		}
+		else
+		{
+			const auto right_bounds = console_split_bounds();
+			_console_splitter.begin_tracking(right_bounds, pt, window);
 		}
 	}
 
 	if (msg == mt::mouse_leave)
 	{
-		if (_is_hover_splitter)
-		{
-			_is_hover_splitter = false;
-			_window->invalidate();
-		}
+		_panel_splitter.clear_hover(window);
+		_console_splitter.clear_hover(window);
 	}
 
 	if (msg == mt::mouse_move)
 	{
-		const auto x_pos = pf::point_from_lparam(lParam).x;
+		const auto pt = pf::point_from_lparam(lParam);
 		const auto rect = window->get_client_rect();
 
 		if (wParam == 0x0001 /*MK_LBUTTON*/)
 		{
-			if (_is_tracking_splitter)
-			{
-				const auto width = rect.right - rect.left;
-				if (width > 0)
-				{
-					_split_ratio = (x_pos - rect.left) / static_cast<double>(width);
-					if (_split_ratio < 0.05)
-						_split_ratio = 0.05;
-					if (_split_ratio > 0.95)
-						_split_ratio = 0.95;
-				}
-				_window->invalidate();
+			if (_panel_splitter.track_to(rect, pt, window))
 				layout_views();
-			}
-		}
-
-		const auto split_pos = static_cast<int>(rect.left + (rect.right - rect.left) * _split_ratio);
-		const auto new_hover_splitter = x_pos > split_pos - splitter_bar_width &&
-			x_pos < split_pos + splitter_bar_width;
-
-		if (new_hover_splitter != _is_hover_splitter)
-		{
-			_is_hover_splitter = new_hover_splitter;
-			_window->invalidate();
-
-			if (_is_hover_splitter)
+			else
 			{
-				_window->track_mouse_leave();
+				const auto right_bounds = console_split_bounds();
+				if (_console_splitter.track_to(right_bounds, pt, window))
+					layout_views();
 			}
 		}
 
-		if (_is_hover_splitter)
-		{
-			_window->set_cursor_shape(pf::cursor_shape::size_we);
-		}
+		if (!is_overlay(_state.get_mode()))
+			_panel_splitter.update_hover(rect, pt, window);
+
+		const auto right_bounds = console_split_bounds();
+		_console_splitter.update_hover(right_bounds, pt, window);
 	}
 
 	if (msg == mt::left_button_up)
 	{
-		if (_is_tracking_splitter)
-		{
-			_window->release_capture();
-			_window->invalidate();
-			_is_tracking_splitter = false;
-		}
+		_panel_splitter.end_tracking(window);
+		_console_splitter.end_tracking(window);
 	}
 
 	return 0;
@@ -629,12 +975,16 @@ uint32_t app_frame::on_create(const pf::window_frame_ptr& window)
 	                                    ui::window_background);
 	_list_window->set_reactor(_list);
 
-
-	// TODO: _find_window creation
+	_console_window = window->create_child(L"CONSOLE_FRAME",
+	                                       pf::window_style::child | pf::window_style::visible |
+	                                       pf::window_style::clip_children,
+	                                       ui::window_background);
+	_console_window->set_reactor(_console);
 
 	// Restore font sizes from config
 	const auto text_size = pf::config_read(L"Font", L"TextSize");
 	const auto list_size = pf::config_read(L"Font", L"ListSize");
+	const auto console_size = pf::config_read(L"Font", L"ConsoleSize");
 
 	if (!text_size.empty() && !list_size.empty())
 	{
@@ -642,8 +992,9 @@ uint32_t app_frame::on_create(const pf::window_frame_ptr& window)
 		{
 			const auto lh = std::stoi(list_size);
 			const auto th = std::stoi(text_size);
+			const auto ch = console_size.empty() ? 20 : std::stoi(console_size);
 
-			_state.initialize_styles(lh, th);
+			_state.initialize_styles(lh, th, ch);
 		}
 		catch (...)
 		{
@@ -652,6 +1003,21 @@ uint32_t app_frame::on_create(const pf::window_frame_ptr& window)
 
 	_state.invalidate(invalid::view);
 	update_title();
+
+	// Restore splitter positions from config
+	const auto panel_ratio = pf::config_read(L"Splitter", L"PanelRatio");
+	const auto console_ratio = pf::config_read(L"Splitter", L"ConsoleRatio");
+
+	try
+	{
+		if (!panel_ratio.empty())
+			_panel_splitter.ratio = std::clamp(std::stod(panel_ratio), splitter::min_ratio, splitter::max_ratio);
+		if (!console_ratio.empty())
+			_console_splitter.ratio = std::clamp(std::stod(console_ratio), splitter::min_ratio, splitter::max_ratio);
+	}
+	catch (...)
+	{
+	}
 
 	// Restore window placement from config
 	if (_has_startup_placement)
@@ -690,20 +1056,24 @@ void app_frame::on_paint(pf::window_frame_ptr& window, pf::draw_context& dc)
 		return;
 	}
 
-	auto c = ui::handle_color;
-	if (_is_hover_splitter)
-		c = ui::handle_hover_color;
-	if (_is_tracking_splitter)
-		c = ui::handle_tracking_color;
+	_panel_splitter.draw(dc, bounds);
 
-	const auto split_pos = static_cast<int>(bounds.left + (bounds.right - bounds.left) * _split_ratio);
+	const auto right_bounds = console_split_bounds();
+	_console_splitter.draw(dc, right_bounds);
+}
 
-	const irect splitter_rect = {
-		split_pos - splitter_bar_width, bounds.top,
-		split_pos + splitter_bar_width, bounds.bottom
-	};
+irect app_frame::console_split_bounds() const
+{
+	if (!_window) return {};
 
-	dc.fill_solid_rect(splitter_rect, c);
+	const auto is_panel_visible = !is_overlay(_state.get_mode());
+	const auto bounds = _window->get_client_rect();
+	const auto panel_split = is_panel_visible
+		                         ? _panel_splitter.split_pos(bounds)
+		                         : bounds.left;
+	const auto right_left = is_panel_visible ? panel_split + splitter::bar_width : bounds.left;
+
+	return {right_left, bounds.top, bounds.right, bounds.bottom};
 }
 
 void app_frame::layout_views() const
@@ -714,16 +1084,24 @@ void app_frame::layout_views() const
 	const auto is_list_visible = _list_window && _list_window->is_visible();
 	const auto is_panel_visible = !is_overlay(_state.get_mode());
 	const auto bounds = _window->get_client_rect();
-	const auto split_pos = is_panel_visible
-		                       ? static_cast<int>(bounds.left + (bounds.right - bounds.left) * _split_ratio)
-		                       : bounds.left;
 
-	auto text_bounds = bounds;
-	text_bounds.left = is_panel_visible ? split_pos + splitter_bar_width : bounds.left;
+	const auto right_bounds = console_split_bounds();
+	const auto console_split = _console_splitter.split_pos(right_bounds);
+
+	auto text_bounds = right_bounds;
+	text_bounds.bottom = console_split - splitter::bar_width;
 	_view_window->move_window(text_bounds);
 
+	auto console_bounds = right_bounds;
+	console_bounds.top = console_split + splitter::bar_width;
+	_console_window->move_window(console_bounds);
+
+	const auto panel_split = is_panel_visible
+		                         ? _panel_splitter.split_pos(bounds)
+		                         : bounds.left;
+
 	auto panel_bounds = bounds;
-	panel_bounds.right = split_pos - splitter_bar_width;
+	panel_bounds.right = panel_split - splitter::bar_width;
 
 	if (is_list_visible)
 	{
@@ -733,7 +1111,7 @@ void app_frame::layout_views() const
 
 uint32_t app_frame::on_about()
 {
-	const auto item = _state.create_overlay(make_about_text(), app_state::about_path);
+	const auto item = _state.create_overlay(make_about_text(_state.get_commands()), app_state::about_path);
 	set_active_item(item);
 	return 0;
 }
@@ -792,6 +1170,11 @@ void app_frame::on_idle()
 		_list_window->invalidate();
 	}
 
+	if (invalids & invalid::console)
+	{
+		_console_window->invalidate();
+	}
+
 	if (invalids & invalid::invalidate)
 	{
 		_view->invalidate(_view_window);
@@ -824,273 +1207,7 @@ bool app_init(const pf::window_frame_ptr& main_frame,
 
 	// Create the main window via platform
 	main_frame->set_reactor(g_main_app);
-
-	using cid = command_id;
-	namespace pk = pf::platform_key;
-	namespace km = pf::key_mod;
-
-	// Set up the menu with keyboard accelerators
-	std::vector<pf::menu_command> menu = {
-		{
-			L"&File", 0, nullptr, nullptr, nullptr, {
-				{
-					L"&New\tCtrl+N", static_cast<int>(cid::file_new), [&]
-					{
-						g_main_app->on_new();
-					},
-					nullptr,
-					nullptr,
-					{'N', km::ctrl}
-				},
-				{
-					L"&Open...\tCtrl+O", static_cast<int>(cid::file_open), [&]
-					{
-						g_main_app->on_open();
-					},
-					nullptr,
-					nullptr,
-					{'O', km::ctrl}
-				},
-				{
-					L"&Save\tCtrl+S", static_cast<int>(cid::file_save), [&]
-					{
-						g_main_app->on_save();
-					},
-					nullptr,
-					nullptr,
-					{'S', km::ctrl}
-				},
-				{
-					L"Save &As...", static_cast<int>(cid::file_save_as), [&]
-					{
-						g_main_app->on_save_as();
-					}
-				},
-				{
-					L"Save A&ll\tCtrl+Shift+S", static_cast<int>(cid::file_save_all), [&]
-					{
-						g_main_app->on_save_all();
-					},
-					nullptr,
-					nullptr,
-					{'S', km::ctrl | km::shift}
-				},
-				{},
-				{
-					L"E&xit", static_cast<int>(cid::app_exit), [&]
-					{
-						g_main_app->on_exit();
-					}
-				},
-			}
-		},
-		{
-			L"&Edit", 0, nullptr, nullptr, nullptr, {
-				{
-					L"&Undo\tCtrl+Z", static_cast<int>(cid::edit_undo), [&]
-					{
-						g_main_app->doc()->edit_undo();
-					},
-					[&]
-					{
-						return g_main_app->doc()->can_undo();
-					},
-					nullptr,
-					{'Z', km::ctrl}
-				},
-				{
-					L"&Redo\tCtrl+Y", static_cast<int>(cid::edit_redo), [&]
-					{
-						g_main_app->doc()->edit_redo();
-					},
-					[&]
-					{
-						return g_main_app->doc()->can_redo();
-					},
-					nullptr,
-					{'Y', km::ctrl}
-				},
-				{},
-				{
-					L"Cu&t\tCtrl+X", static_cast<int>(cid::edit_cut), [&]
-					{
-						g_main_app->set_clipboard(g_main_app->doc()->edit_cut());
-					},
-					[&]
-					{
-						return g_main_app->doc()->has_selection();
-					},
-					nullptr,
-					{'X', km::ctrl}
-				},
-				{
-					L"&Copy\tCtrl+C", static_cast<int>(cid::edit_copy), [&]
-					{
-						g_main_app->set_clipboard(g_main_app->doc()->copy());
-					},
-					[&]
-					{
-						return g_main_app->doc()->has_selection();
-					},
-					nullptr,
-					{'C', km::ctrl}
-				},
-				{
-					L"&Paste\tCtrl+V", static_cast<int>(cid::edit_paste), [&]
-					{
-						g_main_app->doc()->edit_paste(g_main_app->clipboard_text());
-					},
-					[&]
-					{
-						return document::can_paste();
-					},
-					nullptr,
-					{'V', km::ctrl}
-				},
-				{
-					L"&Delete\tDel", static_cast<int>(cid::edit_delete), [&]
-					{
-						g_main_app->doc()->edit_delete();
-					},
-					[&]
-					{
-						return g_main_app->doc()->has_selection();
-					},
-					nullptr,
-					{pk::Delete, km::none}
-				},
-				{},
-				{
-					L"Search in &Files\tCtrl+Shift+F", static_cast<int>(cid::edit_search_files), [&]
-					{
-						g_main_app->toggle_search_mode();
-					},
-					nullptr,
-					nullptr,
-					{'F', km::ctrl | km::shift}
-				},
-				{
-					L"Select &All\tCtrl+A", static_cast<int>(cid::edit_select_all), [&]
-					{
-						g_main_app->doc()->select(g_main_app->doc()->all());
-					},
-					nullptr,
-					nullptr,
-					{'A', km::ctrl}
-				},
-				{},
-				{
-					L"&Reformat\tCtrl+R", static_cast<int>(cid::edit_reformat), [&]
-					{
-						g_main_app->on_edit_reformat();
-					},
-					nullptr,
-					nullptr,
-					{'R', km::ctrl}
-				},
-				{
-					L"Sort && Remove Duplicates", static_cast<int>(cid::edit_sort_remove_duplicates), [&]
-					{
-						g_main_app->on_edit_remove_duplicates();
-					}
-				},
-				{},
-				{
-					L"&Spell Check\tCtrl+Shift+P", static_cast<int>(cid::edit_spell_check), [&]
-					{
-						g_main_app->doc()->toggle_spell_check();
-					},
-					nullptr,
-					[&]
-					{
-						return g_main_app->doc()->spell_check();
-					},
-					{'P', km::ctrl | km::shift}
-				},
-			}
-		},
-		{
-			L"&View", 0, nullptr, nullptr, nullptr, {
-				{
-					L"&Word Wrap\tAlt+Z", static_cast<int>(cid::view_word_wrap), [&]
-					{
-						g_main_app->_view->toggle_word_wrap();
-					},
-					nullptr,
-					[&]
-					{
-						return g_main_app->_view->word_wrap();
-					},
-					{'Z', km::alt}
-				},
-				{
-					L"&Markdown Preview\tCtrl+M", static_cast<int>(cid::view_toggle_markdown), [&]
-					{
-						g_main_app->toggle_markdown_view();
-					},
-					nullptr,
-					[&]
-					{
-						return is_markdown(g_main_app->_state.get_mode());
-					},
-					{'M', km::ctrl}
-				},
-				{},
-				{
-					L"&Refresh\tF5", static_cast<int>(cid::view_refresh_folder), [&]
-					{
-						g_main_app->on_refresh();
-					},
-					nullptr,
-					nullptr,
-					{pk::F5, km::none}
-				},
-				{},
-				{
-					L"&Next Result\tF8", static_cast<int>(cid::view_next_result), [&]
-					{
-						g_main_app->on_navigate_next(true);
-					},
-					nullptr,
-					nullptr,
-					{pk::F8, km::none}
-				},
-				{
-					L"&Previous Result\tShift+F8", static_cast<int>(cid::view_prev_result), [&]
-					{
-						g_main_app->on_navigate_next(false);
-					},
-					nullptr,
-					nullptr,
-					{pk::F8, km::shift}
-				},
-			}
-		},
-		{
-			L"&Help", 0, nullptr, nullptr, nullptr, {
-				{
-					L"Run &Tests\tCtrl+T", static_cast<int>(cid::help_run_tests), [&]
-					{
-						g_main_app->on_run_tests();
-					},
-					nullptr,
-					nullptr,
-					{'T', km::ctrl}
-				},
-				{
-					L"&About\tF1", static_cast<int>(cid::app_about), [&]
-					{
-						g_main_app->on_about();
-					},
-					nullptr,
-					nullptr,
-					{pk::F1, km::none}
-				},
-			}
-		},
-	};
-
-	main_frame->set_menu(std::move(menu));
+	main_frame->set_menu(g_main_app->build_menu());
 
 	if (!file_to_open.empty())
 	{

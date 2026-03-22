@@ -4,11 +4,13 @@ Rethinkify is a lightweight text editor with multi-file search and file navigati
 
 ## Application Layout
 
-The window is split into two panes separated by a draggable splitter:
+The window is split into two panes separated by a draggable vertical splitter:
 
 - **Left panel** — either the folder browser or the search panel (toggled with `Ctrl+Shift+F`)
-- **Right panel** — the text/markdown/hex view for the active document
-- **Splitter** — draggable divider (5px); highlights on hover, changes color while tracking
+- **Right panel** — subdivided vertically by a draggable horizontal splitter:
+  - **Text/markdown/hex view** — the active document (top)
+  - **Console view** — command input and output (bottom)
+- **Splitters** — draggable dividers (5px); highlight on hover, change color while tracking. Both splitters share a common `splitter` type defined in `ui.h`.
 
 ## Folder View
 
@@ -124,6 +126,89 @@ Opened with `Ctrl+Shift+F`. Press `Escape` to return to the folder view.
 - Displays offset (8 hex digits) | hex bytes (16 per row) | ASCII representation
 - Read-only with keyboard scrolling (arrows, Page Up/Down, Ctrl+Home/End)
 
+## Console View
+
+The console is shown below the text view, separated by a draggable horizontal splitter.
+
+### Edit box
+- Single-line input field at the bottom of the console
+- Prompt symbol `>` displayed before the input text
+- Border color changes when focused (blue) vs unfocused (gray)
+- Blinking caret (530ms interval) when focused
+- Supports text selection, copy/paste, and standard edit keys
+
+### Commands
+
+Commands are parsed using a simple tokenizer that splits on spaces, with support for quoted arguments (e.g. `find "hello world"`). Each command has a short and long alias. Unknown commands display an error message with a help hint.
+
+#### File
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `n` | `new` | Create a new document |
+| `o` | `open` | Open a file |
+| `s` | `save` | Save the current file |
+| `sa` | `saveas` | Save the current file as... |
+| `ss` | `saveall` | Save all modified files |
+| `q` | `exit` | Exit the application |
+
+#### Edit
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `u` | `undo` | Undo the last edit |
+| `y` | `redo` | Redo the last undone edit |
+| `x` | `cut` | Cut selection to clipboard |
+| `c` | `copy` | Copy selection to clipboard |
+| `v` | `paste` | Paste from clipboard |
+| `d` | `delete` | Delete selection |
+| `a` | `selectall` | Select all text |
+| `f` | `find` | Search in files: `find <text>` |
+| `rf` | `reformat` | Reformat JSON document |
+| `sd` | `sort` | Sort lines and remove duplicates |
+| `sp` | `spellcheck` | Toggle spell check |
+
+#### View
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `ww` | `wordwrap` | Toggle word wrap |
+| `md` | `markdown` | Toggle markdown preview |
+| `r` | `refresh` | Refresh folder index |
+| `fn` | `nextresult` | Navigate to next search result |
+| `fp` | `prevresult` | Navigate to previous search result |
+
+#### Help & Tools
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `t` | `test` | Run all tests |
+| `ab` | `about` | Show about / help overlay |
+| `?`, `h` | `help` | List all available commands |
+| `ls`, `dir` | `tree` | List folder contents as a tree |
+
+### Output area
+- Scrollable history of commands and output above the edit box
+- Commands are echoed with `> ` prefix in yellow
+- Output text shown in lighter gray
+- Custom vertical scrollbar appears when content overflows
+- Mouse wheel scrolls by 2 lines per tick
+- Auto-scrolls to bottom after each command
+
+### Keyboard
+
+| Key | Action |
+|-----|--------|
+| Enter | Execute command and clear input |
+| Up / Down | Navigate command history |
+| Escape | Return focus to text view |
+| Home / End | Move cursor to start / end of input |
+| Standard edit keys | Select, copy, paste, delete |
+
+### Focus
+- Click to focus the console
+- Escape returns focus to the text view
+
 ## Overlay Documents
 
 - **F1** — About / keyboard shortcut reference (read-only overlay)
@@ -169,6 +254,7 @@ Opened with `Ctrl+Shift+F`. Press `Escape` to return to the folder view.
 Saved on exit and restored on startup:
 - Window position, size, and maximized state
 - Text editor and list panel font sizes
+- Splitter positions (stored as ratios, not pixel values)
 - Last open folder and document
 
 ## Syntax Highlighting

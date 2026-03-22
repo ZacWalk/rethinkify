@@ -8,6 +8,7 @@
     <ClCompile Include="document_syntax.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="util.cpp" />
+    <ClCompile Include="commands.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform.h" />
@@ -29,6 +30,8 @@
     <ClInclude Include="app.h" />
     <ClInclude Include="app_state.h" />
     <ClInclude Include="app_frame.h" />
+    <ClInclude Include="view_console.h" />
+    <ClInclude Include="commands.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />

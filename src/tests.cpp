@@ -836,6 +836,110 @@ static void should_search_no_match()
 	should::is_equal(0, static_cast<int>(item->search_results.size()), L"no match");
 }
 
+// ── Command system tests ───────────────────────────────────────────────
+
+static void should_commands_tokenize_simple()
+{
+	commands cmds;
+	bool called = false;
+	std::vector<std::wstring> received_args;
+
+	cmds.set_commands({
+		{{L"t", L"test"}, L"Test command", {}, 0, {}, nullptr, nullptr,
+			[&](const std::vector<std::wstring>& args)
+			{
+				called = true;
+				received_args = args;
+				return command_result{L"ok", true};
+			}
+		},
+	});
+
+	const auto result = cmds.execute(L"t arg1 arg2");
+	should::is_equal(true, called, L"command was called");
+	should::is_equal(true, result.success, L"result success");
+	should::is_equal(2, static_cast<int>(received_args.size()), L"arg count");
+	should::is_equal(std::wstring_view(L"arg1"), std::wstring_view(received_args[0]), L"arg0");
+	should::is_equal(std::wstring_view(L"arg2"), std::wstring_view(received_args[1]), L"arg1");
+}
+
+static void should_commands_quoted_args()
+{
+	commands cmds;
+	std::vector<std::wstring> received_args;
+
+	cmds.set_commands({
+		{{L"e", L"echo"}, L"Echo", {}, 0, {}, nullptr, nullptr,
+			[&](const std::vector<std::wstring>& args)
+			{
+				received_args = args;
+				return command_result{L"ok", true};
+			}
+		},
+	});
+
+	cmds.execute(L"e \"hello world\" foo");
+	should::is_equal(2, static_cast<int>(received_args.size()), L"quoted arg count");
+	should::is_equal(std::wstring_view(L"hello world"), std::wstring_view(received_args[0]), L"quoted arg");
+	should::is_equal(std::wstring_view(L"foo"), std::wstring_view(received_args[1]), L"second arg");
+}
+
+static void should_commands_unknown_command()
+{
+	commands cmds;
+	cmds.set_commands({});
+
+	const auto result = cmds.execute(L"bogus");
+	should::is_equal(false, result.success, L"unknown command fails");
+	should::is_equal(true, result.output.find(L"Unknown command") != std::wstring::npos, L"error message");
+}
+
+static void should_commands_short_and_long()
+{
+	commands cmds;
+	int call_count = 0;
+
+	cmds.set_commands({
+		{{L"s", L"save"}, L"Save", {}, 0, {}, nullptr, nullptr,
+			[&](const std::vector<std::wstring>&)
+			{
+				call_count++;
+				return command_result{L"saved", true};
+			}
+		},
+	});
+
+	cmds.execute(L"s");
+	cmds.execute(L"save");
+	cmds.execute(L"SAVE");
+	should::is_equal(3, call_count, L"both aliases work case-insensitively");
+}
+
+static void should_commands_help_text()
+{
+	commands cmds;
+
+	cmds.set_commands({
+		{{L"s", L"save"}, L"Save the file", {}, 0, {}, nullptr, nullptr,
+			[](const std::vector<std::wstring>&)
+			{
+				return command_result{L"", true};
+			}
+		},
+		{{L"q", L"exit"}, L"Exit app", {}, 0, {}, nullptr, nullptr,
+			[](const std::vector<std::wstring>&)
+			{
+				return command_result{L"", true};
+			}
+		},
+	});
+
+	const auto text = cmds.help_text();
+	should::is_equal(true, text.find(L"save") != std::wstring::npos, L"help contains save");
+	should::is_equal(true, text.find(L"exit") != std::wstring::npos, L"help contains exit");
+	should::is_equal(true, text.find(L"Save the file") != std::wstring::npos, L"help contains description");
+}
+
 
 std::wstring run_all_tests()
 {
@@ -929,6 +1033,13 @@ std::wstring run_all_tests()
 	tests.register_test(L"should search doc empty clears", should_search_doc_empty_clears);
 	tests.register_test(L"should search multiple files", should_search_multiple_files);
 	tests.register_test(L"should search no match", should_search_no_match);
+
+	// Command system tests
+	tests.register_test(L"should commands tokenize simple", should_commands_tokenize_simple);
+	tests.register_test(L"should commands quoted args", should_commands_quoted_args);
+	tests.register_test(L"should commands unknown command", should_commands_unknown_command);
+	tests.register_test(L"should commands short and long", should_commands_short_and_long);
+	tests.register_test(L"should commands help text", should_commands_help_text);
 
 	std::wstringstream output;
 	output << "# Test results" << std::endl << std::endl;

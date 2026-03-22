@@ -12,9 +12,9 @@ When updating high level behaviour of the app, specification.md should be update
 | `app.h` | Application types: event interfaces, search results, index items, app_events |
 | `app.cpp` | Application logic: main window, menus, splitter, file I/O commands |
 | `app_frame.h` | Main window frame: child window creation, layout, splitter, menu command routing |
-| `app_state.h` | Testable app state: document collection, file operations, search |
-| `platform.h` | Platform-independent types, window/draw abstractions, API declarations |
-| `platform_win.cpp` | Win32 implementation: windowing, timers, sound, file dialogs, spell check |
+| `app_state.h` | Application state: document collection, file operations, testable app logic |
+| `platform.h` | Platform-independent types, constants, window/draw abstractions, API declarations |
+| `platform_win.cpp` | Win32 platform layer: entry point, windowing, timers, menus, file dialogs, spell check |
 | `document.h` / `document.cpp` | Text document model: lines, selections, undo/redo, syntax highlighting, JSON reformat, sort |
 | `view_text_base.h` | Base class for text-document views: font, scrolling, message routing |
 | `view_text.h` | Text editor view: selection, caret, word wrap, syntax-highlighted rendering |
@@ -26,7 +26,9 @@ When updating high level behaviour of the app, specification.md should be update
 | `view_list_search.h` | Search panel: text input, result display, navigation |
 | `document_syntax.cpp` | Syntax highlighting parsers (C++, plain text, hex, markdown) |
 | `util.h` / `util.cpp` | Core utilities: string ops, geometry types, AES-256, SHA-256, base64/hex |
-| `ui.h` | UI color constants |
+| `ui.h` | UI types: color constants, edit_box, caret_blinker, splitter, custom_scrollbar |
+| `commands.h` / `commands.cpp` | Unified command system: `command_def` drives both console and menu, tokenizer, case-insensitive map lookup, help text |
+| `view_console.h` | Console view: command input, scrollable history, output display |
 | `test.h` | Lightweight test framework (assertions + runner) |
 | `tests.cpp` | Unit tests for document editing, undo/redo, search, crypto, app state |
 | `resource.h` | Win32 resource IDs for menus, accelerators, dialogs |

@@ -1,6 +1,6 @@
 #pragma once
 
-// document.h — Text document model: lines, selections, undo/redo, syntax highlighting
+// document.h — Text document model: lines, selections, undo/redo, syntax highlighting, JSON reformat, sort
 
 #include "platform.h"
 

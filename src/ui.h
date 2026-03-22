@@ -1,6 +1,6 @@
 #pragma once
 
-// ui.h — UI color constants
+// ui.h — UI types: color constants, edit_box, caret_blinker, splitter, custom_scrollbar
 
 #include "platform.h"
 
@@ -213,6 +213,217 @@ struct edit_box
 		const auto before = text.substr(0, cursor_pos);
 		const auto sz = mc->measure_text(before, font);
 		return {box_rect.left + inner_pad + sz.cx, text_y};
+	}
+
+	// --- Common drawing helpers for edit-box-based views ---
+
+	static void draw_border(pf::draw_context& dc, const irect& box, const bool focused)
+	{
+		constexpr int thickness = 2;
+		const auto color = focused ? ui::focus_handle_color : ui::handle_color;
+		dc.fill_solid_rect(box.left, box.top, box.Width(), thickness, color);
+		dc.fill_solid_rect(box.left, box.bottom - thickness, box.Width(), thickness, color);
+		dc.fill_solid_rect(box.left, box.top, thickness, box.Height(), color);
+		dc.fill_solid_rect(box.right - thickness, box.top, thickness, box.Height(), color);
+	}
+
+	void draw_selection(pf::draw_context& dc, const int text_x, const int text_y,
+	                    const int char_cy, const pf::font& font) const
+	{
+		if (!has_selection()) return;
+		const auto before_sz = dc.measure_text(text.substr(0, sel_start()), font);
+		const auto sel_sz = dc.measure_text(text.substr(sel_start(), sel_end() - sel_start()), font);
+		dc.fill_solid_rect(irect(text_x + before_sz.cx, text_y,
+		                         text_x + before_sz.cx + sel_sz.cx, text_y + char_cy),
+		                   color_t(88, 88, 88));
+	}
+
+	void draw_caret(pf::draw_context& dc, const int text_x, const int text_y,
+	                const int char_cy, const pf::font& font) const
+	{
+		int caret_x = text_x;
+		if (!text.empty() && cursor_pos > 0)
+			caret_x += dc.measure_text(text.substr(0, cursor_pos), font).cx;
+		dc.fill_solid_rect(caret_x, text_y, 2, char_cy, ui::text_color);
+	}
+};
+
+
+// caret_blinker — Shared timer-based caret blink logic used by text views and edit-box views
+struct caret_blinker
+{
+	bool visible = false;
+	bool active = false;
+
+	static constexpr uint32_t timer_id = 1002;
+	static constexpr uint32_t blink_ms = 530;
+
+	void start(const pf::window_frame_ptr& window)
+	{
+		if (!active)
+		{
+			visible = true;
+			active = true;
+			window->set_timer(timer_id, blink_ms);
+		}
+	}
+
+	void stop(const pf::window_frame_ptr& window)
+	{
+		if (active)
+		{
+			active = false;
+			visible = false;
+			window->kill_timer(timer_id);
+		}
+	}
+
+	void reset(const pf::window_frame_ptr& window)
+	{
+		visible = true;
+		if (active)
+			window->kill_timer(timer_id);
+		active = true;
+		window->set_timer(timer_id, blink_ms);
+	}
+
+	// Returns true if this timer event was handled (caller should invalidate)
+	bool on_timer(const uint32_t id)
+	{
+		if (id == timer_id && active)
+		{
+			visible = !visible;
+			return true;
+		}
+		return false;
+	}
+};
+
+
+struct splitter
+{
+	enum class orientation { vertical, horizontal };
+
+	orientation orient;
+	double ratio = 0.5;
+	bool is_tracking = false;
+	bool is_hover = false;
+
+	static constexpr int bar_width = 5;
+	static constexpr double min_ratio = 0.05;
+	static constexpr double max_ratio = 0.95;
+
+	splitter(const orientation o, const double initial_ratio)
+		: orient(o), ratio(initial_ratio)
+	{
+	}
+
+	[[nodiscard]] int split_pos(const irect& bounds) const
+	{
+		if (orient == orientation::vertical)
+			return static_cast<int>(bounds.left + (bounds.right - bounds.left) * ratio);
+		return static_cast<int>(bounds.top + (bounds.bottom - bounds.top) * ratio);
+	}
+
+	[[nodiscard]] irect bar_rect(const irect& bounds) const
+	{
+		const auto pos = split_pos(bounds);
+		if (orient == orientation::vertical)
+			return {pos - bar_width, bounds.top, pos + bar_width, bounds.bottom};
+		return {bounds.left, pos - bar_width, bounds.right, pos + bar_width};
+	}
+
+	[[nodiscard]] bool hit_test(const irect& bounds, const ipoint& pt) const
+	{
+		return bar_rect(bounds).Contains(pt);
+	}
+
+	void update_ratio(const irect& bounds, const ipoint& pt)
+	{
+		if (orient == orientation::vertical)
+		{
+			const auto width = bounds.right - bounds.left;
+			if (width > 0)
+				ratio = (pt.x - bounds.left) / static_cast<double>(width);
+		}
+		else
+		{
+			const auto height = bounds.bottom - bounds.top;
+			if (height > 0)
+				ratio = (pt.y - bounds.top) / static_cast<double>(height);
+		}
+
+		if (ratio < min_ratio) ratio = min_ratio;
+		if (ratio > max_ratio) ratio = max_ratio;
+	}
+
+	[[nodiscard]] color_t color() const
+	{
+		if (is_tracking) return ui::handle_tracking_color;
+		if (is_hover) return ui::handle_hover_color;
+		return ui::handle_color;
+	}
+
+	[[nodiscard]] pf::cursor_shape cursor() const
+	{
+		return orient == orientation::vertical
+			       ? pf::cursor_shape::size_we
+			       : pf::cursor_shape::size_ns;
+	}
+
+	void draw(pf::draw_context& dc, const irect& bounds) const
+	{
+		dc.fill_solid_rect(bar_rect(bounds), color());
+	}
+
+	bool begin_tracking(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	{
+		if (!hit_test(bounds, pt)) return false;
+		is_tracking = true;
+		window->set_capture();
+		window->set_cursor_shape(cursor());
+		return true;
+	}
+
+	bool track_to(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	{
+		if (!is_tracking) return false;
+		update_ratio(bounds, pt);
+		window->invalidate();
+		return true;
+	}
+
+	void end_tracking(const pf::window_frame_ptr& window)
+	{
+		if (is_tracking)
+		{
+			is_tracking = false;
+			window->release_capture();
+			window->invalidate();
+		}
+	}
+
+	bool update_hover(const irect& bounds, const ipoint& pt, const pf::window_frame_ptr& window)
+	{
+		const auto new_hover = hit_test(bounds, pt);
+		if (new_hover == is_hover) return false;
+		is_hover = new_hover;
+		if (is_hover)
+		{
+			window->track_mouse_leave();
+			window->set_cursor_shape(cursor());
+		}
+		window->invalidate();
+		return true;
+	}
+
+	void clear_hover(const pf::window_frame_ptr& window)
+	{
+		if (is_hover)
+		{
+			is_hover = false;
+			window->invalidate();
+		}
 	}
 };
 

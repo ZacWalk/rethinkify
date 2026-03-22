@@ -10,10 +10,12 @@ public:
 	pf::window_frame_ptr _window;
 	pf::window_frame_ptr _view_window;
 	pf::window_frame_ptr _list_window;
+	pf::window_frame_ptr _console_window;
 
 	text_view_base_ptr _view;
 	folder_view_ptr _list;
 	search_view_ptr _search;
+	console_view_ptr _console;
 
 	// Config-based startup state
 	std::wstring _startup_folder;
@@ -21,24 +23,16 @@ public:
 	pf::window_frame::placement _startup_placement{};
 	bool _has_startup_placement = false;
 
-	double _split_ratio = 0.2;
-	bool _is_tracking_splitter = false;
-	bool _is_hover_splitter = false;
+	splitter _panel_splitter{splitter::orientation::vertical, 0.2};
+	splitter _console_splitter{splitter::orientation::horizontal, 0.8};
 
+	std::vector<command_def> make_commands();
 	app_frame();
 
 	[[nodiscard]] document_ptr& doc() { return _state.active_item()->doc; }
 	[[nodiscard]] const document_ptr& doc() const { return _state.active_item()->doc; }
 
-	std::wstring clipboard_text() const
-	{
-		return pf::platform_text_from_clipboard();
-	}
-
-	bool set_clipboard(const std::wstring_view text) const
-	{
-		return pf::platform_text_to_clipboard(text);
-	}
+	std::vector<pf::menu_command> build_menu();
 
 	void ensure_visible(const text_location& pt) override
 	{
@@ -83,6 +77,7 @@ public:
 		_state.on_zoom(delta, is_text_view);
 		_view_window->notify_size();
 		_list_window->notify_size();
+		_console_window->notify_size();
 	}
 
 	void toggle_search_mode();
@@ -108,12 +103,14 @@ public:
 
 		_view_window->notify_size();
 		_list_window->notify_size();
+		_console_window->notify_size();
 
 		return 0;
 	}
 
 	void on_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override;
 
+	irect console_split_bounds() const;
 	void layout_views() const;
 
 	void on_size(pf::window_frame_ptr& window, isize extent,
@@ -140,6 +137,11 @@ public:
 		const auto styles = _state.styles();
 		pf::config_write(L"Font", L"TextSize", std::to_wstring(styles.text_font_height));
 		pf::config_write(L"Font", L"ListSize", std::to_wstring(styles.list_font_height));
+		pf::config_write(L"Font", L"ConsoleSize", std::to_wstring(styles.console_font_height));
+
+		// Save splitter positions as ratios
+		pf::config_write(L"Splitter", L"PanelRatio", std::to_wstring(_panel_splitter.ratio));
+		pf::config_write(L"Splitter", L"ConsoleRatio", std::to_wstring(_console_splitter.ratio));
 
 		// Save current root folder and document
 		if (_state.root_folder() && !_state.root_folder()->path.empty())
