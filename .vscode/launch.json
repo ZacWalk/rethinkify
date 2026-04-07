@@ -2,22 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Rethinkify (Debug x64)",
-            "type": "cppvsdbg",
+            "name": "Run",
             "request": "launch",
-            "program": "${workspaceFolder}/exe/rethinkify64d.exe",
-            "args": [],
-            "cwd": "${workspaceFolder}/exe",
-            "preLaunchTask": "Build Rethinkify"
-        },
-        {
-            "name": "Rethinkify (Release x64)",
             "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/exe/rethinkify64.exe",
+            "program": "${workspaceFolder}/target/debug/rethinkify.exe",
             "args": [],
-            "cwd": "${workspaceFolder}/exe",
-            "preLaunchTask": "Build Rethinkify (Release)"
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build",
+            "noDebug": true
         }
     ]
 }
