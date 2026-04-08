@@ -58,13 +58,13 @@ protected:
 	{
 		std::vector<pf::menu_command> items;
 
-		items.emplace_back(u8"New File", 0, [this, hit]
+		items.emplace_back("New File", 0, [this, hit]
 		{
 			const pf::file_path save_folder = get_save_folder(hit);
-			_events.create_new_file(save_folder.combine(u8"new-file", u8".md"), {});
+			_events.create_new_file(save_folder.combine("new-file", ".md"), {});
 		}, [] { return true; });
 
-		items.emplace_back(u8"New Folder", 0, [this, hit]
+		items.emplace_back("New Folder", 0, [this, hit]
 		{
 			const pf::file_path save_folder = get_save_folder(hit);
 			_events.create_new_folder(save_folder);
@@ -73,8 +73,8 @@ protected:
 		items.emplace_back();
 		items.push_back(_events.command_menu_item(command_id::edit_copy, nullptr,
 		                                          [hit] { return hit && hit->source; }, nullptr,
-		                                          u8"Copy &Path"));
-		items.emplace_back(u8"Rename", 0, [this, window]
+		                                          "Copy &Path"));
+		items.emplace_back("Rename", 0, [this, window]
 		                   {
 			                   begin_selected_rename(window);
 		                   }, [hit] { return hit && hit->source && !hit->source->is_folder; }, nullptr,
@@ -155,7 +155,7 @@ protected:
 		}
 	}
 
-	uint32_t on_char(pf::window_frame_ptr& window, const char8_t ch) override
+	uint32_t on_char(pf::window_frame_ptr& window, const char ch) override
 	{
 		if (is_renaming())
 		{
@@ -241,7 +241,7 @@ public:
 
 			const auto pad = styles.edit_box_inner_pad;
 			const auto font = styles.list_font;
-			const auto char_sz = dc.measure_text(u8"X", font);
+			const auto char_sz = dc.measure_text("X", font);
 			const auto text_y = edit_rect.top + (edit_rect.height() - char_sz.cy) / 2;
 			const auto text_x = edit_rect.left + pad;
 
@@ -290,9 +290,7 @@ public:
 
 	static bool compare_items(const list_view_item_ptr& l, const list_view_item_ptr& r)
 	{
-		const auto lf = l;
-		const auto rf = r;
-		if (lf->is_group != rf->is_group) return lf->is_group > rf->is_group;
+		if (l->is_group != r->is_group) return l->is_group > r->is_group;
 		return pf::icmp(l->name, r->name) < 0;
 	}
 

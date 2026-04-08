@@ -3,144 +3,164 @@
 #include "pch.h"
 #include "document.h"
 
-static bool is_alnum32(const char8_t c) { return c <= 0xFFFF && iswalnum(c); }
-static bool is_space32(const char8_t c) { return c <= 0xFFFF && iswspace(c); }
-static bool is_digit32(const char8_t c) { return c <= 0xFFFF && iswdigit(c); }
+static bool is_alnum32(const char c) { return isalnum(static_cast<unsigned char>(c)) != 0; }
+static bool is_space32(const char c) { return isspace(static_cast<unsigned char>(c)) != 0; }
+static bool is_digit32(const char c) { return isdigit(static_cast<unsigned char>(c)) != 0; }
 
-static bool is_keyword(const std::u8string_view text)
+enum class syntax_lang { cpp, rust, python, ps1 };
+
+static bool is_keyword(const syntax_lang lang, const std::string_view text)
 {
 	if (text.size() > 30) return false;
-	char8_t buf[32];
-	for (size_t i = 0; i < text.size(); i++) buf[i] = static_cast<char8_t>(text[i]);
-	const std::u8string_view narrow(buf, text.size());
-	static std::unordered_set<std::u8string_view, pf::ihash, pf::ieq> keywords =
+	if (lang == syntax_lang::rust)
 	{
-		u8"__asm",
-		u8"__based",
-		u8"__cdecu8",
-		u8"__declspec",
-		u8"__except",
-		u8"__fastcalu8",
-		u8"__finally",
-		u8"__inline",
-		u8"__int16",
-		u8"__int32",
-		u8"__int64",
-		u8"__int8",
-		u8"__leave",
-		u8"__multiple_inheritance",
-		u8"__single_inheritance",
-		u8"__stdcalu8",
-		u8"__try",
-		u8"__uuidof",
-		u8"__virtual_inheritance",
-		u8"_persistent",
-		u8"alignas",
-		u8"alignof",
-		u8"and",
-		u8"and_eq",
-		u8"asm",
-		u8"auto",
-		u8"bitand",
-		u8"bitor",
-		u8"boou8",
-		u8"break",
-		u8"case",
-		u8"catch",
-		u8"char",
-		u8"char16_t",
-		u8"char8_t",
-		u8"class",
-		u8"compu8",
-		u8"const",
-		u8"const_cast",
-		u8"constexpr",
-		u8"continue",
-		u8"cset",
-		u8"decltype",
-		u8"default",
-		u8"delete",
-		u8"depend",
-		u8"dllexport",
-		u8"dllimport",
-		u8"do",
-		u8"double",
-		u8"dynamic_cast",
-		u8"else",
-		u8"enum",
-		u8"explicit",
-		u8"export",
-		u8"extern",
-		u8"false",
-		u8"float",
-		u8"for",
-		u8"friend",
-		u8"goto",
-		u8"if",
-		u8"indexdef",
-		u8"inline",
-		u8"int",
-		u8"interface",
-		u8"long",
-		u8"main",
-		u8"mutable",
-		u8"naked",
-		u8"namespace",
-		u8"new",
-		u8"noexcept",
-		u8"not",
-		u8"not_eq",
-		u8"nullptr",
-		u8"ondemand",
-		u8"operator",
-		u8"or",
-		u8"or_eq",
-		u8"persistent",
-		u8"private",
-		u8"protected",
-		u8"public",
-		u8"register",
-		u8"reinterpret_cast",
-		u8"return",
-		u8"short",
-		u8"signed",
-		u8"sizeof",
-		u8"static",
-		u8"static_assert",
-		u8"static_cast",
-		u8"struct",
-		u8"switch",
-		u8"template",
-		u8"this",
-		u8"thread",
-		u8"thread_locau8",
-		u8"throw",
-		u8"transient",
-		u8"true",
-		u8"try",
-		u8"typedef",
-		u8"typeid",
-		u8"typename",
-		u8"union",
-		u8"uint32_t",
-		u8"useindex",
-		u8"using",
-		u8"uuid",
-		u8"virtuau8",
-		u8"void",
-		u8"volatile",
-		u8"char8_t",
-		u8"while",
-		u8"wmain",
-		u8"xalloc",
-		u8"xor",
-		u8"xor_eq"
+		static const std::unordered_set<std::string_view> keywords = {
+			"as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
+			"for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+			"ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+			"unsafe", "use", "where", "while", "async", "await", "dyn", "abstract", "become", "box",
+			"do", "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield",
+			"try"
+		};
+		return keywords.contains(text);
+	}
+	if (lang == syntax_lang::python)
+	{
+		static const std::unordered_set<std::string_view> keywords = {
+			"False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+			"continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
+			"if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+			"return", "try", "while", "with", "yield"
+		};
+		return keywords.contains(text);
+	}
+	if (lang == syntax_lang::ps1)
+	{
+		static const std::unordered_set<std::string_view, pf::ihash, pf::ieq> keywords = {
+			"begin", "break", "catch", "class", "continue", "data", "define", "do", "dynamicparam",
+			"else", "elseif", "end", "enum", "exit", "filter", "finally", "for", "foreach", "from",
+			"function", "hidden", "if", "in", "inlinescript", "parallel", "param", "process",
+			"return", "sequence", "switch", "throw", "trap", "try", "until", "using", "var",
+			"while", "workflow"
+		};
+		return keywords.contains(text);
+	}
+	static const std::unordered_set<std::string_view> keywords =
+	{
+		"__asm",
+		"__based",
+		"__cdecl",
+		"__declspec",
+		"__except",
+		"__fastcall",
+		"__finally",
+		"__inline",
+		"__int16",
+		"__int32",
+		"__int64",
+		"__int8",
+		"__leave",
+		"__multiple_inheritance",
+		"__single_inheritance",
+		"__stdcall",
+		"__try",
+		"__uuidof",
+		"__virtual_inheritance",
+		"alignas",
+		"alignof",
+		"and",
+		"and_eq",
+		"asm",
+		"auto",
+		"bitand",
+		"bitor",
+		"bool",
+		"break",
+		"case",
+		"catch",
+		"char",
+		"char16_t",
+		"char32_t",
+		"class",
+		"compl",
+		"const",
+		"const_cast",
+		"constexpr",
+		"continue",
+		"decltype",
+		"default",
+		"delete",
+		"dllexport",
+		"dllimport",
+		"do",
+		"double",
+		"dynamic_cast",
+		"else",
+		"enum",
+		"explicit",
+		"export",
+		"extern",
+		"false",
+		"float",
+		"for",
+		"friend",
+		"goto",
+		"if",
+		"inline",
+		"int",
+		"interface",
+		"long",
+		"mutable",
+		"naked",
+		"namespace",
+		"new",
+		"noexcept",
+		"not",
+		"not_eq",
+		"nullptr",
+		"operator",
+		"or",
+		"or_eq",
+		"private",
+		"protected",
+		"public",
+		"register",
+		"reinterpret_cast",
+		"return",
+		"short",
+		"signed",
+		"sizeof",
+		"static",
+		"static_assert",
+		"static_cast",
+		"struct",
+		"switch",
+		"template",
+		"this",
+		"thread_local",
+		"throw",
+		"true",
+		"try",
+		"typedef",
+		"typeid",
+		"typename",
+		"union",
+		"uint32_t",
+		"using",
+		"uuid",
+		"virtual",
+		"void",
+		"volatile",
+		"wchar_t",
+		"while",
+		"xor",
+		"xor_eq"
 	};
 
-	return keywords.contains(narrow);
+	return keywords.contains(text);
 }
 
-static bool is_number(const std::u8string_view text)
+static bool is_number(const std::string_view text)
 {
 	const auto len = static_cast<int>(text.size());
 	if (len == 0) return false;
@@ -186,10 +206,15 @@ static constexpr int COOKIE_EXT_COMMENT = 0x0004;
 static constexpr int COOKIE_STRING = 0x0008;
 static constexpr int COOKIE_CHAR = 0x0010;
 
+static constexpr int max_syntax_blocks = 8192;
+
 static void add_block(text_block* pBuf, int& nActualItems, const int pos, const style colorindex)
 {
 	if (pBuf != nullptr)
 	{
+		if (nActualItems >= max_syntax_blocks)
+			return;
+
 		if (nActualItems == 0 || pBuf[nActualItems - 1]._char_pos <= pos)
 		{
 			pBuf[nActualItems]._char_pos = pos;
@@ -199,7 +224,7 @@ static void add_block(text_block* pBuf, int& nActualItems, const int pos, const 
 	}
 }
 
-uint32_t highlight_cpp(uint32_t dwCookie, const std::u8string_view line_view, text_block* pBuf,
+uint32_t highlight_cpp(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
                        int& nActualItems)
 {
 	if (line_view.empty())
@@ -365,7 +390,7 @@ uint32_t highlight_cpp(uint32_t dwCookie, const std::u8string_view line_view, te
 			{
 				const auto block_len = i - block_start;
 
-				if (is_keyword(line_view.substr(block_start, block_len)))
+				if (is_keyword(syntax_lang::cpp, line_view.substr(block_start, block_len)))
 				{
 					add_block(pBuf, nActualItems, block_start, style::code_keyword);
 				}
@@ -385,7 +410,7 @@ uint32_t highlight_cpp(uint32_t dwCookie, const std::u8string_view line_view, te
 	{
 		const auto block_len = i - block_start;
 
-		if (is_keyword(line_view.substr(block_start, block_len)))
+		if (is_keyword(syntax_lang::cpp, line_view.substr(block_start, block_len)))
 		{
 			add_block(pBuf, nActualItems, block_start, style::code_keyword);
 		}
@@ -400,7 +425,7 @@ uint32_t highlight_cpp(uint32_t dwCookie, const std::u8string_view line_view, te
 	return dwCookie;
 }
 
-uint32_t highlight_text(uint32_t dwCookie, const std::u8string_view line_view, text_block* pBuf,
+uint32_t highlight_text(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
                         int& nActualItems)
 {
 	if (pBuf)
@@ -439,7 +464,7 @@ uint32_t highlight_text(uint32_t dwCookie, const std::u8string_view line_view, t
 	return 0;
 }
 
-uint32_t highlight_hex(uint32_t dwCookie, const std::u8string_view line_view, text_block* pBuf,
+uint32_t highlight_hex(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
                        int& nActualItems)
 {
 	nActualItems = 0;
@@ -456,7 +481,7 @@ uint32_t highlight_hex(uint32_t dwCookie, const std::u8string_view line_view, te
 
 	// Find the ASCII separator "|"
 	const auto bar_pos = line_view.find(u8'|', 10);
-	if (bar_pos != std::u8string_view::npos)
+	if (bar_pos != std::string_view::npos)
 	{
 		// ASCII section -> string color
 		add_block(pBuf, nActualItems, static_cast<int>(bar_pos), style::code_string);
@@ -465,7 +490,7 @@ uint32_t highlight_hex(uint32_t dwCookie, const std::u8string_view line_view, te
 	return 0;
 }
 
-static int find_md_marker(const std::u8string_view text, const int start, const char8_t ch, const int count)
+static int find_md_marker(const std::string_view text, const int start, const char ch, const int count)
 {
 	const auto len = static_cast<int>(text.size());
 	for (int i = start; i <= len - count; i++)
@@ -485,7 +510,7 @@ static int find_md_marker(const std::u8string_view text, const int start, const 
 	return -1;
 }
 
-static int find_md_char(const std::u8string_view text, const int start, const char8_t ch)
+static int find_md_char(const std::string_view text, const int start, const char ch)
 {
 	const auto len = static_cast<int>(text.size());
 	for (int i = start; i < len; i++)
@@ -496,7 +521,7 @@ static int find_md_char(const std::u8string_view text, const int start, const ch
 	return -1;
 }
 
-static void parse_md_inline(const std::u8string_view text, const int start,
+static void parse_md_inline(const std::string_view text, const int start,
                             text_block* pBuf, int& nActualItems)
 {
 	const auto len = static_cast<int>(text.size());
@@ -563,7 +588,7 @@ static void parse_md_inline(const std::u8string_view text, const int start,
 	}
 }
 
-uint32_t highlight_markdown(uint32_t dwCookie, const std::u8string_view line_view, text_block* pBuf,
+uint32_t highlight_markdown(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
                             int& nActualItems)
 {
 	nActualItems = 0;
@@ -620,10 +645,409 @@ uint32_t highlight_markdown(uint32_t dwCookie, const std::u8string_view line_vie
 	return 0;
 }
 
-static bool is_cpp_extension(const std::u8string_view ext)
+uint32_t highlight_rust(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
+                        int& nActualItems)
 {
-	static const std::set<std::u8string_view, pf::iless> extensions = {
-		u8"c", u8"cpp", u8"cxx", u8"cc", u8"h", u8"hh", u8"hpp", u8"hxx", u8"inu8"
+	if (line_view.empty()) return dwCookie & COOKIE_EXT_COMMENT;
+	const auto len = static_cast<int>(line_view.size());
+	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
+	auto bRedefineBlock = true;
+	auto bDecIndex = false;
+	auto block_start = -1;
+	auto i = 0;
+	for (i = 0;; i++)
+	{
+		if (bRedefineBlock)
+		{
+			auto nPos = i;
+			if (bDecIndex) nPos--;
+			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
+				add_block(
+					pBuf, nActualItems, nPos, style::code_comment);
+			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING)) add_block(pBuf, nActualItems, nPos, style::code_string);
+			else if (dwCookie & COOKIE_PREPROCESSOR) add_block(pBuf, nActualItems, nPos, style::code_preprocessor);
+			else add_block(pBuf, nActualItems, nPos, style::normal_text);
+			bRedefineBlock = false;
+			bDecIndex = false;
+		}
+		if (i == len) break;
+		if (dwCookie & COOKIE_COMMENT)
+		{
+			add_block(pBuf, nActualItems, i, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		const auto c = line_view[i];
+		if (dwCookie & COOKIE_STRING)
+		{
+			if (c == '"')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '\\'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_STRING;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (dwCookie & COOKIE_CHAR)
+		{
+			if (c == '\'')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '\\'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_CHAR;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (dwCookie & COOKIE_EXT_COMMENT)
+		{
+			if (i > 0 && c == '/' && line_view[i - 1] == '*')
+			{
+				dwCookie &= ~COOKIE_EXT_COMMENT;
+				bRedefineBlock = true;
+			}
+			continue;
+		}
+		if (i > 0 && c == '/' && line_view[i - 1] == '/')
+		{
+			add_block(pBuf, nActualItems, i - 1, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		if (dwCookie & COOKIE_PREPROCESSOR)
+		{
+			if (i > 0 && c == '*' && line_view[i - 1] == '/')
+			{
+				add_block(pBuf, nActualItems, i - 1, style::code_comment);
+				dwCookie |= COOKIE_EXT_COMMENT;
+			}
+			continue;
+		}
+		if (c == '"')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_STRING;
+			continue;
+		}
+		if (c == '\'')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_CHAR;
+			continue;
+		}
+		if (i > 0 && c == '*' && line_view[i - 1] == '/')
+		{
+			add_block(pBuf, nActualItems, i - 1, style::code_comment);
+			dwCookie |= COOKIE_EXT_COMMENT;
+			continue;
+		}
+		// Rust uses # for attributes, not preprocessor
+		if (!is_space32(c)) bFirstChar = false;
+		if (pBuf == nullptr) continue;
+		if (is_alnum32(c) || c == '_' || c == '.') { if (block_start == -1) block_start = i; }
+		else
+		{
+			if (block_start >= 0)
+			{
+				const auto block_len = i - block_start;
+				if (is_keyword(syntax_lang::rust, line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_keyword);
+				else if (is_number(line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_number);
+				bRedefineBlock = true;
+				bDecIndex = true;
+				block_start = -1;
+			}
+		}
+	}
+	if (block_start >= 0)
+	{
+		const auto block_len = i - block_start;
+		if (is_keyword(syntax_lang::rust, line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_keyword);
+		else if (is_number(line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_number);
+	}
+	dwCookie &= COOKIE_EXT_COMMENT;
+	return dwCookie;
+}
+
+uint32_t highlight_python(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
+                          int& nActualItems)
+{
+	if (line_view.empty()) return dwCookie & COOKIE_EXT_COMMENT;
+	const auto len = static_cast<int>(line_view.size());
+	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
+	auto bRedefineBlock = true;
+	auto bDecIndex = false;
+	auto block_start = -1;
+	auto i = 0;
+	for (i = 0;; i++)
+	{
+		if (bRedefineBlock)
+		{
+			auto nPos = i;
+			if (bDecIndex) nPos--;
+			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
+				add_block(
+					pBuf, nActualItems, nPos, style::code_comment);
+			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING)) add_block(pBuf, nActualItems, nPos, style::code_string);
+			else add_block(pBuf, nActualItems, nPos, style::normal_text);
+			bRedefineBlock = false;
+			bDecIndex = false;
+		}
+		if (i == len) break;
+		if (dwCookie & COOKIE_COMMENT)
+		{
+			add_block(pBuf, nActualItems, i, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		const auto c = line_view[i];
+		// Simplified quote escaping for Python
+		if (dwCookie & COOKIE_STRING)
+		{
+			if (c == '"')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '\\'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_STRING;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (dwCookie & COOKIE_CHAR)
+		{
+			if (c == '\'')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '\\'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_CHAR;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (c == '#')
+		{
+			add_block(pBuf, nActualItems, i, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		if (c == '"')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_STRING;
+			continue;
+		}
+		if (c == '\'')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_CHAR;
+			continue;
+		}
+		if (pBuf == nullptr) continue;
+		if (is_alnum32(c) || c == '_' || c == '.') { if (block_start == -1) block_start = i; }
+		else
+		{
+			if (block_start >= 0)
+			{
+				const auto block_len = i - block_start;
+				if (is_keyword(syntax_lang::python, line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_keyword);
+				else if (is_number(line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_number);
+				bRedefineBlock = true;
+				bDecIndex = true;
+				block_start = -1;
+			}
+		}
+	}
+	if (block_start >= 0)
+	{
+		const auto block_len = i - block_start;
+		if (is_keyword(syntax_lang::python, line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_keyword);
+		else if (is_number(line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_number);
+	}
+	return dwCookie & COOKIE_EXT_COMMENT;
+}
+
+uint32_t highlight_ps1(uint32_t dwCookie, const std::string_view line_view, text_block* pBuf,
+                       int& nActualItems)
+{
+	if (line_view.empty()) return dwCookie & COOKIE_EXT_COMMENT;
+	const auto len = static_cast<int>(line_view.size());
+	auto bFirstChar = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
+	auto bRedefineBlock = true;
+	auto bDecIndex = false;
+	auto block_start = -1;
+	auto i = 0;
+	for (i = 0;; i++)
+	{
+		if (bRedefineBlock)
+		{
+			auto nPos = i;
+			if (bDecIndex) nPos--;
+			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
+				add_block(
+					pBuf, nActualItems, nPos, style::code_comment);
+			else if (dwCookie & (COOKIE_CHAR | COOKIE_STRING)) add_block(pBuf, nActualItems, nPos, style::code_string);
+			else add_block(pBuf, nActualItems, nPos, style::normal_text);
+			bRedefineBlock = false;
+			bDecIndex = false;
+		}
+		if (i == len) break;
+		if (dwCookie & COOKIE_COMMENT)
+		{
+			add_block(pBuf, nActualItems, i, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		const auto c = line_view[i];
+		// PS uses backtick  to escape but let's keep it simple here or standard slash
+		if (dwCookie & COOKIE_STRING)
+		{
+			if (c == '"')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '`'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_STRING;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (dwCookie & COOKIE_CHAR)
+		{
+			if (c == '\'')
+			{
+				int bs = 0;
+				for (int j = i - 1; j >= 0 && line_view[j] == '`'; j--) bs++;
+				if (bs % 2 == 0)
+				{
+					dwCookie &= ~COOKIE_CHAR;
+					bRedefineBlock = true;
+				}
+			}
+			continue;
+		}
+		if (dwCookie & COOKIE_EXT_COMMENT)
+		{
+			if (i > 0 && c == '>' && line_view[i - 1] == '#')
+			{
+				dwCookie &= ~COOKIE_EXT_COMMENT;
+				bRedefineBlock = true;
+			}
+			continue;
+		}
+		if (i > 0 && c == '#' && line_view[i - 1] == '<')
+		{
+			add_block(pBuf, nActualItems, i - 1, style::code_comment);
+			dwCookie |= COOKIE_EXT_COMMENT;
+			continue;
+		}
+		if (c == '#' && (i == 0 || line_view[i - 1] != '<'))
+		{
+			add_block(pBuf, nActualItems, i, style::code_comment);
+			dwCookie |= COOKIE_COMMENT;
+			break;
+		}
+		if (c == '"')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_STRING;
+			continue;
+		}
+		if (c == '\'')
+		{
+			add_block(pBuf, nActualItems, i, style::code_string);
+			dwCookie |= COOKIE_CHAR;
+			continue;
+		}
+		if (pBuf == nullptr) continue;
+		if (is_alnum32(c) || c == '_' || c == '.' || c == '-') { if (block_start == -1) block_start = i; }
+		else
+		{
+			if (block_start >= 0)
+			{
+				const auto block_len = i - block_start;
+				if (is_keyword(syntax_lang::ps1, line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_keyword);
+				else if (is_number(line_view.substr(block_start, block_len)))
+					add_block(
+						pBuf, nActualItems, block_start, style::code_number);
+				bRedefineBlock = true;
+				bDecIndex = true;
+				block_start = -1;
+			}
+		}
+	}
+	if (block_start >= 0)
+	{
+		const auto block_len = i - block_start;
+		if (is_keyword(syntax_lang::ps1, line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_keyword);
+		else if (is_number(line_view.substr(block_start, block_len)))
+			add_block(
+				pBuf, nActualItems, block_start, style::code_number);
+	}
+	return dwCookie & COOKIE_EXT_COMMENT;
+}
+
+static bool is_ps1_extension(const std::string_view ext)
+{
+	static const std::set<std::string_view, pf::iless> extensions = {
+		"ps1", "psm1", "psd1"
+	};
+	return extensions.contains(ext);
+}
+
+static bool is_python_extension(const std::string_view ext)
+{
+	static const std::set<std::string_view, pf::iless> extensions = {
+		"py", "pyw"
+	};
+	return extensions.contains(ext);
+}
+
+static bool is_rust_extension(const std::string_view ext)
+{
+	static const std::set<std::string_view, pf::iless> extensions = {
+		"rs"
+	};
+	return extensions.contains(ext);
+}
+
+static bool is_cpp_extension(const std::string_view ext)
+{
+	static const std::set<std::string_view, pf::iless> extensions = {
+		"c", "cpp", "cxx", "cc", "h", "hh", "hpp", "hxx", "in"
 	};
 
 	return extensions.contains(ext);
@@ -644,9 +1068,15 @@ highlight_fn select_highlighter(const doc_type type, const pf::file_path& path)
 	}
 
 	auto ext = path.extension();
-	if (!ext.empty() && ext.starts_with(L'.')) ext = ext.substr(1);
+	if (!ext.empty() && ext.starts_with('.')) ext = ext.substr(1);
 
 	if (is_cpp_extension(ext))
 		return highlight_cpp;
+	if (is_rust_extension(ext))
+		return highlight_rust;
+	if (is_python_extension(ext))
+		return highlight_python;
+	if (is_ps1_extension(ext))
+		return highlight_ps1;
 	return highlight_text;
 }

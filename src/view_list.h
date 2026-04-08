@@ -9,7 +9,7 @@ struct list_view_item
 {
 	pf::irect bounds;
 
-	std::u8string name;
+	std::string name;
 	index_item_ptr source;
 
 	int depth = 0;
@@ -90,7 +90,7 @@ protected:
 			text_bounds.left += indent + 4;
 			text_bounds = text_bounds.inflate(-styles.padding_x, -styles.padding_y);
 
-			const auto line_str = pf::format(u8"{}: ", item->line_number + 1);
+			const auto line_str = std::format("{}: ", item->line_number + 1);
 			const auto line_sz = dc.measure_text(line_str, font_spec);
 
 			auto line_rect = text_bounds;
@@ -106,7 +106,7 @@ protected:
 			const auto name_len = static_cast<int>(name.size());
 			const auto full_width = dc.measure_text(name, font_spec).cx;
 
-			std::u8string display_text;
+			std::string display_text;
 			int display_match_start = item->text_match_start;
 
 			if (full_width <= avail_width || item->text_match_length <= 0)
@@ -115,7 +115,7 @@ protected:
 			}
 			else
 			{
-				const auto ellipsis_width = dc.measure_text(u8"...", font_spec).cx;
+				const auto ellipsis_width = dc.measure_text("...", font_spec).cx;
 				const int match_start = item->text_match_start;
 				const int match_end = match_start + item->text_match_length;
 				int vis_start = match_start;
@@ -151,10 +151,10 @@ protected:
 				const bool suffix = vis_end < name_len;
 
 				display_text.clear();
-				if (prefix) display_text += u8"...";
+				if (prefix) display_text += "...";
 				display_match_start = static_cast<int>(display_text.size()) + (match_start - vis_start);
 				display_text += name.substr(vis_start, vis_end - vis_start);
-				if (suffix) display_text += u8"...";
+				if (suffix) display_text += "...";
 			}
 
 			if (item->line_match_pos >= 0 && item->text_match_length > 0 &&
@@ -201,16 +201,16 @@ protected:
 				text_color = pf::color_t{255, 80, 80};
 
 			const auto text_sz = dc.measure_text(item->name, font_spec);
-			auto display_text = std::u8string_view(item->name);
-			std::u8string ellipsized;
+			auto display_text = std::string_view(item->name);
+			std::string ellipsized;
 			if (text_sz.cx > text_bounds.width())
 			{
-				const auto ellipsis_sz = dc.measure_text(u8"...", font_spec);
+				const auto ellipsis_sz = dc.measure_text("...", font_spec);
 				const auto avail = text_bounds.width() - ellipsis_sz.cx;
 				size_t fit = display_text.size();
 				while (fit > 0 && dc.measure_text(display_text.substr(0, fit), font_spec).cx > avail)
 					--fit;
-				ellipsized = std::u8string(display_text.substr(0, fit)) + u8"...";
+				ellipsized = std::string(display_text.substr(0, fit)) + "...";
 				display_text = ellipsized;
 			}
 			dc.draw_text(text_bounds.left, text_bounds.top, text_bounds, display_text, font_spec, text_color, bg);
@@ -223,7 +223,7 @@ protected:
 
 	virtual uint32_t on_timer(pf::window_frame_ptr& window, uint32_t id) { return 0; }
 
-	virtual uint32_t on_char(pf::window_frame_ptr& window, char8_t ch) { return 0; }
+	virtual uint32_t on_char(pf::window_frame_ptr& window, char ch) { return 0; }
 
 	virtual uint32_t on_key_down(pf::window_frame_ptr& window, const unsigned int vk)
 	{
@@ -609,7 +609,7 @@ public:
 
 	void scroll_to(const pf::window_frame_ptr& window, int offset)
 	{
-		offset = std::clamp(offset, 0, _content_extent.cy - _view_extent.cy);
+		offset = std::clamp(offset, 0, std::max(0, _content_extent.cy - _view_extent.cy));
 
 		if (_scroll_offset.y != offset)
 		{

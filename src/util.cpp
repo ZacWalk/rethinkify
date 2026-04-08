@@ -4,12 +4,12 @@
 #include "util.h"
 
 
-constexpr uint8_t F(const uint8_t x)
+static constexpr uint8_t aes_F(const uint8_t x)
 {
 	return x << 1 ^ (x >> 7 & 1) * 0x1b;
 }
 
-constexpr uint8_t FD(const uint8_t x)
+static constexpr uint8_t aes_FD(const uint8_t x)
 {
 	return x >> 1 ^ (x & 1 ? 0x8d : 0);
 }
@@ -204,7 +204,7 @@ static void aes_expandEncKey(uint8_t* k, uint8_t* rc)
 	k[1] ^= rj_sbox(k[30]);
 	k[2] ^= rj_sbox(k[31]);
 	k[3] ^= rj_sbox(k[28]);
-	*rc = F(*rc);
+	*rc = aes_F(*rc);
 
 	for (i = 4; i < 16; i += 4)
 		k[i] ^= k[i - 4], k[i + 1] ^= k[i - 3],
@@ -236,7 +236,7 @@ static void aes_expandDecKey(uint8_t* k, uint8_t* rc)
 		k[i + 0] ^= k[i - 4], k[i + 1] ^= k[i - 3],
 			k[i + 2] ^= k[i - 2], k[i + 3] ^= k[i - 1];
 
-	*rc = FD(*rc);
+	*rc = aes_FD(*rc);
 	k[0] ^= rj_sbox(k[29]) ^ *rc;
 	k[1] ^= rj_sbox(k[30]);
 	k[2] ^= rj_sbox(k[31]);
@@ -246,7 +246,8 @@ static void aes_expandDecKey(uint8_t* k, uint8_t* rc)
 
 aes256::aes256(const std::span<const uint8_t> k)
 {
-	assert(k.size() >= 32);
+	if (k.size() < 32)
+		throw std::invalid_argument("AES-256 key must be at least 32 bytes");
 	uint8_t rcon = 1;
 
 	std::copy_n(k.data(), sizeof(key), key);
@@ -257,9 +258,10 @@ aes256::aes256(const std::span<const uint8_t> k)
 
 aes256::~aes256()
 {
-	std::ranges::fill(key, uint8_t{0});
-	std::ranges::fill(enckey, uint8_t{0});
-	std::ranges::fill(deckey, uint8_t{0});
+	volatile uint8_t* p;
+	p = key; for (size_t i = 0; i < sizeof(key); ++i) p[i] = 0;
+	p = enckey; for (size_t i = 0; i < sizeof(enckey); ++i) p[i] = 0;
+	p = deckey; for (size_t i = 0; i < sizeof(deckey); ++i) p[i] = 0;
 } /* aes256_done */
 
 void aes256::encrypt_ecb(uint8_t* buf)
@@ -556,15 +558,15 @@ void sha256::finish(uint8_t digest[32])
 
 // ── String utilities ────────────────────────────────────────────────────────────
 
-size_t find_in_text(const std::u8string_view text, const std::u8string_view pattern, const bool match_case)
+size_t find_in_text(const std::string_view text, const std::string_view pattern, const bool match_case)
 {
-	if (text.empty()) return std::u8string_view::npos;
-	if (pattern.empty()) return std::u8string_view::npos;
+	if (text.empty()) return std::string_view::npos;
+	if (pattern.empty()) return std::string_view::npos;
 
 	const auto text_len = text.size();
 	const auto pat_len = pattern.size();
 
-	if (pat_len > text_len) return std::u8string_view::npos;
+	if (pat_len > text_len) return std::string_view::npos;
 
 	for (size_t pos = 0; pos <= text_len - pat_len; ++pos)
 	{
@@ -581,23 +583,23 @@ size_t find_in_text(const std::u8string_view text, const std::u8string_view patt
 		}
 		if (found) return pos;
 	}
-	return std::u8string_view::npos;
+	return std::string_view::npos;
 }
 
-std::u8string combine(const std::vector<std::u8string>& lines, const std::u8string_view endl)
+std::string combine(const std::vector<std::string>& lines, const std::string_view endl)
 {
-	return join(lines, [](const std::u8string& s) -> std::u8string_view { return s; }, endl);
+	return join(lines, [](const std::string& s) -> std::string_view { return s; }, endl);
 }
 
-std::u8string replace(const std::u8string_view s, const std::u8string_view find,
-                      const std::u8string_view replacement)
+std::string replace(const std::string_view s, const std::string_view find,
+                    const std::string_view replacement)
 {
-	std::u8string result(s);
+	std::string result(s);
 	size_t pos = 0;
 	const auto findLength = find.size();
 	const auto replacementLength = replacement.size();
 
-	while ((pos = result.find(find, pos)) != std::u8string::npos)
+	while ((pos = result.find(find, pos)) != std::string::npos)
 	{
 		result.replace(pos, findLength, replacement);
 		pos += replacementLength;
@@ -609,14 +611,15 @@ std::u8string replace(const std::u8string_view s, const std::u8string_view find,
 
 // ── Encoding / hashing ─────────────────────────────────────────────────────────
 
-std::u8string to_base64(const std::span<const uint8_t> input)
+std::string to_base64(const std::span<const uint8_t> input)
 {
 	static const std::string base64_chars =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz"
 		"0123456789+/";
 
-	std::u8string ret;
+	std::string ret;
+	ret.reserve((input.size() + 2) / 3 * 4);
 	int i = 0;
 	int j = 0;
 	uint8_t char_array_3[3];
@@ -658,10 +661,10 @@ std::u8string to_base64(const std::span<const uint8_t> input)
 	return ret;
 }
 
-std::u8string to_hex(const std::span<const uint8_t> src)
+std::string to_hex(const std::span<const uint8_t> src)
 {
-	static constexpr char8_t digits[] = u8"0123456789abcdef";
-	std::u8string result;
+	static constexpr char digits[] = "0123456789abcdef";
+	std::string result;
 	result.reserve(src.size() * 2);
 
 	for (const auto ch : src)
@@ -673,9 +676,10 @@ std::u8string to_hex(const std::span<const uint8_t> src)
 	return result;
 }
 
-std::vector<uint8_t> hex_to_data(const std::u8string_view text)
+std::vector<uint8_t> hex_to_data(const std::string_view text)
 {
 	std::vector<uint8_t> result;
+	result.reserve((text.size() + 1) / 2);
 
 	auto high_part = text.size() % 2 == 0;
 
@@ -684,10 +688,13 @@ std::vector<uint8_t> hex_to_data(const std::u8string_view text)
 
 	for (const auto c : text)
 	{
+		const auto nibble = char_to_hex(c);
+		if (nibble < 0) continue;
+
 		if (high_part)
-			result.push_back(0x10 * char_to_hex(c));
+			result.push_back(static_cast<uint8_t>(0x10 * nibble));
 		else
-			result.back() += char_to_hex(c);
+			result.back() += static_cast<uint8_t>(nibble);
 
 		high_part = !high_part;
 	}

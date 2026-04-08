@@ -1,6 +1,6 @@
 ﻿# Rethinkify Specification
 
-Rethinkify is a lightweight AI-agent-enabled text editor with multi-file search, Markdown, CSV, charting, and other financial features, written in C++. It is intended to support financial research using various text files.
+Rethinkify is a lightweight AI-agent-enabled text editor with multi-file search, Markdown, CSV, and other features, written in C++. It is intended to support research using various text files.
 
 Command-line and other non-interactive startup modes may read persisted configuration, but they must not overwrite it. Configuration is only written during full interactive app sessions.
 
@@ -10,7 +10,7 @@ The window is split into two panes separated by a draggable vertical splitter:
 
 - **Left panel** — either the folder browser or the search panel (toggled with `Ctrl+Shift+F`)
 - **Right panel** — subdivided vertically by a draggable horizontal splitter:
-  - **Text/markdown/hex/CSV/chart view** — the active document (top)
+  - **Text/markdown/hex/CSV view** — the active document (top)
   - **Console view** — command input and output (bottom)
 - **Splitters** — draggable dividers (5px); highlight on hover, change color while tracking. Both splitters share a common `splitter` type defined in `ui.h`.
 
@@ -167,19 +167,6 @@ Opened with `Ctrl+Shift+F`. Press `Escape` to return to the folder view.
 - Read-only; scrolling with keyboard (arrows, Page Up/Down, Ctrl+Home/End) and mouse wheel
 - Press Escape to return to text editing mode
 
-## Chart View
-
-- Available for CSV files containing trade data (columns: price, qty, time)
-- Toggled via View > Chart View menu item (Ctrl+K) or the `chart` console command
-- Aggregates tick-level trades into OHLC (Open/High/Low/Close) candlestick bars
-- Candle interval is auto-selected based on data time span: 10s for <1h, 1m for <1d, 5m otherwise
-- Green candles for bullish (close >= open), red for bearish
-- Vertical price axis with grid lines on the left
-- Horizontal scrolling via mouse wheel, arrow keys, or minimap drag
-- Minimap at the bottom shows the full data range as a reduced chart with a viewport indicator
-- Dragging the minimap viewport scrolls the main chart
-- Press Escape to return to CSV table view
-
 ## Console View
 
 The console is shown below the text view, separated by a draggable horizontal splitter.
@@ -257,7 +244,6 @@ Each command also declares where it is available:
 | `cp` | `copy` | Copy a file or folder inside the current root folder |
 | `mv` | `move` | Move a file or folder inside the current root folder |
 | `rename` | `rename` | Rename a file or folder within its current parent folder |
-| `q` | `quote` | Stock quote: `q <ticker>` prints markdown to the console; `q <ticker> > file.md` saves it to a file and opens that file |
 | `echo` | `echo` | Echo text to the console, or create/open a file with `echo "text" > file.md` |
 | `?`, `calc` | `calc` | Evaluate a simple math expression such as `calc 1 + 2 * (3 + 4)` |
 | `a` | `ai` | Ask Gemini to inspect or edit files in the current root: `a "question"` |
@@ -281,7 +267,7 @@ Each command also declares where it is available:
 - `sum` supports `.md`, `.markdown`, `.txt`, `.text`, `.log`, and `.pdf` source documents
 - PDF summarization sends the PDF bytes directly to Gemini as inline document input; PDFs larger than 50 MB are rejected by the command and would require Files API support instead
 - Agent-visible commands are filtered from the normal UI command set; clipboard and other UI-only commands are not exposed to Gemini
-- Agent commands may create and open files in the current root, including `q <ticker> > file.md` and `echo "text" > file.md`
+- Agent commands may create and open files in the current root, including `echo "text" > file.md`
 - Gemini must not change the root folder or access files outside the current root
 
 ### Output area
@@ -391,7 +377,6 @@ view_base — pixel scrolling (extents, offset, scrollbars)
 │   │   ├── edit_doc_view — editable text (char input, undo/redo)
 │   │   ├── hex_doc_view — hex byte display
 │   │   ├── csv_doc_view — CSV table display
-│   │   ├── chart_doc_view — OHLC candlestick chart for trade CSV
 │   │   └── markdown_doc_view — rendered markdown
 │   └── console_view — command input + scrollable output
 └── list_view — item list (folder browser, search results)
@@ -413,28 +398,9 @@ Spell checking is integrated into highlighting: when enabled, the edit view and 
 ```
 rethinkify64d.exe /test              — Run all tests and print results to stdout
 rethinkify64d.exe /download:<url>    — Download URL contents and print to stdout
-rethinkify64d.exe /quote:<ticker>    — Fetch stock quote and print generated markdown to stdout
 rethinkify64d.exe /spell:<word>      — Probe Windows spell checker status and print validity/suggestions for a word
 rethinkify64d.exe <file>             — Open a specific file
 ```
-
-## Stock Quote
-
-The console command `q <ticker>` (or `quote <ticker>`) fetches stock data from Yahoo Finance and generates a markdown summary document. The generated file (e.g. `msft.md`) opens automatically in markdown preview mode.
-
-- Downloads price data from the Yahoo Finance chart API (`query1.finance.yahoo.com/v8/finance/chart/`)
-- Fetches a Yahoo Finance API crumb from `query2.finance.yahoo.com/v1/test/getcrumb`
-- Uses the crumb to fetch analyst and earnings data from the quoteSummary API (`query1.finance.yahoo.com/v10/finance/quoteSummary/`)
-- Uses a Chrome-compatible user agent for all HTTP requests
-- Generates a markdown document containing:
-  - Company name and exchange
-  - Company profile (sector, industry, employee count, website, business summary)
-  - Current price with change and percentage
-  - Trading data (previous close, day range, 52-week range, volume)
-  - Analyst price targets (mean, median, high, low target prices, recommendation, number of analysts)
-  - Analyst recommendations table (strong buy, buy, hold, sell, strong sell counts by period)
-  - Quarterly earnings table (EPS actual vs estimate with surprise percentage)
-  - Earnings estimates table (EPS and revenue estimates with growth by period)
 
 ## Web Requests
 

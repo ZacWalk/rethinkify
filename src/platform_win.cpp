@@ -50,8 +50,8 @@ pf::file_path tmp_folder()
 	wchar_t raw_path[MAX_PATH];
 	//SHGetSpecialFolderPathW(GetActiveWindow(), raw_path, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, TRUE);
 	GetTempPathW(MAX_PATH, raw_path);
-	const auto w_result = pf::utf16_to_utf8(raw_path);
-	return { w_result };
+	const auto result = pf::utf16_to_utf8(raw_path);
+	return pf::file_path{result};
 }
 
 // ── Globals ────────────────────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ public:
 		fill_solid_rect(pf::irect(x, y, x + cx, y + cy), color);
 	}
 
-	void draw_text(const int x, const int y, const pf::irect& clip, const std::u8string_view text,
+	void draw_text(const int x, const int y, const pf::irect& clip, const std::string_view text,
 	               const pf::font& f, const pf::color_t text_color, const pf::color_t bg_color) override
 	{
 		select_font(f);
@@ -390,7 +390,7 @@ public:
 		ExtTextOutW(_hdc, x, y, ETO_CLIPPED | ETO_OPAQUE, &rc, wtext.c_str(), static_cast<UINT>(wtext.size()), nullptr);
 	}
 
-	pf::isize measure_text(const std::u8string_view text, const pf::font& f) const override
+	pf::isize measure_text(const std::string_view text, const pf::font& f) const override
 	{
 		select_font(f);
 		const auto wtext = pf::utf8_to_utf16(text);
@@ -442,7 +442,7 @@ public:
 		if (_font != _orig_font) SelectObject(_hdc, _orig_font);
 	}
 
-	pf::isize measure_text(const std::u8string_view text, const pf::font& f) const override
+	pf::isize measure_text(const std::string_view text, const pf::font& f) const override
 	{
 		select_font(f);
 		const auto wtext = pf::utf8_to_utf16(text);
@@ -642,14 +642,14 @@ public:
 		return IsWindowVisible(m_hWnd) != 0;
 	}
 
-	void set_text(const std::u8string_view text) override
+	void set_text(const std::string_view text) override
 	{
 		SetWindowTextW(m_hWnd, pf::utf8_to_utf16(text).c_str());
 	}
 
-	std::u8string text_from_clipboard() override
+	std::string text_from_clipboard() override
 	{
-		std::u8string result;
+		std::string result;
 		if (OpenClipboard(m_hWnd))
 		{
 			const auto hData = GetClipboardData(CF_UNICODETEXT);
@@ -667,7 +667,7 @@ public:
 		return result;
 	}
 
-	bool text_to_clipboard(const std::u8string_view text) override
+	bool text_to_clipboard(const std::string_view text) override
 	{
 		bool success = false;
 		if (OpenClipboard(m_hWnd))
@@ -682,6 +682,8 @@ public:
 				wcsncpy_s(pszData, len, wtext.c_str(), wtext.size());
 				GlobalUnlock(hData);
 				success = SetClipboardData(CF_UNICODETEXT, hData) != nullptr;
+				if (!success)
+					GlobalFree(hData);
 			}
 			CloseClipboard();
 		}
@@ -727,7 +729,7 @@ public:
 		return (GetAsyncKeyState(vk) & 0x8000) != 0;
 	}
 
-	pf::window_frame_ptr create_child(const std::u8string_view class_name,
+	pf::window_frame_ptr create_child(const std::string_view class_name,
 	                                  const uint32_t style, const pf::color_t background) const & override
 	{
 		auto child = std::make_shared<win_impl>();
@@ -742,7 +744,7 @@ public:
 		DestroyWindow(m_hWnd);
 	}
 
-	int message_box(const std::u8string_view text, const std::u8string_view title, const uint32_t style) override
+	int message_box(const std::string_view text, const std::string_view title, const uint32_t style) override
 	{
 		return MessageBoxW(m_hWnd, pf::utf8_to_utf16(text).c_str(), pf::utf8_to_utf16(title).c_str(), style);
 	}
@@ -940,7 +942,11 @@ public:
 				const auto result = _reactor->handle_message(self, *mt, wParam, lParam);
 
 				if (uMsg == WM_DESTROY)
-					PostQuitMessage(0);
+				{
+					_self_ref.reset();
+					if (GetParent(hWnd) == nullptr)
+						PostQuitMessage(0);
+				}
 
 				return result;
 			}
@@ -958,7 +964,7 @@ public:
 				if (*kmt == pf::keyboard_message_type::key_down)
 					params.vk = static_cast<unsigned int>(wParam);
 				else
-					params.ch = static_cast<char8_t>(wParam);
+					params.ch = static_cast<char>(wParam);
 
 				return _reactor->handle_keyboard(self, *kmt, params);
 			}
@@ -1189,7 +1195,7 @@ inline BOOL center_window(const HWND m_hWnd, HWND hWndCenter = nullptr) noexcept
 	                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-static std::u8string window_text(const HWND h)
+static std::string window_text(const HWND h)
 {
 	const auto len = GetWindowTextLengthW(h);
 	if (len == 0) return {};
@@ -1203,74 +1209,74 @@ static std::u8string window_text(const HWND h)
 
 // ── Key binding formatting ─────────────────────────────────────────────────────
 
-std::u8string pf::format_key_binding(const key_binding& kb)
+std::string pf::format_key_binding(const key_binding& kb)
 {
 	if (kb.empty()) return {};
 
-	std::u8string result;
+	std::string result;
 
 	if (kb.modifiers & key_mod::ctrl)
-		result += u8"Ctrl+";
+		result += "Ctrl+";
 	if (kb.modifiers & key_mod::alt)
-		result += u8"Alt+";
+		result += "Alt+";
 	if (kb.modifiers & key_mod::shift)
-		result += u8"Shift+";
+		result += "Shift+";
 
 	switch (kb.key)
 	{
-	case platform_key::Back: result += u8"Backspace";
+	case platform_key::Back: result += "Backspace";
 		break;
-	case platform_key::Tab: result += u8"Tab";
+	case platform_key::Tab: result += "Tab";
 		break;
-	case platform_key::Return: result += u8"Enter";
+	case platform_key::Return: result += "Enter";
 		break;
-	case platform_key::Escape: result += u8"Esc";
+	case platform_key::Escape: result += "Esc";
 		break;
-	case platform_key::Space: result += u8"Space";
+	case platform_key::Space: result += "Space";
 		break;
-	case platform_key::Prior: result += u8"Page Up";
+	case platform_key::Prior: result += "Page Up";
 		break;
-	case platform_key::Next: result += u8"Page Down";
+	case platform_key::Next: result += "Page Down";
 		break;
-	case platform_key::End: result += u8"End";
+	case platform_key::End: result += "End";
 		break;
-	case platform_key::Home: result += u8"Home";
+	case platform_key::Home: result += "Home";
 		break;
-	case platform_key::Left: result += u8"Left";
+	case platform_key::Left: result += "Left";
 		break;
-	case platform_key::Up: result += u8"Up";
+	case platform_key::Up: result += "Up";
 		break;
-	case platform_key::Right: result += u8"Right";
+	case platform_key::Right: result += "Right";
 		break;
-	case platform_key::Down: result += u8"Down";
+	case platform_key::Down: result += "Down";
 		break;
-	case platform_key::Insert: result += u8"Ins";
+	case platform_key::Insert: result += "Ins";
 		break;
-	case platform_key::Delete: result += u8"Del";
+	case platform_key::Delete: result += "Del";
 		break;
-	case platform_key::F1: result += u8"F1";
+	case platform_key::F1: result += "F1";
 		break;
-	case platform_key::F3: result += u8"F3";
+	case platform_key::F3: result += "F3";
 		break;
-	case platform_key::F5: result += u8"F5";
+	case platform_key::F5: result += "F5";
 		break;
-	case platform_key::F6: result += u8"F6";
+	case platform_key::F6: result += "F6";
 		break;
-	case platform_key::F7: result += u8"F7";
+	case platform_key::F7: result += "F7";
 		break;
-	case platform_key::F8: result += u8"F8";
+	case platform_key::F8: result += "F8";
 		break;
-	case platform_key::F9: result += u8"F9";
+	case platform_key::F9: result += "F9";
 		break;
-	case platform_key::F10: result += u8"F10";
+	case platform_key::F10: result += "F10";
 		break;
 	default:
 		if (kb.key >= 'A' && kb.key <= 'Z')
-			result += static_cast<char8_t>(kb.key);
+			result += static_cast<char>(kb.key);
 		else if (kb.key >= '0' && kb.key <= '9')
-			result += static_cast<char8_t>(kb.key);
+			result += static_cast<char>(kb.key);
 		else
-			result += format(u8"0x{:02X}", kb.key);
+			result += std::format("0x{:02X}", kb.key);
 		break;
 	}
 
@@ -1304,12 +1310,12 @@ void pf::platform_sleep(const int milliseconds)
 
 // ── Resource Loading ───────────────────────────────────────────────────────────
 
-void* pf::platform_load_resource(const std::u8string_view name, const std::u8string_view type)
+void* pf::platform_load_resource(const std::string_view name, const std::string_view type)
 {
 	const auto wname = utf8_to_utf16(name);
 	const auto wtype = utf8_to_utf16(type);
 	LPCWSTR resType = wtype.c_str();
-	if (type == u8"BITMAP"sv)
+	if (type == "BITMAP"sv)
 		resType = RT_BITMAP;
 
 	const HRSRC hResInfo = FindResourceW(nullptr, wname.c_str(), resType);
@@ -1321,9 +1327,9 @@ void* pf::platform_load_resource(const std::u8string_view name, const std::u8str
 	return LockResource(hResData);
 }
 
-std::optional<pf::bitmap_data> pf::platform_load_bitmap_resource(const std::u8string_view resName)
+std::optional<pf::bitmap_data> pf::platform_load_bitmap_resource(const std::string_view resName)
 {
-	const auto pData = static_cast<const uint8_t*>(platform_load_resource(resName, u8"BITMAP"));
+	const auto pData = static_cast<const uint8_t*>(platform_load_resource(resName, "BITMAP"));
 	if (!pData) return std::nullopt;
 
 	const auto bih = reinterpret_cast<const BITMAPINFOHEADER*>(pData);
@@ -1377,12 +1383,12 @@ std::optional<pf::bitmap_data> pf::platform_load_bitmap_resource(const std::u8st
 
 // ── Utility ────────────────────────────────────────────────────────────────────
 
-void pf::platform_show_error(const std::u8string_view message, const std::u8string_view title)
+void pf::platform_show_error(const std::string_view message, const std::string_view title)
 {
 	MessageBoxW(nullptr, utf8_to_utf16(message).c_str(), utf8_to_utf16(title).c_str(), MB_OK);
 }
 
-void pf::debug_trace(const std::u8string& msg)
+void pf::debug_trace(const std::string& msg)
 {
 #ifdef _DEBUG
 	const auto wmsg = pf::utf8_to_utf16(msg);
@@ -1424,7 +1430,7 @@ namespace
 	}
 }
 
-void pf::write_stdout(const std::u8string_view text)
+void pf::write_stdout(const std::string_view text)
 {
 	ensure_cli_stdout_bound();
 
@@ -1474,6 +1480,11 @@ static HMENU BuildPopupMenu(const std::vector<pf::menu_command>& items)
 void pf::platform_set_menu(std::vector<menu_command> menuDef)
 {
 	g_menuDef = std::move(menuDef);
+	if (g_hMenu)
+	{
+		SetMenu(g_hWnd, nullptr);
+		DestroyMenu(g_hMenu);
+	}
 	g_hMenu = CreateMenu();
 	for (auto& top : g_menuDef)
 	{
@@ -1544,11 +1555,11 @@ static void run_ui_tasks()
 		catch (const std::exception& e)
 		{
 			pf::debug_trace(
-				u8"UI task exception: " + std::u8string(reinterpret_cast<const char8_t*>(e.what())) + u8"\n");
+				"UI task exception: " + std::string(e.what()) + "\n");
 		}
 		catch (...)
 		{
-			pf::debug_trace(u8"UI task: unknown exception\n");
+			pf::debug_trace("UI task: unknown exception\n");
 		}
 	}
 }
@@ -1573,12 +1584,12 @@ static DWORD WINAPI async_thread_proc(LPVOID /*param*/)
 					catch (const std::exception& e)
 					{
 						pf::debug_trace(
-							u8"Async task exception: " + std::u8string(reinterpret_cast<const char8_t*>(e.what())) +
-							u8"\n");
+							"Async task exception: " + std::string(e.what()) +
+							"\n");
 					}
 					catch (...)
 					{
-						pf::debug_trace(u8"Async task: unknown exception\n");
+						pf::debug_trace("Async task: unknown exception\n");
 					}
 				}
 			}
@@ -1678,13 +1689,13 @@ cleanup:
 // ── File I/O ───────────────────────────────────────────────────────────────────
 
 
-bool pf::platform_move_file_replace(const char8_t* source, const char8_t* dest)
+bool pf::platform_move_file_replace(const char* source, const char* dest)
 {
 	return MoveFileExW(utf8_to_utf16(source).c_str(), utf8_to_utf16(dest).c_str(),
 	                   MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
-std::u8string pf::platform_temp_file_path(const char8_t* prefix)
+std::string pf::platform_temp_file_path(const char* prefix)
 {
 	wchar_t dir[MAX_PATH + 1] = {0};
 	GetTempPathW(MAX_PATH, dir);
@@ -1693,9 +1704,9 @@ std::u8string pf::platform_temp_file_path(const char8_t* prefix)
 	return utf16_to_utf8(result);
 }
 
-std::u8string pf::platform_last_error_message()
+std::string pf::platform_last_error_message()
 {
-	std::u8string result;
+	std::string result;
 	const auto error = GetLastError();
 	if (error)
 	{
@@ -1770,9 +1781,9 @@ bool pf::platform_clipboard_has_text()
 	return IsClipboardFormatAvailable(CF_UNICODETEXT) != 0;
 }
 
-std::u8string pf::platform_text_from_clipboard()
+std::string pf::platform_text_from_clipboard()
 {
-	std::u8string result;
+	std::string result;
 	if (OpenClipboard(nullptr))
 	{
 		const auto hData = GetClipboardData(CF_UNICODETEXT);
@@ -1790,7 +1801,7 @@ std::u8string pf::platform_text_from_clipboard()
 	return result;
 }
 
-bool pf::platform_text_to_clipboard(const std::u8string_view text)
+bool pf::platform_text_to_clipboard(const std::string_view text)
 {
 	bool success = false;
 	if (OpenClipboard(nullptr))
@@ -1805,6 +1816,8 @@ bool pf::platform_text_to_clipboard(const std::u8string_view text)
 			wcsncpy_s(pszData, len, wtext.c_str(), wtext.size());
 			GlobalUnlock(hData);
 			success = SetClipboardData(CF_UNICODETEXT, hData) != nullptr;
+			if (!success)
+				GlobalFree(hData);
 		}
 		CloseClipboard();
 	}
@@ -1821,7 +1834,7 @@ static pf::file_path get_config_path()
 	wchar_t w_exe_path[MAX_PATH];
 	GetModuleFileNameW(nullptr, w_exe_path, MAX_PATH);
 	const auto exe_path = pf::utf16_to_utf8(w_exe_path);
-	auto ini_path = pf::file_path(pf::file_path(exe_path).folder()).combine(u8"rethinkify", u8"ini");
+	auto ini_path = pf::file_path(pf::file_path(exe_path).folder()).combine("rethinkify", "ini");
 
 	// Test if we can write to the exe directory
 	const auto h = CreateFileW(pf::utf8_to_utf16(ini_path.view()).c_str(), GENERIC_WRITE, FILE_SHARE_READ,
@@ -1833,11 +1846,11 @@ static pf::file_path get_config_path()
 	}
 
 	// Fall back to AppData\Local
-	return tmp_folder().combine(u8"rethinkify", u8"ini");
+	return tmp_folder().combine("rethinkify", "ini");
 }
 
-std::u8string pf::config_read(const std::u8string_view section, const std::u8string_view key,
-                              const std::u8string_view default_value)
+std::string pf::config_read(const std::string_view section, const std::string_view key,
+                            const std::string_view default_value)
 {
 	static const auto ini_path = get_config_path();
 	wchar_t buf[4096];
@@ -1850,7 +1863,7 @@ std::u8string pf::config_read(const std::u8string_view section, const std::u8str
 	return utf16_to_utf8(std::wstring_view(buf, len));
 }
 
-void pf::config_write(const std::u8string_view section, const std::u8string_view key, const std::u8string_view value)
+void pf::config_write(const std::string_view section, const std::string_view key, const std::string_view value)
 {
 	static const auto ini_path = get_config_path();
 	WritePrivateProfileStringW(
@@ -1876,7 +1889,7 @@ pf::file_path pf::current_directory()
 
 static constexpr wchar_t default_filter[] = L"All Files (*.*)\0*.*\0Text Files (*.txt)\0*.txt\0\0";
 
-pf::file_path pf::open_file_path(const std::u8string_view title, const std::u8string_view filters)
+pf::file_path pf::open_file_path(const std::string_view title, const std::string_view filters)
 {
 	wchar_t szFile[MAX_PATH] = {};
 	const auto wtitle = utf8_to_utf16(title);
@@ -1895,8 +1908,8 @@ pf::file_path pf::open_file_path(const std::u8string_view title, const std::u8st
 	return {};
 }
 
-pf::file_path pf::save_file_path(const std::u8string_view title, const file_path& default_path,
-                                 const std::u8string_view filters)
+pf::file_path pf::save_file_path(const std::string_view title, const file_path& default_path,
+                                 const std::string_view filters)
 {
 	wchar_t szFile[MAX_PATH] = {};
 	if (!default_path.empty())
@@ -1923,12 +1936,12 @@ pf::file_path pf::save_file_path(const std::u8string_view title, const file_path
 
 // ── Platform locale ────────────────────────────────────────────────────────────
 
-std::u8string pf::platform_language()
+std::string pf::platform_language()
 {
 	wchar_t buf[LOCALE_NAME_MAX_LENGTH];
 	if (GetUserDefaultLocaleName(buf, LOCALE_NAME_MAX_LENGTH))
 		return utf16_to_utf8(buf);
-	return u8"en-US";
+	return "en-US";
 }
 
 // ── Platform Spell Checking (ISpellChecker) ────────────────────────────────────
@@ -1936,9 +1949,9 @@ std::u8string pf::platform_language()
 class win_spell_checker final : public pf::spell_checker
 {
 	ISpellChecker* _checker = nullptr;
-	std::u8string _custom_dic_path;
-	std::u8string _diagnostics;
-	std::u8string _selected_language;
+	std::string _custom_dic_path;
+	std::string _diagnostics;
+	std::string _selected_language;
 
 public:
 	win_spell_checker()
@@ -1948,8 +1961,8 @@ public:
 		                                    IID_PPV_ARGS(&factory));
 		if (FAILED(hr) || !factory)
 		{
-			_diagnostics = pf::format(u8"CoCreateInstance(SpellCheckerFactory) failed with HRESULT 0x{:08X}.",
-			                          static_cast<uint32_t>(hr));
+			_diagnostics = std::format("CoCreateInstance(SpellCheckerFactory) failed with HRESULT 0x{:08X}.",
+			                           static_cast<uint32_t>(hr));
 		}
 		else
 		{
@@ -1963,12 +1976,12 @@ public:
 				if (SUCCEEDED(create_hr) && _checker)
 				{
 					_selected_language = pf::utf16_to_utf8(lang);
-					_diagnostics = pf::format(u8"Spell checker created for {}.", _selected_language);
+					_diagnostics = std::format("Spell checker created for {}.", _selected_language);
 				}
 				else
 				{
-					_diagnostics = pf::format(u8"CreateSpellChecker({}) failed with HRESULT 0x{:08X}.",
-					                          pf::utf16_to_utf8(lang), static_cast<uint32_t>(create_hr));
+					_diagnostics = std::format("CreateSpellChecker({}) failed with HRESULT 0x{:08X}.",
+					                           pf::utf16_to_utf8(lang), static_cast<uint32_t>(create_hr));
 				}
 			}
 			else
@@ -1982,31 +1995,31 @@ public:
 					const HRESULT create_hr = factory->CreateSpellChecker(en_us, &_checker);
 					if (SUCCEEDED(create_hr) && _checker)
 					{
-						_selected_language = u8"en-US";
-						_diagnostics = pf::format(
-							u8"Platform language {} is unsupported; spell checker created for en-US.",
+						_selected_language = "en-US";
+						_diagnostics = std::format(
+							"Platform language {} is unsupported; spell checker created for en-US.",
 							requested_language);
 					}
 					else
 					{
-						_diagnostics = pf::format(u8"CreateSpellChecker(en-US) failed with HRESULT 0x{:08X}.",
-						                          static_cast<uint32_t>(create_hr));
+						_diagnostics = std::format("CreateSpellChecker(en-US) failed with HRESULT 0x{:08X}.",
+						                           static_cast<uint32_t>(create_hr));
 					}
 				}
 				else
 				{
 					if (FAILED(lang_hr))
 					{
-						_diagnostics = pf::format(
-							u8"IsSupported({}) failed with HRESULT 0x{:08X}; en-US fallback check returned HRESULT 0x{:08X}.",
+						_diagnostics = std::format(
+							"IsSupported({}) failed with HRESULT 0x{:08X}; en-US fallback check returned HRESULT 0x{:08X}.",
 							requested_language,
 							static_cast<uint32_t>(lang_hr),
 							static_cast<uint32_t>(fallback_hr));
 					}
 					else
 					{
-						_diagnostics = pf::format(u8"No Windows spell-check dictionary is available for {} or en-US.",
-						                          requested_language);
+						_diagnostics = std::format("No Windows spell-check dictionary is available for {} or en-US.",
+						                           requested_language);
 					}
 				}
 			}
@@ -2014,9 +2027,9 @@ public:
 		}
 
 		if (_diagnostics.empty())
-			_diagnostics = u8"Spell checker initialized.";
+			_diagnostics = "Spell checker initialized.";
 
-		_custom_dic_path = tmp_folder().combine(u8"rethinkify.dic").view();
+		_custom_dic_path = tmp_folder().combine("rethinkify.dic").view();
 
 		// Load custom dictionary words
 		std::ifstream f(pf::utf8_to_utf16(_custom_dic_path));
@@ -2044,12 +2057,12 @@ public:
 		return _checker != nullptr;
 	}
 
-	std::u8string diagnostics() const override
+	std::string diagnostics() const override
 	{
 		return _diagnostics;
 	}
 
-	bool is_word_valid(const std::u8string_view word) override
+	bool is_word_valid(const std::string_view word) override
 	{
 		if (!_checker) return true;
 
@@ -2069,9 +2082,9 @@ public:
 		return valid;
 	}
 
-	std::vector<std::u8string> suggest(const std::u8string_view word) override
+	std::vector<std::string> suggest(const std::string_view word) override
 	{
-		std::vector<std::u8string> results;
+		std::vector<std::string> results;
 		if (!_checker) return results;
 
 		const auto w = pf::utf8_to_utf16(word);
@@ -2089,7 +2102,7 @@ public:
 		return results;
 	}
 
-	void add_word(const std::u8string_view word) override
+	void add_word(const std::string_view word) override
 	{
 		if (!_checker) return;
 
@@ -2098,7 +2111,7 @@ public:
 
 		// Persist to custom dictionary file (word is already UTF-8)
 		std::ofstream f(pf::utf8_to_utf16(_custom_dic_path), std::ios::out | std::ios::app);
-		f.write(reinterpret_cast<const char*>(word.data()), word.size());
+		f.write(word.data(), word.size());
 		f << std::endl;
 	}
 };
@@ -2200,6 +2213,10 @@ static BOOL SetProcessDpiAwarenessContextIndirect(const DPI_AWARENESS_CONTEXT dp
 
 INT WINAPI WinMain(const HINSTANCE hInstance, HINSTANCE, LPSTR, const int nCmdShow)
 {
+	// Windows-specific: Set output and input to UTF-8
+	SetConsoleOutputCP(CP_UTF8);
+	SetConsoleCP(CP_UTF8);
+
 	resource_instance = hInstance;
 	g_nCmdShow = nCmdShow;
 
@@ -2214,15 +2231,15 @@ INT WINAPI WinMain(const HINSTANCE hInstance, HINSTANCE, LPSTR, const int nCmdSh
 	const auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 
 	// Convert argc/argv to u8string (skip argv[0] which is the exe path)
-	std::vector<std::u8string> param_storage;
+	std::vector<std::string> param_storage;
 	for (int i = 1; i < argc; ++i)
 		param_storage.push_back(pf::utf16_to_utf8(argv[i]));
 
-	std::vector<std::u8string_view> params;
+	std::vector<std::string_view> params;
 	for (const auto& p : param_storage)
 		params.emplace_back(p);
 
-	pf::debug_trace(u8"WinMain: before app_init\n");
+	pf::debug_trace("WinMain: before app_init\n");
 
 	// Bind the reactor and build menu definition before creating the HWND,
 	// so WM_CREATE is delivered to the reactor's on_create handler.
@@ -2235,12 +2252,12 @@ INT WINAPI WinMain(const HINSTANCE hInstance, HINSTANCE, LPSTR, const int nCmdSh
 	}
 	LocalFree(argv);
 
-	pf::debug_trace(u8"WinMain: before create\n");
+	pf::debug_trace("WinMain: before create\n");
 
 	app_statedow->create_window(L"RethinkifyWnd", nullptr, {},
 	                            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN);
 
-	pf::debug_trace(u8"WinMain: after create\n");
+	pf::debug_trace("WinMain: after create\n");
 
 	g_hWnd = app_statedow->m_hWnd;
 
@@ -2351,7 +2368,7 @@ pf::folder_contents pf::iterate_file_items(const file_path& folder, const bool s
 	folder_contents results;
 	WIN32_FIND_DATA fd;
 
-	const auto file_search_path = utf8_to_utf16(pf::format(u8"{}\\*.*", folder.view()));
+	const auto file_search_path = utf8_to_utf16(std::format("{}\\*.*", folder.view()));
 	auto* const files = FindFirstFileExW(file_search_path.c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch,
 	                                     nullptr,
 	                                     FIND_FIRST_EX_LARGE_FETCH);
@@ -2415,34 +2432,34 @@ std::u32string pf::utf8_to_u32(const std::string_view str)
 	return result;
 }
 
-std::u8string pf::u32_to_utf8(const std::u32string_view str)
+std::string pf::u32_to_utf8(const std::u32string_view str)
 {
-	std::u8string result;
+	std::string result;
 	result.reserve(str.size());
 
 	for (const auto cp : str)
 	{
 		if (cp < 0x80)
 		{
-			result.push_back(static_cast<char8_t>(cp));
+			result.push_back(static_cast<char>(cp));
 		}
 		else if (cp < 0x800)
 		{
-			result.push_back(static_cast<char8_t>(0xC0 | (cp >> 6)));
-			result.push_back(static_cast<char8_t>(0x80 | (cp & 0x3F)));
+			result.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+			result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
 		}
 		else if (cp < 0x10000)
 		{
-			result.push_back(static_cast<char8_t>(0xE0 | (cp >> 12)));
-			result.push_back(static_cast<char8_t>(0x80 | ((cp >> 6) & 0x3F)));
-			result.push_back(static_cast<char8_t>(0x80 | (cp & 0x3F)));
+			result.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+			result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+			result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
 		}
 		else
 		{
-			result.push_back(static_cast<char8_t>(0xF0 | (cp >> 18)));
-			result.push_back(static_cast<char8_t>(0x80 | ((cp >> 12) & 0x3F)));
-			result.push_back(static_cast<char8_t>(0x80 | ((cp >> 6) & 0x3F)));
-			result.push_back(static_cast<char8_t>(0x80 | (cp & 0x3F)));
+			result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+			result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+			result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+			result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
 		}
 	}
 	return result;
@@ -2499,7 +2516,7 @@ static constexpr uint32_t OFFSET_BASIS_32 = 2166136261u;
 static constexpr uint64_t FNV_PRIME_64 = 1099511628211ULL;
 static constexpr uint64_t OFFSET_BASIS_64 = 14695981039346656037ULL;
 
-uint32_t pf::fnv1a_i(std::u8string_view sv1)
+uint32_t pf::fnv1a_i(std::string_view sv1)
 {
 	auto p = sv1.begin();
 	uint32_t result = OFFSET_BASIS_32;
@@ -2513,7 +2530,7 @@ uint32_t pf::fnv1a_i(std::u8string_view sv1)
 	return result;
 }
 
-uint64_t pf::fnv1a_i_64(std::u8string_view sv1)
+uint64_t pf::fnv1a_i_64(std::string_view sv1)
 {
 	auto p = sv1.begin();
 	uint64_t result = OFFSET_BASIS_64;
@@ -2537,10 +2554,10 @@ bool pf::is_online()
 	return 0 != InternetGetConnectedState(&flags, 0);
 }
 
-std::u8string pf::url_encode(const std::u8string_view input)
+std::string pf::url_encode(const std::string_view input)
 {
-	static constexpr auto hex_chars = u8"0123456789ABCDEF";
-	std::u8string result;
+	static constexpr auto hex_chars = "0123456789ABCDEF";
+	std::string result;
 	result.reserve(input.size());
 
 	for (const auto c : input)
@@ -2573,9 +2590,9 @@ static int get_status_code(const HINTERNET h)
 	return static_cast<int>(result);
 }
 
-static std::u8string get_content_type(const HINTERNET request_handle)
+static std::string get_content_type(const HINTERNET request_handle)
 {
-	std::u8string result;
+	std::string result;
 	DWORD result_size = 0;
 	DWORD header_index = 0;
 
@@ -2608,24 +2625,24 @@ static std::u8string get_content_type(const HINTERNET request_handle)
 	return result;
 }
 
-static std::u8string format_path(const pf::web_request& req)
+static std::string format_path(const pf::web_request& req)
 {
 	auto result = req.path;
 
 	if (!req.query.empty())
 	{
 		bool is_first = true;
-		result += u8"?";
+		result += "?";
 
 		for (const auto& qp : req.query)
 		{
 			if (!is_first)
 			{
-				result += u8"&";
+				result += "&";
 			}
 
 			result += pf::url_encode(qp.first);
-			result += u8"=";
+			result += "=";
 			result += pf::url_encode(qp.second);
 			is_first = false;
 		}
@@ -2702,10 +2719,16 @@ struct pf::web_host
 	HINTERNET session_handle = nullptr;
 	HINTERNET connection_handle = nullptr;
 	bool secure = true;
+
+	~web_host()
+	{
+		if (connection_handle) InternetCloseHandle(connection_handle);
+		if (session_handle) InternetCloseHandle(session_handle);
+	}
 };
 
-pf::web_host_ptr pf::connect_to_host(const std::u8string_view host, const bool secure_in, const int port_in,
-                                     const std::u8string_view user_agent)
+pf::web_host_ptr pf::connect_to_host(const std::string_view host, const bool secure_in, const int port_in,
+                                     const std::string_view user_agent)
 {
 	// InternetOpen and InternetConnect
 	const std::wstring agent_str = user_agent.empty() ? utf8_to_utf16(g_app_name) : utf8_to_utf16(user_agent);
@@ -2738,15 +2761,15 @@ pf::web_response pf::send_request(const web_host_ptr& host, const web_request& r
 	if (!host)
 		return result;
 
-	std::u8string content;
-	std::u8string header_str;
+	std::string content;
+	std::string header_str;
 
 	for (const auto& h : req.headers)
 	{
 		header_str += h.first;
-		header_str += u8": ";
+		header_str += ": ";
 		header_str += h.second;
-		header_str += u8"\r\n";
+		header_str += "\r\n";
 	}
 
 	if (!req.body.empty())
@@ -2755,38 +2778,38 @@ pf::web_response pf::send_request(const web_host_ptr& host, const web_request& r
 	}
 	else if (!req.form_data.empty())
 	{
-		const std::u8string boundary = u8"54B8723DE6044695A68C838E8BF0CB00";
+		const std::string boundary = "54B8723DE6044695A68C838E8BF0CB00";
 
 		for (const auto& f : req.form_data)
 		{
-			content += u8"--";
+			content += "--";
 			content += boundary;
-			content += u8"\r\n";
-			content += u8"Content-Disposition: form-data; name=\"";
+			content += "\r\n";
+			content += "Content-Disposition: form-data; name=\"";
 			content += f.first;
-			content += u8"\"\r\n";
-			content += u8"Content-Type: text/plain; charset=\"utf-8\"\r\n";
-			content += u8"\r\n";
+			content += "\"\r\n";
+			content += "Content-Type: text/plain; charset=\"utf-8\"\r\n";
+			content += "\r\n";
 			content += f.second;
-			content += u8"\r\n";
+			content += "\r\n";
 		}
 
 		if (!req.upload_file_path.empty() && !req.file_form_data_name.empty())
 		{
-			std::u8string ct = u8"application/octet-stream";
-			if (req.upload_file_path.extension() == u8".zip") ct = u8"application/x-zip-compressed";
+			std::string ct = "application/octet-stream";
+			if (req.upload_file_path.extension() == ".zip") ct = "application/x-zip-compressed";
 
-			content += u8"--";
+			content += "--";
 			content += boundary;
-			content += u8"\r\n";
-			content += u8"Content-Disposition: form-data; name=\"";
+			content += "\r\n";
+			content += "Content-Disposition: form-data; name=\"";
 			content += req.file_form_data_name;
-			content += u8"\"; filename=\"";
+			content += "\"; filename=\"";
 			content += req.file_name;
-			content += u8"\"\r\n";
-			content += u8"Content-Type: ";
+			content += "\"\r\n";
+			content += "Content-Type: ";
 			content += ct;
-			content += u8"\r\n\r\n";
+			content += "\r\n\r\n";
 
 			auto fh = open_for_read(req.upload_file_path);
 			if (fh)
@@ -2795,19 +2818,19 @@ pf::web_response pf::send_request(const web_host_ptr& host, const web_request& r
 				uint32_t bytes_read = 0;
 				while (fh->read(buf.data(), static_cast<uint32_t>(buf.size()), &bytes_read) && bytes_read > 0)
 				{
-					content.append(reinterpret_cast<const char8_t*>(buf.data()), bytes_read);
+					content.append(reinterpret_cast<const char*>(buf.data()), bytes_read);
 				}
 			}
 
-			content += u8"\r\n";
+			content += "\r\n";
 		}
 
-		content += u8"--";
+		content += "--";
 		content += boundary;
-		content += u8"--";
-		header_str += u8"Content-Type: multipart/form-data; boundary=";
+		content += "--";
+		header_str += "Content-Type: multipart/form-data; boundary=";
 		header_str += boundary;
-		header_str += u8"\r\n";
+		header_str += "\r\n";
 	}
 
 	const auto wverb = req.verb == web_request_verb::GET ? L"GET" : L"POST";

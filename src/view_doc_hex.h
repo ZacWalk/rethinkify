@@ -56,7 +56,7 @@ protected:
 		const auto ascii_color = style_to_color(style::code_string);
 		const auto separator_color = style_to_color(style::code_comment);
 
-		std::u8string line_text;
+		std::string line_text;
 
 		draw.fill_solid_rect(rcClient, bg);
 
@@ -81,7 +81,7 @@ protected:
 			int x = left_margin;
 
 			// --- Offset column ---
-			const auto offset_str = pf::format(u8"{:08X}", file_offset);
+			const auto offset_str = std::format("{:08X}", file_offset);
 			{
 				const pf::irect clip(x, y, x + 8 * cx, y + cy);
 				draw.draw_text(x, y, clip, offset_str, styles.text_font, offset_color, bg);
@@ -98,7 +98,7 @@ protected:
 				if (i < num_bytes)
 				{
 					const auto byte_val = static_cast<uint8_t>(line_text[i]);
-					const auto hex = pf::format(u8"{:02X} ", byte_val);
+					const auto hex = std::format("{:02X} ", byte_val);
 					const pf::irect clip(x, y, x + 3 * cx, y + cy);
 					draw.draw_text(x, y, clip, hex, styles.text_font, hex_color, bg);
 				}
@@ -109,21 +109,21 @@ protected:
 			// --- Separator ---
 			{
 				const pf::irect clip(x, y, x + cx, y + cy);
-				draw.draw_text(x, y, clip, u8"|", styles.text_font, separator_color, bg);
+				draw.draw_text(x, y, clip, "|", styles.text_font, separator_color, bg);
 			}
 			x += cx;
 
 			// --- ASCII column ---
-			std::u8string ascii_str;
+			std::string ascii_str;
 			ascii_str.reserve(bytes_per_line);
 			for (int i = 0; i < num_bytes; i++)
 			{
 				const auto c = static_cast<uint8_t>(line_text[i]);
-				ascii_str += c >= 32 && c < 127 ? static_cast<char8_t>(c) : L'.';
+				ascii_str += c >= 32 && c < 127 ? static_cast<char>(c) : '.';
 			}
 			// Pad to full width
 			for (int i = num_bytes; i < bytes_per_line; i++)
-				ascii_str += L' ';
+				ascii_str += ' ';
 
 			{
 				const pf::irect clip(x, y, x + bytes_per_line * cx, y + cy);
@@ -134,7 +134,7 @@ protected:
 			// --- Closing separator ---
 			{
 				const pf::irect clip(x, y, x + cx, y + cy);
-				draw.draw_text(x, y, clip, u8"|", styles.text_font, separator_color, bg);
+				draw.draw_text(x, y, clip, "|", styles.text_font, separator_color, bg);
 			}
 
 			nCurrentLine++;

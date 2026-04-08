@@ -29,7 +29,7 @@ protected:
 
 	// Text layout scratch buffers
 	mutable std::vector<text_block> _block_buf;
-	mutable std::u8string _expand_buf;
+	mutable std::string _expand_buf;
 
 	// Word wrap state
 	bool _word_wrap = true;
@@ -93,22 +93,23 @@ public:
 
 	// --- Text selection overrides (coordinate with document) ---
 
-	[[nodiscard]] text_selection current_selection() const override { return _doc->selection(); }
-	void set_selection(const text_selection& sel) override { _doc->select(sel); }
-	[[nodiscard]] bool has_current_selection() const override { return _doc->has_selection(); }
+	[[nodiscard]] text_selection current_selection() const override { return _doc ? _doc->selection() : text_selection{}; }
+	void set_selection(const text_selection& sel) override { if (_doc) _doc->select(sel); }
+	[[nodiscard]] bool has_current_selection() const override { return _doc && _doc->has_selection(); }
 
 	// --- Line text access ---
 
-	void render_line(const int line_num, std::u8string& out) const override
+	void render_line(const int line_num, std::string& out) const override
 	{
-		(*_doc)[line_num].render(out);
+		if (_doc) (*_doc)[line_num].render(out);
+		else out.clear();
 	}
 
 	// --- Syntax highlighting (view-owned) ---
 
 	uint32_t highlight_cookie(const int lineIndex) const
 	{
-		if (lineIndex < 0 || lineIndex >= static_cast<int>(_doc->size()))
+		if (!_doc || lineIndex < 0 || lineIndex >= static_cast<int>(_doc->size()))
 			return 0;
 
 		if (_parse_cookies.size() != _doc->size())
@@ -122,7 +123,7 @@ public:
 		else i++;
 
 		int nBlocks;
-		std::u8string line_view;
+		std::string line_view;
 
 		while (i <= lineIndex && _parse_cookies[i] == invalid_cookie)
 		{
@@ -145,16 +146,16 @@ public:
 	uint32_t highlight_line(const uint32_t cookie, const document_line& line,
 	                        text_block* pBuf, int& nBlocks) const
 	{
-		std::u8string line_view;
+		std::string line_view;
 		line.render(line_view);
 		const auto result = _highlight(cookie, line_view, pBuf, nBlocks);
 
 		if (_doc->spell_check() && pBuf)
 		{
 			const auto len = static_cast<int>(line_view.size());
-			auto is_word_char = [](const char8_t ch)
+			auto is_word_char = [](const char ch)
 			{
-				return ch <= 0xFFFF && iswalnum(ch) != 0;
+				return isalnum(static_cast<unsigned char>(ch)) != 0;
 			};
 			auto can_spell_check_style = [](const style color)
 			{
@@ -327,7 +328,7 @@ public:
 		if (_word_wrap)
 			layout();
 
-		_events.invalidate(invalid::doc_scrollbar | invalid::doc_scrollbar | invalid::doc_layout);
+		_events.invalidate(invalid::doc_scrollbar | invalid::doc_layout);
 	}
 
 	// --- App-level interface overrides ---
@@ -362,7 +363,7 @@ public:
 
 		const auto tab_sz = _doc->tab_size();
 
-		std::u8string line_view;
+		std::string line_view;
 		line.render(line_view);
 
 		auto char_advance = [&](const int i, const int col) -> int
@@ -484,9 +485,9 @@ public:
 		if (_doc) set_selection(_doc->all());
 	}
 
-	std::u8string select_text() const override
+	std::string select_text() const override
 	{
-		return has_current_selection() ? _doc->copy() : std::u8string{};
+		return has_current_selection() ? _doc->copy() : std::string{};
 	}
 
 	void update_focus(pf::window_frame_ptr& window) override
@@ -813,7 +814,6 @@ protected:
 
 		if (!_doc->is_inside_selection(pt))
 		{
-			//m_ptAnchor = m_ptCursorPos = pt;
 			_doc->select(text_selection(pt, pt));
 			ensure_visible(window, pt);
 		}
@@ -998,14 +998,6 @@ protected:
 		}
 	}
 
-	int scroll_line() const
-	{
-		if (_font_extent.cy <= 0)
-			return 0;
-
-		return _scroll_offset.y / _font_extent.cy;
-	}
-
 	void scroll_to_line(const int y)
 	{
 		set_scroll_pixel(y * _font_extent.cy);
@@ -1179,8 +1171,8 @@ protected:
 	{
 		const auto line_count = static_cast<int>(_doc->size());
 
-		if (_font_extent.cy <= 0)
-			return std::clamp(0, 0, line_count - 1);
+		if (_font_extent.cy <= 0 || line_count == 0)
+			return 0;
 
 		// Convert screen Y to content Y, then to line index
 		const int content_y = point.y - text_top() + _scroll_offset.y;
@@ -1208,7 +1200,7 @@ protected:
 		{
 			const auto tabSize = _doc->tab_size();
 			const auto& line = (*_doc)[pt.y];
-			std::u8string line_view;
+			std::string line_view;
 			line.render(line_view);
 
 			const auto lineSize = static_cast<int>(line_view.size());
@@ -1302,7 +1294,7 @@ protected:
 
 				const auto tabSize = _doc->tab_size();
 				const auto& line = (*_doc)[point.y];
-				std::u8string line_view;
+				std::string line_view;
 				line.render(line_view);
 
 				int abs_col = _doc->calc_offset(point.y, row_start);
@@ -1326,10 +1318,10 @@ protected:
 
 				const auto tabSize = _doc->tab_size();
 				const auto& line = (*_doc)[point.y];
-				std::u8string line_view;
+				std::string line_view;
 				line.render(line_view);
 
-				for (auto i = 0; i < point.x; i++)
+				for (auto i = 0; i < point.x && i < static_cast<int>(line_view.size()); i++)
 				{
 					if (line_view[i] == u8'\t')
 					{
@@ -1463,7 +1455,7 @@ protected:
 	int margin_width() const
 	{
 		if (!_sel_margin) return 1;
-		const auto line_count = static_cast<int>(_doc->size());
+		const auto line_count = _doc ? static_cast<int>(_doc->size()) : 0;
 		int digits = 1;
 		auto n = line_count;
 		while (n >= 10)
@@ -1487,7 +1479,7 @@ protected:
 	}
 
 	void draw_line(pf::draw_context& draw, pf::ipoint& ptOrigin, const pf::irect& rcClip,
-	               const std::u8string_view pszChars, const int nOffset, const int nCount,
+	               const std::string_view pszChars, const int nOffset, const int nCount,
 	               const pf::font& f, const pf::color_t text_color, const pf::color_t bg_color) const
 	{
 		if (nCount > 0)
@@ -1516,7 +1508,7 @@ protected:
 				rcClipBlock.bottom = ptOrigin.y + _font_extent.cy;
 
 				draw.draw_text(ptOrigin.x, ptOrigin.y, rcClipBlock,
-				               std::u8string_view(_expand_buf.c_str(), nDrawBytes),
+				               std::string_view(_expand_buf.c_str(), nDrawBytes),
 				               f, text_color, bg_color);
 			}
 
@@ -1525,7 +1517,7 @@ protected:
 	}
 
 	void draw_line(pf::draw_context& draw, pf::ipoint& ptOrigin, const pf::irect& rcClip, style nColorIndex,
-	               const std::u8string_view pszChars, const int nOffset, const int nCount,
+	               const std::string_view pszChars, const int nOffset, const int nCount,
 	               const text_location& ptTextPos,
 	               const pf::font& f, const pf::color_t text_color, const pf::color_t bg_color) const
 	{
@@ -1580,7 +1572,7 @@ protected:
 		const auto bg_color = line_bg_color(lineIndex);
 		const auto& line = (*_doc)[lineIndex];
 		const auto breaks = line_breaks(lineIndex);
-		std::u8string line_view;
+		std::string line_view;
 		line.render(line_view);
 		const auto nLength = static_cast<int>(line_view.size());
 
@@ -1677,7 +1669,7 @@ protected:
 		_parse_cookies[lineIndex] = highlight_line(cookie, line, pBuf, nBlocks);
 
 		pf::ipoint origin(rc.left - scroll_char() * _font_extent.cx, rc.top);
-		std::u8string line_view;
+		std::string line_view;
 		line.render(line_view);
 
 		if (nBlocks > 0)

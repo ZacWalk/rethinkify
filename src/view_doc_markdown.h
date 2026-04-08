@@ -33,7 +33,6 @@ public:
 	{
 		if (!can_scroll()) return;
 
-		const int line_count = static_cast<int>(_doc->size());
 		set_scroll_pixel(_scroll_offset.y + zDelta * _font_extent.cy);
 	}
 
@@ -145,7 +144,7 @@ public:
 		int cumulative = 0;
 		int cumulative_px = 0;
 		int i = 0;
-		std::u8string line_text;
+		std::string line_text;
 
 		while (i < line_count)
 		{
@@ -276,7 +275,7 @@ protected:
 		while (y < rcClient.bottom && nCurrentLine < line_count)
 		{
 			const auto& line = (*_doc)[nCurrentLine];
-			std::u8string line_text;
+			std::string line_text;
 			line.render(line_text);
 
 			// ── Table block rendering ───────────────────────────────
@@ -386,14 +385,14 @@ private:
 
 	using table_block = table_layout::table_block;
 
-	static bool is_table_row(const std::u8string_view line)
+	static bool is_table_row(const std::string_view line)
 	{
 		if (line.empty()) return false;
 		const auto pos = line.find_first_not_of(u8' ');
-		return pos != std::u8string_view::npos && line[pos] == u8'|';
+		return pos != std::string_view::npos && line[pos] == u8'|';
 	}
 
-	static bool is_table_separator(const std::u8string_view line)
+	static bool is_table_separator(const std::string_view line)
 	{
 		bool has_dash = false, has_pipe = false;
 		for (const auto ch : line)
@@ -405,14 +404,14 @@ private:
 		return has_dash && has_pipe;
 	}
 
-	static std::u8string_view trim_cell(const std::u8string_view s) { return table_layout::trim_cell(s); }
+	static std::string_view trim_cell(const std::string_view s) { return table_layout::trim_cell(s); }
 
-	static std::vector<std::u8string_view> split_cells(const std::u8string_view line)
+	static std::vector<std::string_view> split_cells(const std::string_view line)
 	{
 		return table_layout::split_pipe_cells(line);
 	}
 
-	static bool is_right_align_cell(const std::u8string_view text) { return table_layout::is_right_align_cell(text); }
+	static bool is_right_align_cell(const std::string_view text) { return table_layout::is_right_align_cell(text); }
 
 	table_block find_table(const int line_hint, const int avail_cols) const
 	{
@@ -420,7 +419,7 @@ private:
 		const auto line_count = static_cast<int>(_doc->size());
 		if (line_hint < 0 || line_hint >= line_count) return result;
 
-		std::u8string tmp;
+		std::string tmp;
 		(*_doc)[line_hint].render(tmp);
 		if (!is_table_row(tmp)) return result;
 
@@ -475,9 +474,9 @@ private:
 	}
 
 	// Compute how many visual rows a cell needs when word-wrapped to col_w columns
-	static int cell_visual_rows(const std::u8string_view text, const int col_w)
+	static int cell_visual_rows(const std::string_view text, const int col_w)
 	{
-		return table_layout::cell_visual_rows(text, col_w, [](const std::u8string_view t, const int cw)
+		return table_layout::cell_visual_rows(text, col_w, [](const std::string_view t, const int cw)
 		{
 			return calc_word_breaks(t, cw, [](int, int) { return 1; });
 		});
@@ -485,7 +484,7 @@ private:
 
 	// Returns the total height in visual rows consumed by this table row
 	int draw_table_row(pf::draw_context& draw, const int y, const int left_pad, const int right,
-	                   const std::u8string_view line_text, const table_block& table,
+	                   const std::string_view line_text, const table_block& table,
 	                   const pf::font& font, const int font_cx, const int font_cy,
 	                   const bool is_header) const
 	{
@@ -495,7 +494,7 @@ private:
 
 		const auto cells = split_cells(line_text);
 
-		auto break_fn = [](const std::u8string_view t, const int cw)
+		auto break_fn = [](const std::string_view t, const int cw)
 		{
 			return calc_word_breaks(t, cw, [](int, int) { return 1; });
 		};
@@ -589,11 +588,11 @@ private:
 		}
 	}
 
-	static bool is_spell_word(const std::u8string_view text)
+	static bool is_spell_word(const std::string_view text)
 	{
-		return !text.empty() && std::ranges::all_of(text, [](const char8_t ch)
+		return !text.empty() && std::ranges::all_of(text, [](const char ch)
 		{
-			return ch <= 0xFFFF && iswalnum(ch) != 0;
+			return isalnum(static_cast<unsigned char>(ch)) != 0;
 		});
 	}
 
@@ -604,15 +603,15 @@ private:
 		pf::color_t color;
 	};
 
-	std::vector<text_run> build_text_runs(const std::u8string_view text, const span_type type,
+	std::vector<text_run> build_text_runs(const std::string_view text, const span_type type,
 	                                      const pf::color_t base_color) const
 	{
 		std::vector<text_run> runs;
 		const auto spell_enabled = _doc && _doc->spell_check() && spell_check_span(type);
 		const auto error_color = style_to_color(style::error_text);
-		auto is_word_char = [](const char8_t ch)
+		auto is_word_char = [](const char ch)
 		{
-			return ch <= 0xFFFF && iswalnum(ch) != 0;
+			return isalnum(static_cast<unsigned char>(ch)) != 0;
 		};
 
 		const auto push_run = [&](const int start, const int length, const pf::color_t color)
@@ -653,7 +652,7 @@ private:
 	}
 
 	void draw_run(pf::draw_context& draw, const pf::irect& rc, pf::ipoint& origin,
-	              const std::u8string_view text, const int absolute_start,
+	              const std::string_view text, const int absolute_start,
 	              const pf::font& font, const int font_cx, const pf::color_t color,
 	              const pf::color_t bg_color, const int sel_begin, const int sel_end,
 	              const pf::color_t sel_text_color, const pf::color_t sel_bg_color) const
@@ -696,7 +695,7 @@ private:
 		}
 	}
 
-	static line_info parse_line(const std::u8string_view text)
+	static line_info parse_line(const std::string_view text)
 	{
 		line_info info;
 		if (text.empty())
@@ -757,7 +756,7 @@ private:
 		return info;
 	}
 
-	static void parse_inline(const std::u8string_view text, const int start, line_info& info)
+	static void parse_inline(const std::string_view text, const int start, line_info& info)
 	{
 		const auto len = static_cast<int>(text.size());
 		int pos = start;
@@ -852,16 +851,16 @@ private:
 		flush_plain(len);
 	}
 
-	static int find_marker(const std::u8string_view text, const int start, const char8_t ch, const int count)
+	static int find_marker(const std::string_view text, const int start, const char ch, const int count)
 	{
 		const auto len = static_cast<int>(text.size());
 		if (start > len - count) return -1;
 
 		auto pos = static_cast<size_t>(start);
-		while (pos != std::u8string_view::npos && static_cast<int>(pos) <= len - count)
+		while (pos != std::string_view::npos && static_cast<int>(pos) <= len - count)
 		{
 			pos = text.find(ch, pos);
-			if (pos == std::u8string_view::npos || static_cast<int>(pos) > len - count)
+			if (pos == std::string_view::npos || static_cast<int>(pos) > len - count)
 				return -1;
 
 			bool match = true;
@@ -880,14 +879,14 @@ private:
 		return -1;
 	}
 
-	static int find_char(const std::u8string_view text, const int start, const char8_t ch)
+	static int find_char(const std::string_view text, const int start, const char ch)
 	{
 		const auto pos = text.find(ch, start);
-		return pos == std::u8string_view::npos ? -1 : static_cast<int>(pos);
+		return pos == std::string_view::npos ? -1 : static_cast<int>(pos);
 	}
 
 	void draw_md_line(pf::draw_context& draw, const pf::irect& rc,
-	                  const std::u8string_view line_text, const line_info& info,
+	                  const std::string_view line_text, const line_info& info,
 	                  const pf::font& font, const int font_cx, const int line_index,
 	                  const int row_start = 0, int row_end = -1) const
 	{

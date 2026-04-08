@@ -26,13 +26,13 @@ namespace
 }
 
 pf::menu_command app_state::command_menu_item(const command_id id,
-                                              std::function<void()> action_override,
+                                              const std::function<void()> action_override,
                                               std::function<bool()> is_enabled_override,
                                               std::function<bool()> is_checked_override,
-                                              std::u8string text_override) const
+                                              std::string text_override) const
 {
 	const auto* def = get_commands().find_by_menu_id(static_cast<int>(id));
-	if (!def || (def->availability & command_availability::ui) == 0)
+	if (!def)
 		return {};
 
 	auto is_enabled = def->is_enabled;
@@ -59,7 +59,7 @@ pf::menu_command app_state::command_menu_item(const command_id id,
 		action = [this, menu_id = def->menu_id]()
 		{
 			if (const auto* menu_def = get_commands().find_by_menu_id(menu_id))
-				menu_def->execute({});
+				menu_def->execute();
 		};
 	}
 
@@ -85,7 +85,7 @@ bool app_state::invoke_menu_accelerator(const pf::window_frame_ptr& window,
 		if (!item.children.empty() || !key_binding_matches(window, vk, item.accel))
 			continue;
 		if (item.is_enabled && !item.is_enabled())
-			return false;
+			return true; // consume keystroke even when disabled
 		if (item.action)
 			item.action();
 		return true;
@@ -100,59 +100,59 @@ std::vector<command_def> app_state::make_commands()
 	std::vector<command_def> defs = {
 		// ── File ───────────────────────────────────────────────────────
 		{
-			{u8"n", u8"new"}, u8"Create a new document",
-			u8"&New", static_cast<int>(command_id::file_new), {'N', pf::key_mod::ctrl},
+			"Create a new document",
+			"&New", static_cast<int>(command_id::file_new), {'N', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::file_new)
 		},
 		{
-			{u8"o", u8"open"}, u8"Open a file",
-			u8"&Open...", static_cast<int>(command_id::file_open), {'O', pf::key_mod::ctrl},
+			"Open a file",
+			"&Open...", static_cast<int>(command_id::file_open), {'O', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::file_open)
 		},
 		{
-			{u8"s", u8"save"}, u8"Save the current file",
-			u8"&Save", static_cast<int>(command_id::file_save), {'S', pf::key_mod::ctrl},
+			"Save the current file",
+			"&Save", static_cast<int>(command_id::file_save), {'S', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::file_save)
 		},
 		{
-			{u8"sa", u8"saveas"}, u8"Save the current file as...",
-			u8"Save &As...", static_cast<int>(command_id::file_save_as), {},
+			"Save the current file as...",
+			"Save &As...", static_cast<int>(command_id::file_save_as), {},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::file_save_as)
 		},
 		{
-			{u8"ss", u8"saveall"}, u8"Save all modified files",
-			u8"Save A&ll", static_cast<int>(command_id::file_save_all),
+			"Save all modified files",
+			"Save A&ll", static_cast<int>(command_id::file_save_all),
 			{'S', pf::key_mod::ctrl | pf::key_mod::shift},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::file_save_all)
 		},
 		{
-			{u8"ex", u8"exit"}, u8"Exit the application",
-			u8"E&xit", static_cast<int>(command_id::app_exit), {},
+			"Exit the application",
+			"E&xit", static_cast<int>(command_id::app_exit), {},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::app_exit)
 		},
 
 		// ── Edit ───────────────────────────────────────────────────────
 		{
-			{u8"u", u8"undo"}, u8"Undo the last edit",
-			u8"&Undo", static_cast<int>(command_id::edit_undo), {'Z', pf::key_mod::ctrl},
+			"Undo the last edit",
+			"&Undo", static_cast<int>(command_id::edit_undo), {'Z', pf::key_mod::ctrl},
 			[this] { return doc()->can_undo(); }, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_undo)
 		},
 		{
-			{u8"y", u8"redo"}, u8"Redo the last undone edit",
-			u8"&Redo", static_cast<int>(command_id::edit_redo), {'Y', pf::key_mod::ctrl},
+			"Redo the last undone edit",
+			"&Redo", static_cast<int>(command_id::edit_redo), {'Y', pf::key_mod::ctrl},
 			[this] { return doc()->can_redo(); }, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_redo)
 		},
 		{
-			{u8"x", u8"cut"}, u8"Cut selection to clipboard",
-			u8"Cu&t", static_cast<int>(command_id::edit_cut), {'X', pf::key_mod::ctrl},
+			"Cut selection to clipboard",
+			"Cu&t", static_cast<int>(command_id::edit_cut), {'X', pf::key_mod::ctrl},
 			[this]
 			{
 				const auto view = focused_text_view();
@@ -162,8 +162,8 @@ std::vector<command_def> app_state::make_commands()
 			bind_command_handler(*this, app_command_handler::edit_cut)
 		},
 		{
-			{u8"c", u8"copy"}, u8"Copy selection or selected path to clipboard",
-			u8"&Copy", static_cast<int>(command_id::edit_copy), {'C', pf::key_mod::ctrl},
+			"Copy selection or selected path to clipboard",
+			"&Copy", static_cast<int>(command_id::edit_copy), {'C', pf::key_mod::ctrl},
 			[this]
 			{
 				return can_copy_current_focus();
@@ -172,8 +172,8 @@ std::vector<command_def> app_state::make_commands()
 			bind_command_handler(*this, app_command_handler::edit_copy)
 		},
 		{
-			{u8"v", u8"paste"}, u8"Paste from clipboard",
-			u8"&Paste", static_cast<int>(command_id::edit_paste), {'V', pf::key_mod::ctrl},
+			"Paste from clipboard",
+			"&Paste", static_cast<int>(command_id::edit_paste), {'V', pf::key_mod::ctrl},
 			[this]
 			{
 				const auto view = focused_text_view();
@@ -183,8 +183,8 @@ std::vector<command_def> app_state::make_commands()
 			bind_command_handler(*this, app_command_handler::edit_paste)
 		},
 		{
-			{u8"d", u8"delete"}, u8"Delete selection or selected file",
-			u8"&Delete", static_cast<int>(command_id::edit_delete), {pf::platform_key::Delete, pf::key_mod::none},
+			"Delete selection or selected file",
+			"&Delete", static_cast<int>(command_id::edit_delete), {pf::platform_key::Delete, pf::key_mod::none},
 			[this]
 			{
 				return can_delete_current_focus();
@@ -193,48 +193,44 @@ std::vector<command_def> app_state::make_commands()
 			bind_command_handler(*this, app_command_handler::edit_delete)
 		},
 		{
-			{u8"f", u8"find"}, u8"Search in files: find <text>",
-			u8"Search in &Files", static_cast<int>(command_id::edit_search_files),
+			"Search in files",
+			"Search in &Files", static_cast<int>(command_id::edit_search_files),
 			{'F', pf::key_mod::ctrl | pf::key_mod::shift},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_search_files)
 		},
 		{
-			{u8"selectall"}, u8"Select all text",
-			u8"Select &All", static_cast<int>(command_id::edit_select_all), {'A', pf::key_mod::ctrl},
+			"Select all text",
+			"Select &All", static_cast<int>(command_id::edit_select_all), {'A', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_select_all)
 		},
 		{
-			{u8"a", u8"ai", u8"agent"}, u8"Ask Gemini to inspect or edit files in the current root: a \"question\"",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::agent),
-			command_availability::console
-		},
-		{
-			{u8"sum", u8"summarize"},
-			u8"Summarize a markdown, text, or PDF document into markdown: summarize [path] [> file.md]",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::summarize),
-			command_availability::console
-		},
-		{
-			{u8"rf", u8"reformat"}, u8"Reformat JSON document",
-			u8"&Reformat", static_cast<int>(command_id::edit_reformat), {'R', pf::key_mod::ctrl},
+			"Reformat JSON document",
+			"&Reformat", static_cast<int>(command_id::edit_reformat), {'R', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_reformat)
 		},
 		{
-			{u8"sd", u8"sort"}, u8"Sort lines and remove duplicates",
-			u8"Sort && Remove Duplicates", static_cast<int>(command_id::edit_sort_remove_duplicates), {},
+			"Sort lines and remove duplicates",
+			"Sort && Remove Duplicates", static_cast<int>(command_id::edit_sort_remove_duplicates), {},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::edit_sort_remove_duplicates)
 		},
 		{
-			{u8"sp", u8"spellcheck"}, u8"Toggle spell check",
-			u8"&Spell Check", static_cast<int>(command_id::edit_spell_check),
+			"Calculate selected expression",
+			"&Calculate Selection", static_cast<int>(command_id::edit_calc_selection),
+			{'E', pf::key_mod::ctrl},
+			[this]
+			{
+				return doc()->has_selection();
+			},
+			nullptr,
+			bind_command_handler(*this, app_command_handler::edit_calc_selection)
+		},
+		{
+			"Toggle spell check",
+			"&Spell Check", static_cast<int>(command_id::edit_spell_check),
 			{'P', pf::key_mod::ctrl | pf::key_mod::shift},
 			nullptr, [this] { return doc()->spell_check(); },
 			bind_command_handler(*this, app_command_handler::edit_spell_check)
@@ -242,39 +238,32 @@ std::vector<command_def> app_state::make_commands()
 
 		// ── View ───────────────────────────────────────────────────────
 		{
-			{u8"ww", u8"wordwrap"}, u8"Toggle word wrap",
-			u8"&Word Wrap", static_cast<int>(command_id::view_word_wrap), {'Z', pf::key_mod::alt},
+			"Toggle word wrap",
+			"&Word Wrap", static_cast<int>(command_id::view_word_wrap), {'Z', pf::key_mod::alt},
 			nullptr, [this] { return _doc_view->word_wrap(); },
 			bind_command_handler(*this, app_command_handler::view_word_wrap)
 		},
 		{
-			{u8"md", u8"markdown"}, u8"Toggle markdown preview",
-			u8"&Markdown Preview", static_cast<int>(command_id::view_toggle_markdown), {'M', pf::key_mod::ctrl},
+			"Toggle markdown preview",
+			"&Markdown Preview", static_cast<int>(command_id::view_toggle_markdown), {'M', pf::key_mod::ctrl},
 			nullptr, [this] { return is_markdown(get_mode()); },
 			bind_command_handler(*this, app_command_handler::view_toggle_markdown)
 		},
 		{
-			{u8"chart"}, u8"Toggle chart view for CSV files",
-			u8"&Chart View", static_cast<int>(command_id::view_toggle_chart), {'K', pf::key_mod::ctrl},
-			[this] { return is_csv(get_mode()) || is_chart(get_mode()); },
-			[this] { return is_chart(get_mode()); },
-			bind_command_handler(*this, app_command_handler::view_toggle_chart)
-		},
-		{
-			{u8"r", u8"refresh"}, u8"Refresh folder index",
-			u8"&Refresh", static_cast<int>(command_id::view_refresh_folder), {pf::platform_key::F5, pf::key_mod::none},
+			"Refresh folder index",
+			"&Refresh", static_cast<int>(command_id::view_refresh_folder), {pf::platform_key::F5, pf::key_mod::none},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::view_refresh_folder)
 		},
 		{
-			{u8"fn", u8"nextresult"}, u8"Navigate to next search result",
-			u8"&Next Result", static_cast<int>(command_id::view_next_result), {pf::platform_key::F8, pf::key_mod::none},
+			"Navigate to next search result",
+			"&Next Result", static_cast<int>(command_id::view_next_result), {pf::platform_key::F8, pf::key_mod::none},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::view_next_result)
 		},
 		{
-			{u8"fp", u8"prevresult"}, u8"Navigate to previous search result",
-			u8"&Previous Result", static_cast<int>(command_id::view_prev_result),
+			"Navigate to previous search result",
+			"&Previous Result", static_cast<int>(command_id::view_prev_result),
 			{pf::platform_key::F8, pf::key_mod::shift},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::view_prev_result)
@@ -282,81 +271,16 @@ std::vector<command_def> app_state::make_commands()
 
 		// ── Help ───────────────────────────────────────────────────────
 		{
-			{u8"t", u8"test"}, u8"Run all tests",
-			u8"Run &Tests", static_cast<int>(command_id::help_run_tests), {'T', pf::key_mod::ctrl},
+			"Run all tests",
+			"Run &Tests", static_cast<int>(command_id::help_run_tests), {'T', pf::key_mod::ctrl},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::help_run_tests)
 		},
 		{
-			{u8"ab", u8"about"}, u8"Show about / help",
-			u8"&About", static_cast<int>(command_id::app_about), {pf::platform_key::F1, pf::key_mod::none},
+			"Show about / help",
+			"&About", static_cast<int>(command_id::app_about), {pf::platform_key::F1, pf::key_mod::none},
 			nullptr, nullptr,
 			bind_command_handler(*this, app_command_handler::app_about)
-		},
-
-		// ── Console-only commands ──────────────────────────────────────
-		{
-			{u8"h", u8"help"}, u8"List available commands",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::help),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"ls", u8"dir", u8"tree"}, u8"List folder contents as a tree",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::list_tree),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"del", u8"rm", u8"delete"}, u8"Delete a file or folder in the current root: rm <path>",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::remove_path),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"cp", u8"copy"}, u8"Copy a file or folder within the current root: cp <source> <dest>",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::copy_path),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"mv", u8"move"}, u8"Move a file or folder within the current root: mv <source> <dest>",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::move_path),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"rename"}, u8"Rename within the same folder: rename <source> <new-name>",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::rename_path),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"q", u8"quote"}, u8"Stock quote: q <ticker>",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::quote),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"echo"}, u8"Echo text or write it to a file: echo \"text\" > file.md",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::echo),
-			command_availability::console | command_availability::agent
-		},
-		{
-			{u8"?", u8"calc"}, u8"Evaluate a simple math expression: calc 1 + 2 * (3 + 4)",
-			{}, 0, {},
-			nullptr, nullptr,
-			bind_command_handler(*this, app_command_handler::calc),
-			command_availability::console | command_availability::agent
 		},
 	};
 	return defs;
@@ -372,10 +296,10 @@ std::vector<pf::menu_command> app_state::build_menu()
 
 	return {
 		{
-			u8"&File", 0, nullptr, nullptr, nullptr, {
+			"&File", 0, nullptr, nullptr, nullptr, {
 				command_menu_item(cid::file_new),
 				command_menu_item(cid::file_open),
-				{u8"Open Recent &Root Folder", 0, nullptr, nullptr, nullptr, std::move(recent_roots)},
+				{"Open Recent &Root Folder", 0, nullptr, nullptr, nullptr, std::move(recent_roots)},
 				sep(),
 				command_menu_item(cid::file_save),
 				command_menu_item(cid::file_save_as),
@@ -385,7 +309,7 @@ std::vector<pf::menu_command> app_state::build_menu()
 			}
 		},
 		{
-			u8"&Edit", 0, nullptr, nullptr, nullptr, {
+			"&Edit", 0, nullptr, nullptr, nullptr, {
 				command_menu_item(cid::edit_undo),
 				command_menu_item(cid::edit_redo),
 				sep(),
@@ -399,15 +323,15 @@ std::vector<pf::menu_command> app_state::build_menu()
 				sep(),
 				command_menu_item(cid::edit_reformat),
 				command_menu_item(cid::edit_sort_remove_duplicates),
+				command_menu_item(cid::edit_calc_selection),
 				sep(),
 				command_menu_item(cid::edit_spell_check),
 			}
 		},
 		{
-			u8"&View", 0, nullptr, nullptr, nullptr, {
+			"&View", 0, nullptr, nullptr, nullptr, {
 				command_menu_item(cid::view_word_wrap),
 				command_menu_item(cid::view_toggle_markdown),
-				command_menu_item(cid::view_toggle_chart),
 				sep(),
 				command_menu_item(cid::view_refresh_folder),
 				sep(),
@@ -416,7 +340,7 @@ std::vector<pf::menu_command> app_state::build_menu()
 			}
 		},
 		{
-			u8"&Help", 0, nullptr, nullptr, nullptr, {
+			"&Help", 0, nullptr, nullptr, nullptr, {
 				command_menu_item(cid::help_run_tests),
 				command_menu_item(cid::app_about),
 			}

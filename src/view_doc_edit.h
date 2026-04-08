@@ -26,11 +26,11 @@ public:
 
 			if (word_start != word_end && word_start.y == word_end.y)
 			{
-				std::u8string line_text;
+				std::string line_text;
 				(*_doc)[word_start.y].render(line_text);
 				const auto word = line_text.substr(word_start.x, word_end.x - word_start.x);
 
-				if (!word.empty() && _doc->spell_check() && !spell_check_word(word))
+				if (!word.empty() && !spell_check_word(word))
 				{
 					const text_selection word_sel(word_start, word_end);
 					const auto suggestions = spell_suggest(word);
@@ -49,7 +49,7 @@ public:
 					if (!suggestions.empty())
 						items.emplace_back(); // separator
 
-					items.emplace_back(u8"Add to Dictionary", 0,
+					items.emplace_back("Add to Dictionary", 0,
 					                   [this, w = word]
 					                   {
 						                   spell_add_word(w);
@@ -74,7 +74,7 @@ public:
 		return items;
 	}
 
-	void drop_text(const std::u8string& text, const pf::ipoint& client_pt)
+	void drop_text(const std::string& text, const pf::ipoint& client_pt)
 	{
 		const auto drop_loc = client_to_text(client_pt);
 
@@ -106,7 +106,7 @@ public:
 		}
 	}
 
-	std::u8string prepare_drag_text()
+	std::string prepare_drag_text()
 	{
 		const auto sel = _doc->selection();
 
@@ -114,6 +114,7 @@ public:
 			return {};
 
 		_dragged_text_selection = sel;
+		_dragging_text = true;
 		return combine(_doc->text(sel));
 	}
 
@@ -156,7 +157,7 @@ protected:
 		return true;
 	}
 
-	void on_char(pf::window_frame_ptr& window, const char8_t c) override
+	void on_char(pf::window_frame_ptr& window, const char c) override
 	{
 		if (window->is_key_down_async(pf::platform_key::LButton) ||
 			window->is_key_down_async(pf::platform_key::RButton))
@@ -177,7 +178,7 @@ protected:
 			{
 				undo_group ug(_doc);
 				const auto pos = _doc->delete_text(ug, _doc->selection());
-				_doc->select(_doc->insert_text(ug, pos, static_cast<char8_t>(c)));
+				_doc->select(_doc->insert_text(ug, pos, static_cast<char>(c)));
 			}
 		}
 	}
@@ -221,7 +222,9 @@ private:
 		}
 		if (vk == pk::Back && ctrl)
 		{
-			_doc->edit_delete_back();
+			_doc->move_word_left(true);
+			if (_doc->has_selection())
+				_doc->edit_delete();
 			return true;
 		}
 		if (vk == pk::Delete && !shift)

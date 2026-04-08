@@ -258,17 +258,13 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="calc.h" />
     <ClInclude Include="commands.h" />
-    <ClInclude Include="command_calc.h" />
-    <ClInclude Include="finance.h" />
-    <ClInclude Include="agent.h" />
     <ClInclude Include="platform.h" />
     <ClInclude Include="test.h" />
     <ClInclude Include="document.h" />
     <ClInclude Include="app.h" />
     <ClInclude Include="view_base.h" />
-    <ClInclude Include="view_console.h" />
-    <ClInclude Include="view_doc_chart.h" />
     <ClInclude Include="view_text.h" />
     <ClInclude Include="view_doc.h" />
     <ClInclude Include="resource.h" />
@@ -289,8 +285,6 @@
     <ClCompile Include="app.cpp" />
     <ClCompile Include="app_commands.cpp" />
     <ClCompile Include="commands.cpp" />
-    <ClCompile Include="finance_scrape.cpp" />
-    <ClCompile Include="agent.cpp" />
     <ClCompile Include="platform_win.cpp" />
     <ClCompile Include="tests.cpp" />
     <ClCompile Include="document.cpp" />

@@ -14,7 +14,6 @@ class app_state;
 class text_view;
 class file_list_view;
 class search_list_view;
-class console_view;
 class doc_view;
 struct list_view_item;
 
@@ -22,7 +21,6 @@ using doc_view_ptr = std::shared_ptr<doc_view>;
 using text_view_ptr = std::shared_ptr<text_view>;
 using folder_view_ptr = std::shared_ptr<file_list_view>;
 using search_view_ptr = std::shared_ptr<search_list_view>;
-using console_view_ptr = std::shared_ptr<console_view>;
 using list_view_item_ptr = std::shared_ptr<list_view_item>;
 
 
@@ -38,12 +36,10 @@ public:
 	pf::window_frame_ptr _app_window;
 	pf::window_frame_ptr _doc_window;
 	pf::window_frame_ptr _list_window;
-	pf::window_frame_ptr _console_window;
 
 	doc_view_ptr _doc_view;
 	folder_view_ptr _files_view;
 	search_view_ptr _search_view;
-	console_view_ptr _console_view;
 
 	async_scheduler_ptr _scheduler;
 
@@ -65,7 +61,6 @@ public:
 	std::atomic<uint32_t> _invalid = 0;
 
 	splitter _panel_splitter{splitter::orientation::vertical, 0.2};
-	splitter _console_splitter{splitter::orientation::vertical, 0.8};
 
 	std::vector<command_def> make_commands();
 	explicit app_state(async_scheduler_ptr scheduler);
@@ -75,7 +70,7 @@ public:
 	                                   std::function<void()> action_override = nullptr,
 	                                   std::function<bool()> is_enabled_override = nullptr,
 	                                   std::function<bool()> is_checked_override = nullptr,
-	                                   std::u8string text_override = {}) const override;
+	                                   std::string text_override = {}) const override;
 	bool invoke_menu_accelerator(const pf::window_frame_ptr& window,
 	                             const std::vector<pf::menu_command>& items,
 	                             unsigned int vk) const override;
@@ -104,7 +99,7 @@ public:
 
 	void set_mode(view_mode m) override;
 
-	void on_search(const std::u8string& text) override;
+	void on_search(const std::string& text) override;
 
 	void toggle_search_mode();
 
@@ -130,14 +125,12 @@ public:
 
 		_doc_window->notify_size();
 		_list_window->notify_size();
-		_console_window->notify_size();
 
 		return 0;
 	}
 
 	void handle_paint(pf::window_frame_ptr& window, pf::draw_context& dc) override;
 
-	pf::irect console_split_bounds() const;
 	void layout_views() const;
 
 	void handle_size(pf::window_frame_ptr& window, pf::isize extent,
@@ -174,10 +167,6 @@ public:
 		{
 			close_markdown();
 		}
-		else if (is_chart(get_mode()))
-		{
-			close_chart();
-		}
 		else if (is_csv(get_mode()))
 		{
 			close_csv();
@@ -188,9 +177,9 @@ public:
 		}
 	}
 
-	std::u8string _message_bar_text;
+	std::string _message_bar_text;
 
-	std::u8string_view message_bar_text() const override { return _message_bar_text; }
+	std::string_view message_bar_text() const override { return _message_bar_text; }
 
 	void select_alternative();
 
@@ -204,24 +193,6 @@ public:
 	{
 		if (is_csv(get_mode()))
 			set_mode(with_view_content(get_mode(), view_content::edit_text));
-
-		update_info_message();
-	}
-
-	void close_chart()
-	{
-		if (is_chart(get_mode()))
-			set_mode(with_view_content(get_mode(), view_content::csv));
-
-		update_info_message();
-	}
-
-	void toggle_chart_view()
-	{
-		if (is_csv(get_mode()))
-			set_mode(with_view_content(get_mode(), view_content::chart));
-		else if (is_chart(get_mode()))
-			set_mode(with_view_content(get_mode(), view_content::csv));
 
 		update_info_message();
 	}
@@ -240,7 +211,7 @@ public:
 
 	uint32_t on_open()
 	{
-		const auto path = pf::open_file_path(u8"Open File", u8"");
+		const auto path = pf::open_file_path("Open File", "");
 
 		if (!path.empty())
 		{
@@ -279,7 +250,7 @@ public:
 
 	uint32_t on_new()
 	{
-		create_new_file(save_folder().combine(u8"new", u8"md"), u8"");
+		create_new_file(save_folder().combine("new", "md"), "");
 		return 0;
 	}
 
@@ -299,7 +270,7 @@ public:
 	{
 		auto name = active_item()->path.name();
 		if (name.empty()) name = active_item()->path.view();
-		const auto title = name.empty() ? g_app_name : pf::format(u8"{} - {}", name, g_app_name);
+		const auto title = name.empty() ? g_app_name : std::format("{} - {}", name, g_app_name);
 		_app_window->set_text(title);
 	}
 
@@ -331,15 +302,15 @@ public:
 		if (!has_any_modified())
 			return true;
 
-		std::vector<std::u8string> modified_names;
+		std::vector<std::string> modified_names;
 		collect_modified_names(_root_folder->children, modified_names);
 
-		auto msg = std::u8string(u8"Save changes to the following files?\n\n");
+		auto msg = std::string("Save changes to the following files?\n\n");
 		for (const auto& name : modified_names)
 		{
-			msg += u8"  \u2022 ";
+			msg += "  \u2022 ";
 			msg += name;
-			msg += u8"\n";
+			msg += "\n";
 		}
 
 		const auto id = _app_window->message_box(msg,
@@ -368,15 +339,15 @@ public:
 
 	bool save_doc()
 	{
-		const auto path = pf::save_file_path(u8"Save File", active_item()->path, u8"");
+		const auto path = pf::save_file_path("Save File", active_item()->path, "");
 
 		return !path.empty() && save_active_doc(path);
 	}
 
 	void copy_files_to_folder(const std::vector<pf::file_path>& sources, const pf::file_path& dest_folder) override;
 	void delete_item(const index_item_ptr& item) override;
-	void rename_item(const index_item_ptr& item, const std::u8string& new_name) override;
-	create_path_result create_new_file(const pf::file_path& folder, std::u8string content) override;
+	void rename_item(const index_item_ptr& item, const std::string& new_name) override;
+	create_path_result create_new_file(const pf::file_path& folder, std::string content) override;
 	create_path_result create_new_folder(const pf::file_path& folder) override;
 
 	void on_idle();
@@ -446,17 +417,15 @@ public:
 	{
 		_styles.dpi_scale = scale_factor;
 		_panel_splitter.set_dpi_scale(scale_factor);
-		_console_splitter.set_dpi_scale(scale_factor);
 		update_styles();
 	}
 
 	void on_zoom(int delta, zoom_target target) override;
 
-	void initialize_styles(const int lh, const int th, const int ch = 20)
+	void initialize_styles(const int lh, const int th)
 	{
 		_styles.list_font_height = std::clamp(lh, 8, 72);
 		_styles.text_font_height = std::clamp(th, 8, 72);
-		_styles.console_font_height = std::clamp(ch, 8, 72);
 		update_styles();
 	}
 
@@ -476,7 +445,7 @@ public:
 	static index_item_ptr make_item(const std::unordered_map<pf::file_path, index_item_ptr, pf::ihash>& existing,
 	                                pf::file_path path, bool is_folder)
 	{
-		auto item = std::make_shared<index_item>(path, std::u8string(path.name()), is_folder);
+		auto item = std::make_shared<index_item>(path, std::string(path.name()), is_folder);
 
 		const auto found = existing.find(path);
 		if (found != existing.end())
@@ -545,15 +514,16 @@ public:
 
 	using search_results_map = std::unordered_map<pf::file_path, std::vector<search_result>, pf::ihash>;
 
-	void execute_search(const std::u8string& text, std::function<void()> on_complete = {});
+	void execute_search(const std::string& text, std::function<void()> on_complete = {});
+	static search_results_map perform_search(const std::vector<search_input>& inputs, const std::string& text);
 
 private:
-	[[nodiscard]] std::u8string relative_name(const pf::file_path& path) const
+	[[nodiscard]] std::string relative_name(const pf::file_path& path) const
 	{
-		auto rel_name = std::u8string(path.view());
+		auto rel_name = std::string(path.view());
 		const auto root_view = _root_folder->path.view();
 		if (rel_name.length() > root_view.length() && pf::icmp(
-			std::u8string_view(rel_name).substr(0, root_view.length()), root_view) == 0)
+			std::string_view(rel_name).substr(0, root_view.length()), root_view) == 0)
 		{
 			rel_name = rel_name.substr(root_view.length());
 			if (!rel_name.empty() && (rel_name.starts_with(u8'\\') || rel_name.starts_with(u8'/')))
@@ -575,7 +545,7 @@ private:
 	}
 
 	static void collect_modified_names(const std::vector<index_item_ptr>& items,
-	                                   std::vector<std::u8string>& names)
+	                                   std::vector<std::string>& names)
 	{
 		for (const auto& item : items)
 		{
@@ -619,13 +589,13 @@ private:
 		{
 			if (!item->is_folder)
 				inputs.push_back({item->path, item->doc});
-			collect_search_inputs(item->children, inputs);
+			if (item->is_folder)
+				collect_search_inputs(item->children, inputs);
 		}
 	}
 
-	static search_results_map perform_search(const std::vector<search_input>& inputs, const std::u8string& text);
-
-	static void apply_search_results(const std::vector<index_item_ptr>& items, const search_results_map& results)
+	static void apply_search_results(const std::vector<index_item_ptr>& items,
+	                                 const search_results_map& results)
 	{
 		for (const auto& item : items)
 		{

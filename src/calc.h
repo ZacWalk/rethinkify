@@ -1,11 +1,11 @@
-// command_calc.h — Calculator expression parser for console arithmetic evaluation
+// calc.h — Calculator expression parser for evaluating arithmetic expressions
 
 #pragma once
 
 class calc_parser
 {
 public:
-	explicit calc_parser(const std::u8string_view expression) : _text(expression)
+	explicit calc_parser(const std::string_view expression) : _text(expression)
 	{
 	}
 
@@ -19,18 +19,20 @@ public:
 			return std::nullopt;
 		if (_pos != _text.size())
 		{
-			_error = u8"Unexpected trailing input.";
+			_error = "Unexpected trailing input.";
 			return std::nullopt;
 		}
 		return value;
 	}
 
-	std::u8string error() const { return _error; }
+	std::string error() const { return _error; }
 
 private:
-	std::u8string_view _text;
+	std::string_view _text;
 	size_t _pos = 0;
-	std::u8string _error;
+	int _depth = 0;
+	static constexpr int max_depth = 256;
+	std::string _error;
 
 	void skip_ws()
 	{
@@ -38,7 +40,7 @@ private:
 			++_pos;
 	}
 
-	bool consume(const char8_t ch)
+	bool consume(const char ch)
 	{
 		skip_ws();
 		if (_pos < _text.size() && _text[_pos] == ch)
@@ -72,7 +74,7 @@ private:
 				const auto rhs = parse_factor();
 				if (rhs == 0.0)
 				{
-					_error = u8"Division by zero.";
+					_error = "Division by zero.";
 					return 0.0;
 				}
 				value /= rhs;
@@ -84,19 +86,27 @@ private:
 
 	double parse_factor()
 	{
-		skip_ws();
-		if (consume(u8'+'))
-			return parse_factor();
-		if (consume(u8'-'))
-			return -parse_factor();
-		if (consume(u8'('))
+		if (++_depth > max_depth)
 		{
-			const auto value = parse_expression();
-			if (!consume(u8')'))
-				_error = u8"Missing closing ')'.";
-			return value;
+			_error = "Expression too deeply nested.";
+			return 0.0;
 		}
-		return parse_number();
+		skip_ws();
+		double result;
+		if (consume(u8'+'))
+			result = parse_factor();
+		else if (consume(u8'-'))
+			result = -parse_factor();
+		else if (consume(u8'('))
+		{
+			result = parse_expression();
+			if (!consume(u8')'))
+				_error = "Missing closing ')'.";
+		}
+		else
+			result = parse_number();
+		--_depth;
+		return result;
 	}
 
 	double parse_number()
@@ -125,19 +135,19 @@ private:
 
 		if (!seen_digit)
 		{
-			_error = u8"Expected a number.";
+			_error = "Expected a number.";
 			return 0.0;
 		}
 
 		try
 		{
 			const auto raw = _text.substr(start, _pos - start);
-			const std::string temp(reinterpret_cast<const char*>(raw.data()), raw.size());
+			const std::string temp((raw.data()), raw.size());
 			return std::stod(temp);
 		}
 		catch (...)
 		{
-			_error = u8"Invalid number.";
+			_error = "Invalid number.";
 			return 0.0;
 		}
 	}

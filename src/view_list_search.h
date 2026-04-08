@@ -10,7 +10,7 @@ class search_list_view final : public list_view
 {
 	edit_box_widget _input;
 
-	std::u8string _last_searched;
+	std::string _last_searched;
 	int _result_count = 0;
 
 	pf::irect edit_box_rect() const
@@ -49,7 +49,7 @@ protected:
 
 		if (hit->is_group)
 		{
-			items.emplace_back(hit->expanded ? u8"Collapse" : u8"Expand", 0, [this, hit]
+			items.emplace_back(hit->expanded ? "Collapse" : "Expand", 0, [this, hit]
 			{
 				toggle_header_collapse(hit);
 			});
@@ -57,7 +57,7 @@ protected:
 		}
 		else
 		{
-			items.emplace_back(u8"Open Result", 0, [this, hit]
+			items.emplace_back("Open Result", 0, [this, hit]
 			{
 				_events.open_path_and_select(hit->source, hit->line_number, hit->line_match_pos,
 				                             hit->text_match_length);
@@ -67,7 +67,7 @@ protected:
 
 		items.push_back(_events.command_menu_item(command_id::edit_copy, nullptr,
 		                                          [hit] { return hit && hit->source; }, nullptr,
-		                                          u8"Copy &Path"));
+		                                          "Copy &Path"));
 		return items;
 	}
 
@@ -98,14 +98,14 @@ protected:
 
 		const auto ef = styles.edit_font;
 
-		const auto char_sz = dc.measure_text(u8"X", ef);
+		const auto char_sz = dc.measure_text("X", ef);
 		const auto text_y = eb.top + (eb.height() - char_sz.cy) / 2;
 		constexpr auto bg_color = ui::tool_wnd_clr.darken(16);
 
 		if (_input.edit.text.empty())
 		{
 			// Placeholder text — centered in edit box
-			constexpr std::u8string_view placeholder = u8"Search...";
+			constexpr std::string_view placeholder = "Search...";
 			const auto ph_sz = dc.measure_text(placeholder, ef);
 			const auto ph_x = eb.left + (eb.width() - ph_sz.cx) / 2;
 			dc.draw_text(ph_x, text_y, text_rect, placeholder, ef, ui::handle_hover_color, bg_color);
@@ -119,7 +119,7 @@ protected:
 		// Draw result count below edit box
 		if (!_last_searched.empty())
 		{
-			const auto count_text = pf::format(u8"{} results", _result_count);
+			const auto count_text = std::format("{} results", _result_count);
 			auto count_rect = header_rect;
 			count_rect.top = eb.bottom + 2;
 			count_rect.left = eb.left + pad;
@@ -161,7 +161,7 @@ protected:
 		list_view::update_focus(window);
 	}
 
-	uint32_t on_char(pf::window_frame_ptr& window, const char8_t ch) override
+	uint32_t on_char(pf::window_frame_ptr& window, const char ch) override
 	{
 		if (ch == u8'\r' || ch == u8'\n')
 		{
@@ -316,7 +316,7 @@ public:
 		return i;
 	}
 
-	std::u8string relative_path(const index_item_ptr& item) const
+	std::string relative_path(const index_item_ptr& item) const
 	{
 		const auto root = _events.root_item();
 		if (!root) return item->name;
@@ -325,8 +325,8 @@ public:
 		if (item_view.length() > root_view.length() &&
 			pf::icmp(item_view.substr(0, root_view.length()), root_view) == 0)
 		{
-			auto rel = std::u8string(item_view.substr(root_view.length()));
-			if (!rel.empty() && (rel[0] == L'\\' || rel[0] == L'/'))
+			auto rel = std::string(item_view.substr(root_view.length()));
+			if (!rel.empty() && (rel[0] == '\\' || rel[0] == '/'))
 				rel = rel.substr(1);
 			return rel;
 		}
@@ -341,14 +341,14 @@ public:
 		{
 			found->second->source = item; // prevents keeping old index_item_ptr alive
 			found->second->is_group = true;
-			found->second->name = pf::format(u8"{} ({})", relative_path(item),
-			                                 static_cast<int>(item->search_results.size()));
+			found->second->name = std::format("{} ({})", relative_path(item),
+			                                  static_cast<int>(item->search_results.size()));
 			return found->second;
 		}
 
 		auto i = std::make_shared<list_view_item>();
-		i->name = pf::format(u8"{} ({})", relative_path(item),
-		                     static_cast<int>(item->search_results.size()));
+		i->name = std::format("{} ({})", relative_path(item),
+		                      static_cast<int>(item->search_results.size()));
 		i->source = item;
 		i->depth = 0;
 		i->is_group = true;

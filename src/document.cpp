@@ -15,7 +15,7 @@ static void ensure_spell_checker()
 		s_checker = pf::create_spell_checker();
 }
 
-bool spell_check_word(const std::u8string_view word)
+bool spell_check_word(const std::string_view word)
 {
 	ensure_spell_checker();
 	if (!s_checker) return true;
@@ -29,13 +29,13 @@ bool spell_check_word(const std::u8string_view word)
 	return valid;
 }
 
-std::vector<std::u8string> spell_suggest(const std::u8string_view word)
+std::vector<std::string> spell_suggest(const std::string_view word)
 {
 	ensure_spell_checker();
 	if (s_checker)
 	{
 		const auto wresults = s_checker->suggest(word);
-		std::vector<std::u8string> results;
+		std::vector<std::string> results;
 		results.reserve(wresults.size());
 		for (const auto& w : wresults)
 			results.push_back(w);
@@ -44,7 +44,7 @@ std::vector<std::u8string> spell_suggest(const std::u8string_view word)
 	return {};
 }
 
-void spell_add_word(const std::u8string_view word)
+void spell_add_word(const std::string_view word)
 {
 	ensure_spell_checker();
 	if (s_checker)
@@ -60,7 +60,7 @@ void reset_spell_checker()
 	s_spell_cache.clear();
 }
 
-void document_line::render(std::u8string& text_out) const
+void document_line::render(std::string& text_out) const
 {
 	if (!_buffer || !_text.empty())
 	{
@@ -74,7 +74,7 @@ void document_line::render(std::u8string& text_out) const
 	{
 	case file_encoding::utf8:
 	case file_encoding::ascii:
-		text_out.assign(reinterpret_cast<const char8_t*>(data), _length);
+		text_out.assign(reinterpret_cast<const char*>(data), _length);
 		break;
 
 	case file_encoding::utf16:
@@ -97,16 +97,16 @@ void document_line::render(std::u8string& text_out) const
 		}
 
 	case file_encoding::binary:
-		text_out.assign(reinterpret_cast<const char8_t*>(data), _length);
+		text_out.assign(reinterpret_cast<const char*>(data), _length);
 		break;
 
 	default:
-		text_out.assign(reinterpret_cast<const char8_t*>(data), _length);
+		text_out.assign(reinterpret_cast<const char*>(data), _length);
 		break;
 	}
 }
 
-void document_line::update(const std::u8string_view text)
+void document_line::update(const std::string_view text)
 {
 	_text = text;
 	_buffer.reset();
@@ -117,10 +117,10 @@ void document_line::update(const std::u8string_view text)
 
 int document_line::icmp(const document_line& other) const
 {
-	std::u8string line_text;
+	std::string line_text;
 	render(line_text);
 
-	std::u8string other_line_text;
+	std::string other_line_text;
 	other.render(other_line_text);
 
 	return pf::icmp(line_text, other_line_text);
@@ -270,20 +270,19 @@ loaded_file_data load_lines(const pf::file_path& path)
 	return data;
 }
 
-document::document(document_events& events, const std::u8string_view text,
+document::document(document_events& events, const std::string_view text,
                    const bool is_modified,
                    const line_endings nCrlfStyle) :
 	_events(events),
 	_modified(is_modified)
 {
-	_create_backup_file = false;
 	_undo_pos = 0;
 	_saved_undo_pos = 0;
 	_line_ending = nCrlfStyle;
 
 	if (text.empty())
 	{
-		append_line(u8"");
+		append_line("");
 	}
 	else
 	{
@@ -311,7 +310,7 @@ document::document(document_events& events, const pf::file_path& path, const uin
                                                    _disk_modified_time(disk_modified_time), _encoding(encoding)
 {
 	// Documents must always have at least one line
-	append_line(u8"");
+	append_line("");
 }
 
 document::~document() = default;
@@ -399,7 +398,7 @@ void document::update_max_line_length(const int i) const
 int document::expanded_line_length(const int line_index) const
 {
 	const auto& line = _lines[line_index];
-	std::u8string line_view;
+	std::string line_view;
 
 	if (line.expanded_length_cache() == invalid_length)
 	{
@@ -425,15 +424,15 @@ int document::expanded_line_length(const int line_index) const
 	return line.expanded_length_cache();
 }
 
-std::u8string document::expanded_chars(const std::u8string_view text, const int offset_in, const int count_in) const
+std::string document::expanded_chars(const std::string_view text, const int offset_in, const int count_in) const
 {
-	std::u8string result;
+	std::string result;
 	expanded_chars(text, offset_in, count_in, result);
 	return result;
 }
 
-void document::expanded_chars(const std::u8string_view text, const int offset_in, const int count_in,
-                              std::u8string& result) const
+void document::expanded_chars(const std::string_view text, const int offset_in, const int count_in,
+                              std::string& result) const
 {
 	result.clear();
 
@@ -492,7 +491,7 @@ void document::expanded_chars(const std::u8string_view text, const int offset_in
 				else
 				{
 					const auto c = chars[i];
-					result += static_cast<char8_t>(c == u8' ' && _view_tabs ? SPACE_CHARACTER : c);
+					result += static_cast<char>(c == u8' ' && _view_tabs ? SPACE_CHARACTER : c);
 					if (!pf::is_utf8_continuation(c))
 						cur_pos++;
 				}
@@ -512,7 +511,7 @@ int document::calc_offset(const int lineIndex, const int nCharIndex) const
 
 	if (lineIndex >= 0 && lineIndex < std::ssize(_lines))
 	{
-		std::u8string line_view;
+		std::string line_view;
 		const auto& line = _lines[lineIndex];
 		line.render(line_view);
 
@@ -541,7 +540,7 @@ int document::calc_offset_approx(const int lineIndex, const int nOffset) const
 
 	const auto& line = _lines[lineIndex];
 
-	std::u8string line_view;
+	std::string line_view;
 	line.render(line_view);
 
 	const auto nLength = static_cast<int>(line_view.size());
@@ -624,7 +623,7 @@ void document::move_char_left(const bool selecting)
 		}
 		else
 		{
-			std::u8string line_text;
+			std::string line_text;
 			_lines[_cursor_loc.y].render(line_text);
 			_cursor_loc.x = pf::utf8_prev(line_text, _cursor_loc.x);
 		}
@@ -652,7 +651,7 @@ void document::move_char_right(const bool selecting)
 		}
 		else
 		{
-			std::u8string line_text;
+			std::string line_text;
 			_lines[_cursor_loc.y].render(line_text);
 			_cursor_loc.x = pf::utf8_next(line_text, _cursor_loc.x);
 		}
@@ -680,25 +679,25 @@ void document::move_word_left(const bool selecting)
 	}
 
 	const auto& line = _lines[_cursor_loc.y];
-	std::u8string line_view;
+	std::string line_view;
 	line.render(line_view);
 	auto nPos = _cursor_loc.x;
 
-	while (nPos > 0 && iswspace(line_view[nPos - 1]))
+	while (nPos > 0 && iswspace(static_cast<unsigned char>(line_view[nPos - 1])))
 		nPos--;
 
 	if (nPos > 0)
 	{
 		nPos--;
-		if (iswalnum(line_view[nPos]) || line_view[nPos] == L'_')
+		if (iswalnum(static_cast<unsigned char>(line_view[nPos])) || line_view[nPos] == '_')
 		{
-			while (nPos > 0 && (iswalnum(line_view[nPos - 1]) || line_view[nPos - 1] == L'_'))
+			while (nPos > 0 && (iswalnum(static_cast<unsigned char>(line_view[nPos - 1])) || line_view[nPos - 1] == '_'))
 				nPos--;
 		}
 		else
 		{
-			while (nPos > 0 && !iswalnum(line_view[nPos - 1])
-				&& line_view[nPos - 1] != L'_' && !iswspace(line_view[nPos - 1]))
+			while (nPos > 0 && !iswalnum(static_cast<unsigned char>(line_view[nPos - 1]))
+				&& line_view[nPos - 1] != '_' && !iswspace(static_cast<unsigned char>(line_view[nPos - 1])))
 				nPos--;
 		}
 	}
@@ -736,24 +735,24 @@ void document::move_word_right(const bool selecting)
 	}
 
 	const auto& line = _lines[_cursor_loc.y];
-	std::u8string line_text;
+	std::string line_text;
 	line.render(line_text);
 
 	int nPos = _cursor_loc.x;
 
-	if (iswalnum(line_text[nPos]) || line_text[nPos] == L'_')
+	if (iswalnum(static_cast<unsigned char>(line_text[nPos])) || line_text[nPos] == '_')
 	{
-		while (nPos < nLength && (iswalnum(line_text[nPos]) || line_text[nPos] == L'_'))
+		while (nPos < nLength && (iswalnum(static_cast<unsigned char>(line_text[nPos])) || line_text[nPos] == '_'))
 			nPos++;
 	}
 	else
 	{
-		while (nPos < nLength && !iswalnum(line_text[nPos])
-			&& line_text[nPos] != L'_' && !iswspace(line_text[nPos]))
+		while (nPos < nLength && !iswalnum(static_cast<unsigned char>(line_text[nPos]))
+			&& line_text[nPos] != '_' && !iswspace(static_cast<unsigned char>(line_text[nPos])))
 			nPos++;
 	}
 
-	while (nPos < nLength && iswspace(line_text[nPos]))
+	while (nPos < nLength && iswspace(static_cast<unsigned char>(line_text[nPos])))
 		nPos++;
 
 	_cursor_loc.x = nPos;
@@ -795,12 +794,12 @@ void document::move_line_home(const bool selecting)
 {
 	const auto& line = _lines[_cursor_loc.y];
 
-	std::u8string line_text;
+	std::string line_text;
 	line.render(line_text);
 	const auto line_len = static_cast<int>(line_text.size());
 
 	int nHomePos = 0;
-	while (nHomePos < line_len && iswspace(line_text[nHomePos]))
+	while (nHomePos < line_len && iswspace(static_cast<unsigned char>(line_text[nHomePos])))
 		nHomePos++;
 	if (nHomePos == line_len || _cursor_loc.x == nHomePos)
 		_cursor_loc.x = 0;
@@ -832,12 +831,12 @@ void document::move_doc_end(const bool selecting)
 text_location document::word_to_right(text_location pt) const
 {
 	const auto& line = _lines[pt.y];
-	std::u8string line_text;
+	std::string line_text;
 	line.render(line_text);
 
 	while (pt.x < line.size())
 	{
-		if (!iswalnum(line_text[pt.x]) && line_text[pt.x] != L'_')
+		if (!iswalnum(static_cast<unsigned char>(line_text[pt.x])) && line_text[pt.x] != '_')
 			break;
 		pt.x++;
 	}
@@ -847,25 +846,25 @@ text_location document::word_to_right(text_location pt) const
 text_location document::word_to_left(text_location pt) const
 {
 	const auto& line = _lines[pt.y];
-	std::u8string line_text;
+	std::string line_text;
 	line.render(line_text);
 
 	while (pt.x > 0)
 	{
-		if (!iswalnum(line_text[pt.x - 1]) && line_text[pt.x - 1] != L'_')
+		if (!iswalnum(static_cast<unsigned char>(line_text[pt.x - 1])) && line_text[pt.x - 1] != '_')
 			break;
 		pt.x--;
 	}
 	return pt;
 }
 
-std::u8string document::copy() const
+std::string document::copy() const
 {
 	if (_selection._start == _selection._end)
 		return {};
 
 	const auto sel = _selection.normalize();
-	return combine(text(sel), u8"\r\n");
+	return combine(text(sel), "\r\n");
 }
 
 bool document::can_paste()
@@ -878,7 +877,7 @@ bool document::query_editable() const
 	return !_read_only;
 }
 
-void document::edit_paste(const std::u8string_view text)
+void document::edit_paste(const std::string_view text)
 {
 	if (query_editable() && !text.empty())
 	{
@@ -888,12 +887,12 @@ void document::edit_paste(const std::u8string_view text)
 	}
 }
 
-std::u8string document::edit_cut()
+std::string document::edit_cut()
 {
 	if (query_editable() && has_selection())
 	{
 		const auto sel = selection();
-		auto result = combine(text(sel), u8"\r\n");
+		auto result = combine(text(sel), "\r\n");
 
 		undo_group ug(shared_from_this());
 		select(delete_text(ug, sel));
@@ -920,7 +919,17 @@ void document::edit_delete()
 			}
 			else
 			{
-				sel._end.x++;
+				// Advance past the full UTF-8 codepoint
+				std::string line_text;
+				_lines[sel._end.y].render(line_text);
+				auto pos = sel._end.x;
+				if (pos < static_cast<int>(line_text.size()))
+				{
+					pos++;
+					while (pos < static_cast<int>(line_text.size()) && pf::is_utf8_continuation(line_text[pos]))
+						pos++;
+				}
+				sel._end.x = pos;
 			}
 		}
 
@@ -986,7 +995,7 @@ void document::edit_tab()
 			undo_group ug(shared_from_this());
 			const auto [nStartLine, nEndLine] = prepare_block_selection(sel);
 
-			static constexpr char8_t pszText[] = u8"\t";
+			static constexpr char pszText[] = "\t";
 
 			for (int i = nStartLine; i <= nEndLine; i++)
 			{
@@ -1012,7 +1021,7 @@ void document::edit_untab()
 
 		if (sel._end.y > sel._start.y)
 		{
-			std::u8string line_text;
+			std::string line_text;
 			undo_group ug(shared_from_this());
 			const auto [nStartLine, nEndLine] = prepare_block_selection(sel);
 
@@ -1065,7 +1074,7 @@ void document::edit_untab()
 				assert(nNewOffset >= 0);
 
 				const auto& line = _lines[ptCursorPos.y];
-				std::u8string line_text;
+				std::string line_text;
 				line.render(line_text);
 				int nCurrentOffset = 0;
 				int i = 0;
@@ -1120,10 +1129,10 @@ void document::set_auto_indent(const bool bAutoIndent)
 }
 
 
-static bool is_spell_check_extension(const std::u8string_view ext)
+static bool is_spell_check_extension(const std::string_view ext)
 {
-	static const std::set<std::u8string_view, pf::iless> extensions = {
-		u8"md", u8"txt"
+	static const std::set<std::string_view, pf::iless> extensions = {
+		"md", "txt"
 	};
 
 	return extensions.contains(ext);
@@ -1198,7 +1207,7 @@ void document::path(const pf::file_path& path_in)
 	_events.invalidate(invalid::app_title);
 }
 
-void document::append_line(std::u8string_view text)
+void document::append_line(std::string_view text)
 {
 	_lines.emplace_back(text);
 }
@@ -1209,43 +1218,8 @@ void document::clear()
 	_undo.clear();
 	_undo_pos = 0;
 	_read_only = false;
-	append_line(u8"");
+	append_line("");
 	reset();
-}
-
-static std::istream& safe_get_line(std::istream& is, std::string& t)
-{
-	t.clear();
-
-	// The characters in the stream are read one-by-one using a std::streambuf.
-	// That is faster than reading them one-by-one using the std::istream.
-	// Code that uses streambuf this way must be guarded by a sentry object.
-	// The sentry object performs various tasks,
-	// such as thread synchronization and updating the stream state.
-
-	std::istream::sentry se(is, true);
-	const auto sb = is.rdbuf();
-
-	for (;;)
-	{
-		const auto c = sb->sbumpc();
-		switch (c)
-		{
-		case '\n':
-			return is;
-		case '\r':
-			if (sb->sgetc() == '\n')
-				sb->sbumpc();
-			return is;
-		case EOF:
-			// Also handle the case when the last line has no line ending
-			if (t.empty())
-				is.setstate(std::ios::eofbit);
-			return is;
-		default:
-			t += static_cast<char>(c);
-		}
-	}
 }
 
 // BOM byte signatures:
@@ -1315,7 +1289,7 @@ line_endings detect_line_endings(const uint8_t* buffer, const int len)
 }
 
 file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
-                                   const std::function<void(const std::u8string&, int)>& on_line)
+                                   const std::function<void(const std::string&, int)>& on_line)
 {
 	file_lines_info info;
 
@@ -1334,7 +1308,7 @@ file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
 
 	if (info.enc == file_encoding::utf8)
 	{
-		std::u8string utf8_line;
+		std::string utf8_line;
 		auto pos = static_cast<uint32_t>(header_len);
 		bool skip_next_lf = false;
 
@@ -1362,7 +1336,7 @@ file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
 				}
 				else
 				{
-					utf8_line += static_cast<char8_t>(c);
+					utf8_line += static_cast<char>(c);
 				}
 			}
 
@@ -1382,7 +1356,7 @@ file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
 		bool skip_next_lf = false;
 		uint16_t pending_lead = 0;
 
-		std::u8string line;
+		std::string line;
 
 		for (;;)
 		{
@@ -1443,12 +1417,12 @@ file_lines_info iterate_file_lines(const pf::file_handle_ptr& handle,
 	return info;
 }
 
-static std::u8string temp_file_path()
+static std::string temp_file_path()
 {
-	return pf::platform_temp_file_path(u8"rethinkify.");
+	return pf::platform_temp_file_path("rethinkify.");
 }
 
-static std::u8string last_error_message()
+static std::string last_error_message()
 {
 	return pf::platform_last_error_message();
 }
@@ -1482,7 +1456,7 @@ bool document::save_to_file(const pf::file_path& path, const line_endings nCrlfS
 
 		auto first = true;
 
-		std::u8string line_text;
+		std::string line_text;
 		static uint8_t smarker[3] = {0xEF, 0xBB, 0xBF};
 		stream.write(reinterpret_cast<const char*>(smarker), 3);
 
@@ -1490,7 +1464,7 @@ bool document::save_to_file(const pf::file_path& path, const line_endings nCrlfS
 		{
 			if (!first) stream << eol;
 			line.render(line_text);
-			stream.write(reinterpret_cast<const char*>(line_text.data()), line_text.size());
+			stream.write(line_text.data(), line_text.size());
 			first = false;
 		}
 
@@ -1518,22 +1492,22 @@ bool document::save_to_file(const pf::file_path& path, const line_endings nCrlfS
 }
 
 
-std::vector<std::u8string> document::text(const text_selection& selection) const
+std::vector<std::string> document::text(const text_selection& selection) const
 {
-	std::vector<std::u8string> result;
+	std::vector<std::string> result;
 
 	if (!selection.empty())
 	{
 		if (selection._start.y == selection._end.y)
 		{
-			std::u8string line_text;
+			std::string line_text;
 			_lines[selection._start.y].render(line_text);
 			result.emplace_back(
 				line_text.substr(selection._start.x, selection._end.x - selection._start.x));
 		}
 		else
 		{
-			std::u8string line_text;
+			std::string line_text;
 			for (int y = selection._start.y; y <= selection._end.y; y++)
 			{
 				_lines[y].render(line_text);
@@ -1630,21 +1604,21 @@ void document::record_undo(undo_item ui)
 	_undo_pos = _undo.size();
 }
 
-text_selection document::replace_text(undo_group& ug, const text_selection& selection, const std::u8string_view text)
+text_selection document::replace_text(undo_group& ug, const text_selection& selection, const std::string_view text)
 {
 	text_selection result;
 	result._start = delete_text(ug, selection);
-	result._end = insert_text(ug, selection._start, text);
+	result._end = insert_text(ug, result._start, text);
 	return result;
 }
 
-text_location document::insert_text(const text_location& location, const std::u8string_view text)
+text_location document::insert_text(const text_location& location, const std::string_view text)
 {
 	if (text.empty())
 		return location;
 
 	// Split input into lines
-	std::vector<std::u8string_view> input_lines;
+	std::vector<std::string_view> input_lines;
 	size_t start = 0;
 	for (size_t i = 0; i < text.size(); i++)
 	{
@@ -1660,7 +1634,7 @@ text_location document::insert_text(const text_location& location, const std::u8
 	auto end = text.size();
 	if (end > start && text[end - 1] == u8'\r')
 		end--;
-	input_lines.push_back(std::u8string_view(text).substr(start, end - start));
+	input_lines.push_back(std::string_view(text).substr(start, end - start));
 
 	text_location result = location;
 
@@ -1668,7 +1642,7 @@ text_location document::insert_text(const text_location& location, const std::u8
 	{
 		// Single-line insert: splice into existing line
 		auto& li = _lines[location.y];
-		std::u8string line_text;
+		std::string line_text;
 		li.render(line_text);
 		line_text.insert(location.x, input_lines[0]);
 		result.x = location.x + static_cast<int>(input_lines[0].size());
@@ -1680,7 +1654,7 @@ text_location document::insert_text(const text_location& location, const std::u8
 	{
 		// Multi-line insert: split current line, bulk-insert new lines
 		auto& first_line = _lines[location.y];
-		std::u8string line_text;
+		std::string line_text;
 		first_line.render(line_text);
 		const auto tail = line_text.substr(location.x);
 		line_text.erase(location.x);
@@ -1696,7 +1670,7 @@ text_location document::insert_text(const text_location& location, const std::u8
 			new_lines.emplace_back(input_lines[i]);
 
 		// Last input line gets the tail appended
-		new_lines.emplace_back(std::u8string(input_lines[count - 1]) + tail);
+		new_lines.emplace_back(std::string(input_lines[count - 1]) + tail);
 
 		_lines.insert(_lines.begin() + location.y + 1,
 		              std::make_move_iterator(new_lines.begin()),
@@ -1712,7 +1686,7 @@ text_location document::insert_text(const text_location& location, const std::u8
 	return result;
 }
 
-text_location document::insert_text(undo_group& ug, const text_location& location, const std::u8string_view text)
+text_location document::insert_text(undo_group& ug, const text_location& location, const std::string_view text)
 {
 	const auto result_location = insert_text(location, text);
 	ug.insert(text_selection(location, result_location), text);
@@ -1720,7 +1694,7 @@ text_location document::insert_text(undo_group& ug, const text_location& locatio
 	return result_location;
 }
 
-text_location document::insert_text(const text_location& location, const char8_t& c)
+text_location document::insert_text(const text_location& location, const char& c)
 {
 	text_location resultLocation = location;
 	auto& li = _lines[location.y];
@@ -1728,7 +1702,7 @@ text_location document::insert_text(const text_location& location, const char8_t
 	if (c == L'\n')
 	{
 		// Split - create new line from the tail of the current line
-		std::u8string line_text;
+		std::string line_text;
 		li.render(line_text);
 		const auto tail = line_text.substr(location.x);
 		line_text.erase(location.x);
@@ -1744,7 +1718,7 @@ text_location document::insert_text(const text_location& location, const char8_t
 	}
 	else if (c != '\r')
 	{
-		std::u8string line_text;
+		std::string line_text;
 		li.render(line_text);
 		line_text.insert(line_text.begin() + location.x, c);
 		li.update(line_text);
@@ -1758,7 +1732,7 @@ text_location document::insert_text(const text_location& location, const char8_t
 	return resultLocation;
 }
 
-text_location document::insert_text(undo_group& ug, const text_location& location, const char8_t& c)
+text_location document::insert_text(undo_group& ug, const text_location& location, const char& c)
 {
 	ug.insert(location, c);
 	_modified = true;
@@ -1776,9 +1750,9 @@ text_location document::delete_text(undo_group& ug, const text_location& locatio
 	}
 	else
 	{
-		std::u8string line_text;
+		std::string line_text;
 		_lines[location.y].render(line_text);
-		ug.erase(text_location(location.x - 1, location.y), static_cast<char8_t>(line_text[location.x - 1]));
+		ug.erase(text_location(location.x - 1, location.y), static_cast<char>(line_text[location.x - 1]));
 	}
 
 	_modified = true;
@@ -1792,7 +1766,7 @@ text_location document::delete_text(const text_selection& selection)
 		if (selection._start.y == selection._end.y)
 		{
 			auto& li = _lines[selection._start.y];
-			std::u8string line_text;
+			std::string line_text;
 			li.render(line_text);
 
 			line_text.erase(line_text.begin() + selection._start.x, line_text.begin() + selection._end.x);
@@ -1804,7 +1778,7 @@ text_location document::delete_text(const text_selection& selection)
 		}
 		else
 		{
-			std::u8string line_text_start, line_text_end;
+			std::string line_text_start, line_text_end;
 			_lines[selection._start.y].render(line_text_start);
 			_lines[selection._end.y].render(line_text_end);
 
@@ -1845,7 +1819,7 @@ text_location document::delete_text(const text_location& location)
 		{
 			auto& previous = _lines[location.y - 1];
 
-			std::u8string line_text, previous_text;
+			std::string line_text, previous_text;
 			line.render(line_text);
 			previous.render(previous_text);
 
@@ -1862,7 +1836,7 @@ text_location document::delete_text(const text_location& location)
 	else
 	{
 		auto& li = _lines[location.y];
-		std::u8string line_text;
+		std::string line_text;
 		li.render(line_text);
 
 		line_text.erase(line_text.begin() + location.x - 1, line_text.begin() + location.x);
@@ -1879,7 +1853,7 @@ text_location document::delete_text(const text_location& location)
 
 bool document::is_json() const
 {
-	std::u8string line_text;
+	std::string line_text;
 
 	for (const auto& line : _lines)
 	{
@@ -1899,8 +1873,8 @@ void document::reformat_json()
 	if (!is_json())
 		return;
 
-	std::u8string result;
-	std::u8string line_text;
+	std::string result;
+	std::string line_text;
 
 	int tabs = 0, tokens = -1;
 
@@ -1931,11 +1905,11 @@ void document::reformat_json()
 			}
 			else if (ch == u8':')
 			{
-				result += u8" : ";
+				result += " : ";
 			}
 			else if (ch == u8',')
 			{
-				result += u8",\n";
+				result += ",\n";
 				tabs = tokens + 1;
 				while (tabs)
 				{
@@ -1974,10 +1948,10 @@ void document::reformat_json()
 	select(replace_text(ug, all(), result));
 }
 
-std::u8string combine_line_text(const std::vector<document_line>& lines)
+std::string combine_line_text(const std::vector<document_line>& lines)
 {
-	std::u8string result;
-	std::u8string line_text;
+	std::string result;
+	std::string line_text;
 	for (const auto& line : lines)
 	{
 		line.render(line_text);
@@ -1989,7 +1963,7 @@ std::u8string combine_line_text(const std::vector<document_line>& lines)
 	return result;
 }
 
-std::u8string document::str() const
+std::string document::str() const
 {
 	return combine_line_text(_lines);
 }
@@ -2014,7 +1988,7 @@ void document::apply_loaded_data(const pf::file_path& path, loaded_file_data dat
 		_buffer = std::move(data.buffer);
 
 		if (_lines.empty())
-			append_line(u8"");
+			append_line("");
 
 		_is_truncated = data.truncated;
 		_read_only = data.encoding == file_encoding::binary || data.truncated;
@@ -2034,15 +2008,15 @@ void document::apply_loaded_data(const pf::file_path& path, loaded_file_data dat
 bool is_binary_extension(const pf::file_path& path)
 {
 	// is binary 
-	static const std::unordered_set<std::u8string_view, pf::ihash, pf::ieq> binary_extensions = {
-		u8".exe", u8".dlu8", u8".obj", u8".lib", u8".pdb", u8".ilk", u8".pch",
-		u8".png", u8".jpg", u8".jpeg", u8".gif", u8".bmp", u8".ico",
-		u8".zip", u8".7z", u8".rar", u8".tar", u8".gz",
-		u8".pdf", u8".doc", u8".docx", u8".xls", u8".xlsx",
-		u8".mp3", u8".mp4", u8".avi", u8".mov", u8".wav",
-		u8".ttf", u8".otf", u8".woff", u8".woff2",
-		u8".bin", u8".dat", u8".db", u8".sqlite",
-		u8".res", u8".recipe",
+	static const std::unordered_set<std::string_view, pf::ihash, pf::ieq> binary_extensions = {
+		".exe", ".dll", ".obj", ".lib", ".pdb", ".ilk", ".pch",
+		".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico",
+		".zip", ".7z", ".rar", ".tar", ".gz",
+		".pdf", ".doc", ".docx", ".xls", ".xlsx",
+		".mp3", ".mp4", ".avi", ".mov", ".wav",
+		".ttf", ".otf", ".woff", ".woff2",
+		".bin", ".dat", ".db", ".sqlite",
+		".res", ".recipe",
 	};
 	return binary_extensions.contains(path.extension());
 }

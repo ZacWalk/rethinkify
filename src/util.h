@@ -14,7 +14,7 @@ public:
 	~aes256();
 
 	void encrypt_ecb(uint8_t* /* plaintext */);
-	void decrypt_ecb(uint8_t* /* cipertext */);
+	void decrypt_ecb(uint8_t* /* ciphertext */);
 };
 
 class sha256
@@ -31,19 +31,19 @@ public:
 	void finish(uint8_t digest[32]);
 };
 
-[[nodiscard]] std::u8string to_base64(std::span<const uint8_t> input);
+[[nodiscard]] std::string to_base64(std::span<const uint8_t> input);
 
-[[nodiscard]] std::u8string to_hex(std::span<const uint8_t> src);
+[[nodiscard]] std::string to_hex(std::span<const uint8_t> src);
 
-[[nodiscard]] constexpr int char_to_hex(const char8_t c)
+[[nodiscard]] constexpr int char_to_hex(const char c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-	return 0;
+	return -1;
 }
 
-[[nodiscard]] std::vector<uint8_t> hex_to_data(std::u8string_view text);
+[[nodiscard]] std::vector<uint8_t> hex_to_data(std::string_view text);
 
 std::vector<uint8_t> calc_sha256(std::string_view text);
 
@@ -91,10 +91,10 @@ struct color_t
 };
 
 
-[[nodiscard]] size_t find_in_text(std::u8string_view text, std::u8string_view pattern, bool match_case = false);
+[[nodiscard]] size_t find_in_text(std::string_view text, std::string_view pattern, bool match_case = false);
 
 template <typename T, typename Fn>
-std::u8string join(const std::vector<T>& items, Fn text_of, const std::u8string_view endl = u8"\n")
+std::string join(const std::vector<T>& items, Fn text_of, const std::string_view endl = "\n")
 {
 	if (items.empty())
 	{
@@ -103,7 +103,7 @@ std::u8string join(const std::vector<T>& items, Fn text_of, const std::u8string_
 
 	if (items.size() == 1)
 	{
-		return std::u8string(text_of(items[0]));
+		return std::string(text_of(items[0]));
 	}
 
 	size_t total = 0;
@@ -111,7 +111,7 @@ std::u8string join(const std::vector<T>& items, Fn text_of, const std::u8string_
 		total += text_of(item).size();
 	total += (items.size() - 1) * endl.size();
 
-	std::u8string result;
+	std::string result;
 	result.reserve(total);
 	auto first = true;
 
@@ -132,28 +132,26 @@ std::u8string join(const std::vector<T>& items, Fn text_of, const std::u8string_
 	return result;
 }
 
-[[nodiscard]] std::u8string combine(const std::vector<std::u8string>& lines, std::u8string_view endl = u8"\n");
+[[nodiscard]] std::string combine(const std::vector<std::string>& lines, std::string_view endl = "\n");
 
-[[nodiscard]] std::u8string replace(std::u8string_view s, std::u8string_view find, std::u8string_view replacement);
+[[nodiscard]] std::string replace(std::string_view s, std::string_view find, std::string_view replacement);
 
-[[nodiscard]] constexpr std::u8string_view to_str(const bool val)
+[[nodiscard]] constexpr std::string_view to_str(const bool val)
 {
-	return val ? u8"true" : u8"false";
+	return val ? "true" : "false";
 }
 
-[[nodiscard]] inline std::u8string to_str(const int val)
+[[nodiscard]] inline std::string to_str(const int val)
 {
-	const auto s = std::to_string(val);
-	return std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size());
+	return std::to_string(val);
 }
 
-[[nodiscard]] inline std::u8string to_str(const double val)
+[[nodiscard]] inline std::string to_str(const double val)
 {
-	const auto s = std::to_string(val);
-	return std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size());
+	return std::to_string(val);
 }
 
-[[nodiscard]] constexpr int last_char(const std::u8string_view sv)
+[[nodiscard]] constexpr int last_char(const std::string_view sv)
 {
 	if (sv.empty()) return 0;
 	return sv.back();

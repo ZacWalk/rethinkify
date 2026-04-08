@@ -36,4 +36,4 @@
 #include "util.h"
 
 
-extern std::u8string g_app_name;
+extern std::string g_app_name;

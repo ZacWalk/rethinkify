@@ -29,7 +29,6 @@ protected:
 	int scroll_line() const { return _font_extent.cy > 0 ? _scroll_offset.y / _font_extent.cy : 0; }
 	int scroll_char() const { return _font_extent.cx > 0 ? _scroll_offset.x / _font_extent.cx : 0; }
 
-	void set_scroll_line(const int y) { _scroll_offset.y = y * _font_extent.cy; }
 	void set_scroll_char(const int x) { _scroll_offset.x = x * _font_extent.cx; }
 
 public:
@@ -55,7 +54,7 @@ public:
 	~text_view() override = default;
 
 	// --- Line text access (implemented by derived views) ---
-	virtual void render_line(int line_num, std::u8string& out) const = 0;
+	virtual void render_line(int line_num, std::string& out) const = 0;
 
 	// --- Text selection interface ---
 	// Virtual methods for text selection, coordinating with document selection logic.
@@ -228,19 +227,18 @@ public:
 
 	// --- Clipboard ---
 
-	std::u8string clipboard_text() const
+	std::string clipboard_text() const
 	{
 		return pf::platform_text_from_clipboard();
 	}
 
-	bool set_clipboard(const std::u8string_view text) const
+	bool set_clipboard(const std::string_view text) const
 	{
 		return pf::platform_text_to_clipboard(text);
 	}
 
 	virtual void ensure_visible(pf::window_frame_ptr& window, const text_location& pt)
 	{
-		const int line_count = _max_lines;
 		const int line_top = line_content_offset(pt.y);
 		const int line_bottom = line_top + _font_extent.cy;
 		const int visible_height = _view_extent.cy - text_top();
@@ -283,7 +281,7 @@ protected:
 	}
 
 	template <typename AdvanceFn>
-	static std::vector<int> calc_word_breaks(const std::u8string_view text, const int max_cols,
+	static std::vector<int> calc_word_breaks(const std::string_view text, const int max_cols,
 	                                         AdvanceFn&& char_advance)
 	{
 		std::vector<int> breaks;
@@ -296,7 +294,7 @@ protected:
 		{
 			const auto advance = char_advance(i, col);
 
-			if (text[i] == L' ' || text[i] == L'\t')
+			if (text[i] == ' ' || text[i] == '\t')
 			{
 				last_break_opportunity = i + 1;
 				col_at_break = col + advance;
@@ -315,6 +313,7 @@ protected:
 					col = advance;
 				}
 				last_break_opportunity = -1;
+				col_at_break = 0;
 			}
 			else
 			{
@@ -327,12 +326,12 @@ protected:
 	virtual void draw_view(pf::window_frame_ptr& window,
 	                       pf::draw_context& draw) const = 0;
 
-	virtual void on_char(pf::window_frame_ptr& window, const char8_t c)
+	virtual void on_char(pf::window_frame_ptr& window, const char c)
 	{
 	}
 
 	virtual void select_all() = 0;
-	virtual std::u8string select_text() const = 0;
+	virtual std::string select_text() const = 0;
 
 	// Returns true if the key was handled.
 	virtual bool on_key_down(pf::window_frame_ptr& window, const unsigned int vk)

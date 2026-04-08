@@ -132,13 +132,13 @@ public:
 		_wrap_line_y.resize(line_count + 1);
 		_wrap_line_y[0] = 0;
 
-		auto break_fn = [](const std::u8string_view text, const int col_w)
+		auto break_fn = [](const std::string_view text, const int col_w)
 		{
 			return calc_word_breaks(text, col_w, [](int, int) { return 1; });
 		};
 
 		int cumulative = 0;
-		std::u8string line_text;
+		std::string line_text;
 
 		for (int i = 0; i < line_count; i++)
 		{
@@ -196,7 +196,7 @@ protected:
 			return;
 		}
 
-		auto break_fn = [](const std::u8string_view text, const int col_w)
+		auto break_fn = [](const std::string_view text, const int col_w)
 		{
 			return calc_word_breaks(text, col_w, [](int, int) { return 1; });
 		};
@@ -216,7 +216,7 @@ protected:
 		}
 
 		auto y = line_offset(nCurrentLine) - _scroll_offset.y + pad_top;
-		std::u8string line_text;
+		std::string line_text;
 
 		while (y < rcClient.bottom && nCurrentLine < line_count)
 		{
@@ -269,7 +269,7 @@ private:
 		_table.separator_line = -1; // separator is drawn visually, not from a document line
 
 		// Compute natural column widths from all rows
-		std::u8string tmp;
+		std::string tmp;
 		for (int i = 0; i < line_count; i++)
 		{
 			(*_doc)[i].render(tmp);

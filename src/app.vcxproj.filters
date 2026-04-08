@@ -10,8 +10,6 @@
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="util.cpp" />
     <ClCompile Include="commands.cpp" />
-    <ClCompile Include="finance_scrape.cpp" />
-    <ClCompile Include="agent.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="platform.h" />
@@ -33,13 +31,9 @@
     <ClInclude Include="view_doc_csv.h" />
     <ClInclude Include="app.h" />
     <ClInclude Include="app_state.h" />
-    <ClInclude Include="view_console.h" />
+    <ClInclude Include="calc.h" />
     <ClInclude Include="commands.h" />
-    <ClInclude Include="finance.h" />
-    <ClInclude Include="agent.h" />
     <ClInclude Include="view_base.h" />
-    <ClInclude Include="view_doc_chart.h" />
-    <ClInclude Include="command_calc.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="app.rc" />

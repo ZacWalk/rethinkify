@@ -1,4 +1,4 @@
-Rethinkify is a lightweight AI agent enabled text editor with multi-file search, markdown, csv, charting and other financial features, written in C++. It is intended to enable financial research using various text files.
+Rethinkify is a lightweight AI agent enabled text editor with multi-file search, markdown, csv and other features, written in C++. It is intended to enable research using various text files.
 
 All Windows-specific code should be abstracted into platform_win.cpp / platform_win_web.cpp and accessed via platform-independent abstractions declared in platform.h.
 
@@ -25,7 +25,6 @@ Always build using rethinkify.sln
 | `view_base.h` | Base class for all views: scrolling state (view extent, content extent, scroll offset in pixels), scrollbar widgets |
 | `view_text.h` | Text view base: line-based text display, text selection, font metrics, syntax highlighting, message routing |
 | `view_doc.h` | Document view: selection, caret, word wrap, syntax-highlighted rendering |
-| `view_doc_chart.h` | Chart document view for candlestick rendering over CSV trade data |
 | `view_doc_csv.h` | Read-only CSV table view for comma-separated value files |
 | `view_doc_edit.h` | Editable document view: character input, cut/paste, indent/unindent |
 | `view_doc_markdown.h` | Read-only markdown renderer: headings, bold, italic, links, lists |
@@ -38,7 +37,6 @@ Always build using rethinkify.sln
 | `util.h` / `util.cpp` | Core utilities: string ops, geometry types, AES-256, SHA-256, base64/hex, URL encoding |
 | `ui.h` | UI types: color constants, edit_box, caret_blinker, splitter, custom_scrollbar |
 | `commands.h` / `commands.cpp` | Unified command system: `command_def` drives both console and menu, tokenizer, case-insensitive map lookup, help text |
-| `finance.h` / `finance_scrape.cpp` | Stock quote fetching: Yahoo Finance API, URL parsing, Chrome user agent, markdown generation |
 | `test.h` | Lightweight test framework (assertions + runner) |
 | `tests.cpp` | Unit tests for document editing, undo/redo, search, crypto, app state |
 | `resource.h` | Win32 resource IDs for menus, accelerators, dialogs |
@@ -55,4 +53,3 @@ command-line options for testing:
 
  - rethinkify64d.exe /test     — Run unit tests and print results to stdout
  - rethinkify64d.exe /download:<url>      — Download URL contents and print to stdout
- - rethinkify64d.exe /quote:<ticker>      — Fetch stock quote and print generated markdown to stdout

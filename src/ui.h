@@ -22,7 +22,7 @@ namespace ui
 
 struct edit_box
 {
-	std::u8string text;
+	std::string text;
 	int cursor_pos = 0;
 	int sel_anchor = 0;
 
@@ -40,7 +40,7 @@ struct edit_box
 		sel_anchor = s;
 	}
 
-	void insert_at_cursor(const std::u8string_view t)
+	void insert_at_cursor(const std::string_view t)
 	{
 		if (has_selection()) delete_selection();
 		text.insert(cursor_pos, t);
@@ -49,7 +49,7 @@ struct edit_box
 	}
 
 	// Returns true if text was modified
-	bool on_char(const pf::window_frame_ptr& w, const char8_t ch)
+	bool on_char(const pf::window_frame_ptr& w, const char ch)
 	{
 		if (ch == 0x01) // Ctrl+A
 		{
@@ -72,10 +72,10 @@ struct edit_box
 			const auto clip = w->text_from_clipboard();
 			if (!clip.empty())
 			{
-				std::u8string clean;
+				std::string clean;
 				clean.reserve(clip.size());
 				for (const auto c : clip)
-					if (c != L'\r' && c != L'\n')
+					if (c != '\r' && c != '\n')
 						clean += c;
 				insert_at_cursor(clean);
 				return true;
@@ -115,9 +115,9 @@ struct edit_box
 			return true;
 		}
 
-		if (ch >= L' ')
+		if (ch >= ' ')
 		{
-			insert_at_cursor(std::u8string_view(&ch, 1));
+			insert_at_cursor(std::string_view(&ch, 1));
 			return true;
 		}
 
@@ -137,8 +137,8 @@ struct edit_box
 			if (ctrl) // word-skip left
 			{
 				auto pos = cursor_pos;
-				while (pos > 0 && text[pos - 1] == L' ') pos--;
-				while (pos > 0 && text[pos - 1] != L' ') pos--;
+				while (pos > 0 && text[pos - 1] == ' ') pos--;
+				while (pos > 0 && text[pos - 1] != ' ') pos--;
 				cursor_pos = pos;
 			}
 			else if (cursor_pos > 0)
@@ -155,8 +155,8 @@ struct edit_box
 			if (ctrl)
 			{
 				auto pos = cursor_pos;
-				while (pos < len && text[pos] != L' ') pos++;
-				while (pos < len && text[pos] == L' ') pos++;
+				while (pos < len && text[pos] != ' ') pos++;
+				while (pos < len && text[pos] == ' ') pos++;
 				cursor_pos = pos;
 			}
 			else if (cursor_pos < len)
@@ -210,6 +210,8 @@ struct edit_box
 			return {box_rect.left + inner_pad, text_y};
 		}
 		const auto mc = w->create_measure_context();
+		if (!mc)
+			return {box_rect.left + inner_pad, text_y};
 		const auto before = text.substr(0, cursor_pos);
 		const auto sz = mc->measure_text(before, font);
 		return {box_rect.left + inner_pad + sz.cx, text_y};
@@ -661,7 +663,7 @@ struct edit_box_widget
 	}
 
 	// Returns true if text content was modified
-	bool on_char(const pf::window_frame_ptr& window, const char8_t ch)
+	bool on_char(const pf::window_frame_ptr& window, const char ch)
 	{
 		const bool modified = edit.on_char(window, ch);
 		reset_caret(window);
@@ -692,17 +694,17 @@ namespace table_layout
 		std::vector<int> col_widths; // display width per column (in codepoints, may be capped)
 	};
 
-	inline std::u8string_view trim_cell(const std::u8string_view s)
+	inline std::string_view trim_cell(const std::string_view s)
 	{
 		const auto start = s.find_first_not_of(u8' ');
-		if (start == std::u8string_view::npos) return {};
+		if (start == std::string_view::npos) return {};
 		const auto end = s.find_last_not_of(u8' ');
 		return s.substr(start, end - start + 1);
 	}
 
-	inline std::vector<std::u8string_view> split_pipe_cells(const std::u8string_view line)
+	inline std::vector<std::string_view> split_pipe_cells(const std::string_view line)
 	{
-		std::vector<std::u8string_view> cells;
+		std::vector<std::string_view> cells;
 		const auto len = static_cast<int>(line.size());
 		int pos = 0;
 
@@ -714,7 +716,7 @@ namespace table_layout
 		while (pos < len)
 		{
 			const auto next = line.find(u8'|', pos);
-			if (next == std::u8string_view::npos)
+			if (next == std::string_view::npos)
 			{
 				const auto tail = trim_cell(line.substr(pos));
 				if (!tail.empty()) cells.push_back(line.substr(pos, len - pos));
@@ -726,15 +728,15 @@ namespace table_layout
 		return cells;
 	}
 
-	inline std::vector<std::u8string_view> split_csv_cells(const std::u8string_view line)
+	inline std::vector<std::string_view> split_csv_cells(const std::string_view line)
 	{
-		std::vector<std::u8string_view> cells;
+		std::vector<std::string_view> cells;
 		const auto len = static_cast<int>(line.size());
 		int pos = 0;
 
-		while (pos <= len)
+		while (pos < len)
 		{
-			if (pos < len && line[pos] == u8'"')
+			if (line[pos] == u8'"')
 			{
 				// Quoted field: find matching close quote
 				const auto quote_start = pos + 1;
@@ -759,7 +761,7 @@ namespace table_layout
 			else
 			{
 				const auto next = line.find(u8',', pos);
-				if (next == std::u8string_view::npos)
+				if (next == std::string_view::npos)
 				{
 					cells.push_back(line.substr(pos));
 					break;
@@ -771,7 +773,7 @@ namespace table_layout
 		return cells;
 	}
 
-	inline bool is_right_align_cell(const std::u8string_view text)
+	inline bool is_right_align_cell(const std::string_view text)
 	{
 		const auto trimmed = trim_cell(text);
 		if (trimmed.empty()) return false;
@@ -834,13 +836,13 @@ namespace table_layout
 		for (int r = 0; r < rows; r++)
 		{
 			const pf::irect pc{x, y + r * font_cy, x + font_cx, y + (r + 1) * font_cy};
-			draw.draw_text(x, y + r * font_cy, pc, u8"|", font, fg, bg);
+			draw.draw_text(x, y + r * font_cy, pc, "|", font, fg, bg);
 		}
 	}
 
 	// Compute how many visual rows a cell needs when word-wrapped to col_w columns
 	template <typename BreakFn>
-	int cell_visual_rows(const std::u8string_view text, const int col_w, BreakFn&& break_fn)
+	int cell_visual_rows(const std::string_view text, const int col_w, BreakFn&& break_fn)
 	{
 		if (text.empty() || col_w <= 0) return 1;
 		const auto cps = pf::utf8_codepoint_count(text);
@@ -853,7 +855,7 @@ namespace table_layout
 	// Returns the total height in visual rows consumed by this table row.
 	template <typename BreakFn>
 	int draw_table_row(pf::draw_context& draw, const int y, const int left_pad, const int right,
-	                   const std::vector<std::u8string_view>& cells, const table_block& table,
+	                   const std::vector<std::string_view>& cells, const table_block& table,
 	                   const pf::font& font, const int font_cx, const int font_cy,
 	                   const bool is_header, const pf::color_t bg, const pf::color_t pipe_color,
 	                   const pf::color_t text_color, BreakFn&& break_fn)
@@ -862,7 +864,7 @@ namespace table_layout
 		int max_rows = 1;
 		for (size_t col = 0; col < table.col_widths.size(); col++)
 		{
-			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::u8string_view{};
+			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::string_view{};
 			const auto vr = cell_visual_rows(cell_raw, table.col_widths[col], break_fn);
 			if (vr > max_rows) max_rows = vr;
 		}
@@ -877,7 +879,7 @@ namespace table_layout
 		for (size_t col = 0; col < table.col_widths.size(); col++)
 		{
 			const auto col_w = table.col_widths[col];
-			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::u8string_view{};
+			const auto cell_raw = col < cells.size() ? trim_cell(cells[col]) : std::string_view{};
 			const auto ralign = !is_header && is_right_align_cell(cell_raw);
 			const auto cell_px = (col_w + 2) * font_cx;
 
@@ -937,7 +939,7 @@ namespace table_layout
 		for (const auto col_w : table.col_widths)
 		{
 			const auto dash_count = col_w + 2;
-			const std::u8string dashes(dash_count, u8'-');
+			const std::string dashes(dash_count, u8'-');
 			const pf::irect dc{x, y, x + dash_count * font_cx, y + font_cy};
 			draw.draw_text(x, y, dc, dashes, font, pipe_color, bg);
 			x += dash_count * font_cx;

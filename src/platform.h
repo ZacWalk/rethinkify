@@ -9,7 +9,6 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <tuple>
 #include <bit>
 #include <charconv>
 #include <stdexcept>
@@ -41,12 +40,12 @@ namespace pf
 		return static_cast<uint16_t>(0xffff & oc);
 	}
 
-	constexpr bool is_utf8_continuation(const char8_t b)
+	constexpr bool is_utf8_continuation(const char b)
 	{
 		return (static_cast<uint8_t>(b) & 0xC0) == 0x80;
 	}
 
-	constexpr int utf8_codepoint_count(const std::u8string_view s)
+	constexpr int utf8_codepoint_count(const std::string_view s)
 	{
 		int count = 0;
 		for (const auto b : s)
@@ -57,7 +56,7 @@ namespace pf
 		return count;
 	}
 
-	constexpr size_t utf8_truncate(const std::u8string_view s, const int max_codepoints)
+	constexpr size_t utf8_truncate(const std::string_view s, const int max_codepoints)
 	{
 		int cps = 0;
 		size_t i = 0;
@@ -74,7 +73,7 @@ namespace pf
 		return i;
 	}
 
-	constexpr int utf8_next(const std::u8string_view s, int pos)
+	constexpr int utf8_next(const std::string_view s, int pos)
 	{
 		if (pos >= static_cast<int>(s.size())) return pos;
 		pos++;
@@ -83,7 +82,7 @@ namespace pf
 		return pos;
 	}
 
-	constexpr int utf8_prev(const std::u8string_view s, int pos)
+	constexpr int utf8_prev(const std::string_view s, int pos)
 	{
 		if (pos <= 0) return 0;
 		pos--;
@@ -92,8 +91,8 @@ namespace pf
 		return pos;
 	}
 
-	std::u8string utf16_to_utf8(std::wstring_view wstr);
-	std::u8string u32_to_utf8(std::u32string_view str);
+	std::string utf16_to_utf8(std::wstring_view wstr);
+	std::string u32_to_utf8(std::u32string_view str);
 	std::u32string utf8_to_u32(std::string_view str);
 	std::wstring u32_to_wstr(std::u32string_view str);
 	std::u32string wstr_to_u32(std::wstring_view str);
@@ -112,10 +111,10 @@ namespace pf
 		return towupper(c);
 	}
 
-	constexpr uint32_t pop_utf8_char(std::u8string_view::const_iterator& in_ptr,
-	                                 const std::u8string_view::const_iterator& end)
+	constexpr uint32_t pop_utf8_char(std::string_view::const_iterator& in_ptr,
+	                                 const std::string_view::const_iterator& end)
 	{
-		const auto c1 = *in_ptr++;
+		const auto c1 = static_cast<uint8_t>(*in_ptr++);
 
 		if (c1 < 0x80)
 		{
@@ -164,18 +163,18 @@ namespace pf
 		return '?';
 	}
 
-	constexpr uint32_t peek_utf8_char(std::u8string_view::const_iterator in_ptr,
-	                                  const std::u8string_view::const_iterator& end)
+	constexpr uint32_t peek_utf8_char(std::string_view::const_iterator in_ptr,
+	                                  const std::string_view::const_iterator& end)
 	{
 		return pop_utf8_char(in_ptr, end);
 	}
 
-	inline std::u8string_view utf8_cast(const std::string_view val)
+	inline std::string_view utf8_cast(const std::string_view val)
 	{
-		return {std::bit_cast<const char8_t*>(val.data()), val.size()};
+		return {std::bit_cast<const char*>(val.data()), val.size()};
 	}
 
-	inline std::wstring utf8_to_utf16(const std::u8string_view s)
+	inline std::wstring utf8_to_utf16(const std::string_view s)
 	{
 		std::wstring result;
 		result.reserve(s.size());
@@ -224,7 +223,7 @@ namespace pf
 		}
 	}
 
-	inline void utf16_to_utf8(const std::wstring_view s, std::u8string& result)
+	inline void utf16_to_utf8(const std::wstring_view s, std::string& result)
 	{
 		result.clear();
 		result.reserve(std::max(result.capacity(), s.size()));
@@ -266,16 +265,16 @@ namespace pf
 		}
 	}
 
-	inline std::u8string utf16_to_utf8(const std::wstring_view s)
+	inline std::string utf16_to_utf8(const std::wstring_view s)
 	{
-		std::u8string result;
+		std::string result;
 		utf16_to_utf8(s, result);
 		return result;
 	};
 
-	inline std::u8string to_lower(const std::u8string_view s)
+	inline std::string to_lower(const std::string_view s)
 	{
-		std::u8string result;
+		std::string result;
 		result.reserve(s.size());
 		auto inserter = std::back_inserter(result);
 
@@ -289,9 +288,9 @@ namespace pf
 		return result;
 	}
 
-	inline std::u8string to_upper(const std::u8string_view s)
+	inline std::string to_upper(const std::string_view s)
 	{
-		std::u8string result;
+		std::string result;
 		result.reserve(s.size());
 		auto inserter = std::back_inserter(result);
 
@@ -305,7 +304,7 @@ namespace pf
 		return result;
 	}
 
-	constexpr int icmp(const std::u8string_view ll, const std::u8string_view rr)
+	constexpr int icmp(const std::string_view ll, const std::string_view rr)
 	{
 		if (ll.data() == rr.data() || (ll.empty() && rr.empty())) return 0;
 		if (ll.empty()) return -1;
@@ -332,7 +331,7 @@ namespace pf
 		return cl - cr;
 	}
 
-	[[nodiscard]] constexpr std::u8string_view unquote(const std::u8string_view text)
+	[[nodiscard]] constexpr std::string_view unquote(const std::string_view text)
 	{
 		if (text.size() > 1 && text.front() == '"' && text.back() == '"')
 		{
@@ -347,7 +346,7 @@ namespace pf
 	}
 
 
-	std::u8string url_encode(std::u8string_view input);
+	std::string url_encode(std::string_view input);
 
 	class ipoint
 	{
@@ -447,8 +446,6 @@ namespace pf
 		return std::clamp(v, lo, std::max(lo, hi));
 	}
 
-	uint32_t fnv1a_i(std::u8string_view sv);
-	uint64_t fnv1a_i_64(std::u8string_view sv);
 
 	struct color_t
 	{
@@ -492,12 +489,15 @@ namespace pf
 		}
 	};
 
+	uint32_t fnv1a_i(std::string_view sv);
+	uint64_t fnv1a_i_64(std::string_view sv);
+
 	class file_path
 	{
-		std::u8string _path;
+		std::string _path;
 
 	public:
-		file_path(const std::u8string_view path) : _path(path)
+		file_path(const std::string_view path) : _path(path)
 		{
 			for (auto& c : _path)
 			{
@@ -513,12 +513,12 @@ namespace pf
 
 		file_path() = default;
 
-		[[nodiscard]] const char8_t* c_str() const
+		[[nodiscard]] const char* c_str() const
 		{
 			return _path.c_str();
 		}
 
-		[[nodiscard]] std::u8string_view view() const
+		[[nodiscard]] std::string_view view() const
 		{
 			return _path;
 		}
@@ -528,34 +528,34 @@ namespace pf
 			return icmp(_path, other._path) == 0;
 		}
 
-		static constexpr std::u8string_view::size_type find_ext(const std::u8string_view path)
+		static constexpr std::string_view::size_type find_ext(const std::string_view path)
 		{
-			const auto last = path.find_last_of(u8"./\\");
-			if (last == std::u8string_view::npos || path[last] != '.') return path.size();
+			const auto last = path.find_last_of("./\\");
+			if (last == std::string_view::npos || path[last] != '.') return path.size();
 			return last;
 		}
 
-		static constexpr std::u8string_view::size_type find_last_slash(const std::u8string_view path)
+		static constexpr std::string_view::size_type find_last_slash(const std::string_view path)
 		{
-			const auto last = path.find_last_of(u8"/\\");
-			if (last == std::u8string_view::npos) return 0;
+			const auto last = path.find_last_of("/\\");
+			if (last == std::string_view::npos) return 0;
 			return last + 1;
 		}
 
-		[[nodiscard]] std::u8string without_extension() const
+		[[nodiscard]] std::string without_extension() const
 		{
 			return _path.substr(0, find_ext(_path));
 		}
 
-		[[nodiscard]] std::u8string extension() const
+		[[nodiscard]] std::string extension() const
 		{
 			return _path.substr(find_ext(_path));
 		}
 
-		file_path combine(const std::u8string& name, const std::u8string& extension) const
+		file_path combine(const std::string& name, const std::string& extension) const
 		{
 			const auto with_name = combine(name);
-			auto result = std::u8string{with_name.without_extension()};
+			auto result = std::string{with_name.without_extension()};
 
 			if (!extension.empty())
 			{
@@ -565,12 +565,12 @@ namespace pf
 			return file_path{result};
 		}
 
-		static constexpr bool is_path_sep(const char8_t c)
+		static constexpr bool is_path_sep(const char c)
 		{
-			return c == L'\\' || c == L'/';
+			return c == '\\' || c == '/';
 		}
 
-		[[nodiscard]] file_path combine(const std::u8string_view part) const
+		[[nodiscard]] file_path combine(const std::string_view part) const
 		{
 			auto result = _path;
 
@@ -586,7 +586,7 @@ namespace pf
 
 		[[nodiscard]] bool is_save_path() const
 		{
-			return _path.find_first_of(u8"/\\") != std::u8string::npos;
+			return _path.find_first_of("/\\") != std::string::npos;
 		}
 
 		[[nodiscard]] bool empty() const
@@ -594,7 +594,7 @@ namespace pf
 			return _path.empty();
 		}
 
-		[[nodiscard]] std::u8string name() const
+		[[nodiscard]] std::string name() const
 		{
 			return _path.substr(find_last_slash(_path));
 		}
@@ -614,7 +614,7 @@ namespace pf
 			return fnv1a_i(path.view());
 		}
 
-		size_t operator()(const std::u8string_view s) const
+		size_t operator()(const std::string_view s) const
 		{
 			return fnv1a_i(s);
 		}
@@ -627,7 +627,7 @@ namespace pf
 			return icmp(l.view(), r.view()) < 0;
 		}
 
-		bool operator()(const std::u8string_view l, const std::u8string_view r) const
+		bool operator()(const std::string_view l, const std::string_view r) const
 		{
 			return icmp(l, r) < 0;
 		}
@@ -640,52 +640,14 @@ namespace pf
 			return icmp(l.view(), r.view()) == 0;
 		}
 
-		bool operator()(const std::u8string_view l, const std::u8string_view r) const
+		bool operator()(const std::string_view l, const std::string_view r) const
 		{
 			return icmp(l, r) == 0;
 		}
 	};
 
-	namespace detail
-	{
-		template <typename T>
-		auto to_fmt_arg(T&& arg)
-		{
-			using D = std::remove_cvref_t<T>;
-			if constexpr (std::is_same_v<D, std::u8string_view> || std::is_same_v<D, std::u8string>)
-			{
-				const std::u8string_view sv = arg;
-				return std::string_view(reinterpret_cast<const char*>(sv.data()), sv.size());
-			}
-			else
-			{
-				return std::forward<T>(arg);
-			}
-		}
-	}
 
-	template <typename... Args>
-	[[nodiscard]] std::u8string format(const std::u8string_view fmt, Args&&... args)
-	{
-		const auto char_fmt = std::string_view(reinterpret_cast<const char*>(fmt.data()), fmt.size());
-		auto arg_tuple = std::tuple{detail::to_fmt_arg(std::forward<Args>(args))...};
-		return std::apply([&char_fmt](auto&... cargs) -> std::u8string
-		{
-			const auto r = std::vformat(char_fmt, std::make_format_args(cargs...));
-			return std::u8string(reinterpret_cast<const char8_t*>(r.data()), r.size());
-		}, arg_tuple);
-	}
-
-	template <>
-	[[nodiscard]] inline std::u8string format(const std::u8string_view fmt)
-	{
-		const auto char_fmt = std::string_view(reinterpret_cast<const char*>(fmt.data()), fmt.size());
-		const auto r = std::vformat(char_fmt, std::make_format_args());
-		return std::u8string(reinterpret_cast<const char8_t*>(r.data()), r.size());
-	}
-
-
-	[[nodiscard]] constexpr bool is_empty(const char8_t* sz)
+	[[nodiscard]] constexpr bool is_empty(const char* sz)
 	{
 		return sz == nullptr || sz[0] == 0;
 	}
@@ -695,17 +657,17 @@ namespace pf
 		return sz == nullptr || sz[0] == 0;
 	}
 
-	inline int32_t stoi(const std::u8string_view u8_string)
+	inline int32_t stoi(const std::string_view u8_string)
 	{
-		const auto sv = std::string_view(reinterpret_cast<const char*>(u8_string.data()), u8_string.size());
+		const auto sv = std::string_view(u8_string.data(), u8_string.size());
 		int32_t result = 0;
 		std::from_chars(sv.data(), sv.data() + sv.size(), result);
 		return result;
 	}
 
-	inline double stod(const std::u8string_view u8_string)
+	inline double stod(const std::string_view u8_string)
 	{
-		const auto sv = std::string_view(reinterpret_cast<const char*>(u8_string.data()), u8_string.size());
+		const auto sv = std::string_view(u8_string.data(), u8_string.size());
 		double result = 0.0;
 		std::from_chars(sv.data(), sv.data() + sv.size(), result);
 		return result;
@@ -768,13 +730,13 @@ namespace pf
 	};
 
 	// Format a key binding as human-readable text (e.g. "Ctrl+S", "Ctrl+Shift+F")
-	std::u8string format_key_binding(const key_binding& kb);
+	std::string format_key_binding(const key_binding& kb);
 
 	// Menu definitions
 	//
 	struct menu_command
 	{
-		std::u8string text;
+		std::string text;
 		int id = 0;
 		std::function<void()> action;
 		std::function<bool()> is_enabled;
@@ -785,7 +747,7 @@ namespace pf
 		menu_command() = default;
 
 		// Leaf item with action + optional enabled/checked + optional key binding
-		menu_command(std::u8string t, const int cmd_id,
+		menu_command(std::string t, const int cmd_id,
 		             std::function<void()> act,
 		             std::function<bool()> en = nullptr,
 		             std::function<bool()> chk = nullptr,
@@ -797,7 +759,7 @@ namespace pf
 		}
 
 		// Submenu item
-		menu_command(std::u8string t, const int cmd_id,
+		menu_command(std::string t, const int cmd_id,
 		             std::function<void()> act,
 		             std::function<bool()> en,
 		             std::function<bool()> chk,
@@ -882,7 +844,7 @@ namespace pf
 	struct keyboard_params
 	{
 		unsigned int vk = 0; // virtual key code (for key_down)
-		char8_t ch = 0; // character (for char_input)
+		char ch = 0; // character (for char_input)
 	};
 
 	// Extract signed mouse coordinates from packed lParam (handles negative values on multi-monitor)
@@ -913,7 +875,7 @@ namespace pf
 	struct measure_context
 	{
 		virtual ~measure_context() = default;
-		virtual isize measure_text(std::u8string_view text, const font& f) const = 0;
+		virtual isize measure_text(std::string_view text, const font& f) const = 0;
 		virtual isize measure_char(const font& f) const = 0;
 	};
 
@@ -929,9 +891,9 @@ namespace pf
 		virtual void fill_solid_rect(int x, int y, int cx, int cy, color_t color) = 0;
 
 		// Text output
-		virtual void draw_text(int x, int y, const irect& clip, std::u8string_view text,
+		virtual void draw_text(int x, int y, const irect& clip, std::string_view text,
 		                       const font& f, color_t text_color, color_t bg_color) = 0;
-		virtual isize measure_text(std::u8string_view text, const font& f) const = 0;
+		virtual isize measure_text(std::string_view text, const font& f) const = 0;
 
 		// Line drawing
 		virtual void draw_lines(std::span<const ipoint> points, color_t color) = 0;
@@ -973,10 +935,10 @@ namespace pf
 		virtual void move_window(const irect& bounds) = 0;
 		virtual void show(bool visible) = 0;
 		virtual bool is_visible() const = 0;
-		virtual void set_text(std::u8string_view text) = 0;
+		virtual void set_text(std::string_view text) = 0;
 		// Clipboard
-		virtual std::u8string text_from_clipboard() = 0;
-		virtual bool text_to_clipboard(std::u8string_view text) = 0;
+		virtual std::string text_from_clipboard() = 0;
+		virtual bool text_to_clipboard(std::string_view text) = 0;
 
 		// Window placement
 		struct placement
@@ -993,10 +955,10 @@ namespace pf
 		virtual bool is_key_down(unsigned int vk) const = 0;
 		virtual bool is_key_down_async(unsigned int vk) const = 0;
 		// Child windows
-		virtual window_frame_ptr create_child(std::u8string_view class_name, uint32_t style,
+		virtual window_frame_ptr create_child(std::string_view class_name, uint32_t style,
 		                                      color_t background) const & = 0;
 		virtual void close() = 0;
-		virtual int message_box(std::u8string_view text, std::u8string_view title, uint32_t style) = 0;
+		virtual int message_box(std::string_view text, std::string_view title, uint32_t style) = 0;
 		// Menu
 		virtual void set_menu(std::vector<menu_command> menu_def) = 0;
 		// Measure context
@@ -1069,8 +1031,8 @@ namespace pf
 	file_path current_directory();
 
 	// File dialog
-	file_path open_file_path(std::u8string_view title, std::u8string_view filters);
-	file_path save_file_path(std::u8string_view title, const file_path& default_path, std::u8string_view filters);
+	file_path open_file_path(std::string_view title, std::string_view filters);
+	file_path save_file_path(std::string_view title, const file_path& default_path, std::string_view filters);
 
 	// File iteration
 	struct file_attributes_t
@@ -1116,22 +1078,22 @@ namespace pf
 	void platform_sleep(int milliseconds);
 
 	// Resource loading
-	void* platform_load_resource(std::u8string_view name, std::u8string_view type);
+	void* platform_load_resource(std::string_view name, std::string_view type);
 
-	void platform_show_error(std::u8string_view message, std::u8string_view title);
+	void platform_show_error(std::string_view message, std::string_view title);
 
 	// Platform locale
-	std::u8string platform_language();
+	std::string platform_language();
 
 	// Spell checking
 	struct spell_checker
 	{
 		virtual ~spell_checker() = default;
 		virtual bool available() const = 0;
-		virtual std::u8string diagnostics() const = 0;
-		virtual bool is_word_valid(std::u8string_view word) = 0;
-		virtual std::vector<std::u8string> suggest(std::u8string_view word) = 0;
-		virtual void add_word(std::u8string_view word) = 0;
+		virtual std::string diagnostics() const = 0;
+		virtual bool is_word_valid(std::string_view word) = 0;
+		virtual std::vector<std::string> suggest(std::string_view word) = 0;
+		virtual void add_word(std::string_view word) = 0;
 	};
 
 	std::unique_ptr<spell_checker> create_spell_checker();
@@ -1160,9 +1122,9 @@ namespace pf
 	writable_file_handle_ptr open_file_for_write(const file_path& path);
 
 	// File operations
-	bool platform_move_file_replace(const char8_t* source, const char8_t* dest);
-	std::u8string platform_temp_file_path(const char8_t* prefix);
-	std::u8string platform_last_error_message();
+	bool platform_move_file_replace(const char* source, const char* dest);
+	std::string platform_temp_file_path(const char* prefix);
+	std::string platform_last_error_message();
 	bool platform_recycle_file(const file_path& path);
 	bool platform_rename_file(const file_path& old_path, const file_path& new_path);
 	bool platform_create_directory(const file_path& path);
@@ -1173,8 +1135,8 @@ namespace pf
 
 	// Clipboard
 	bool platform_clipboard_has_text();
-	std::u8string platform_text_from_clipboard();
-	bool platform_text_to_clipboard(std::u8string_view text);
+	std::string platform_text_from_clipboard();
+	bool platform_text_to_clipboard(std::string_view text);
 
 	// Bitmap resource loading
 	struct bitmap_data
@@ -1184,16 +1146,16 @@ namespace pf
 		std::vector<uint32_t> pixels;
 	};
 
-	std::optional<bitmap_data> platform_load_bitmap_resource(std::u8string_view resName);
+	std::optional<bitmap_data> platform_load_bitmap_resource(std::string_view resName);
 
 
-	void debug_trace(const std::u8string& msg);
-	void write_stdout(std::u8string_view text);
+	void debug_trace(const std::string& msg);
+	void write_stdout(std::string_view text);
 
 	// Configuration (INI file)
-	std::u8string config_read(std::u8string_view section, std::u8string_view key,
-	                          std::u8string_view default_value = {});
-	void config_write(std::u8string_view section, std::u8string_view key, std::u8string_view value);
+	std::string config_read(std::string_view section, std::string_view key,
+	                        std::string_view default_value = {});
+	void config_write(std::string_view section, std::string_view key, std::string_view value);
 
 	// background tasks
 	void run_async(std::function<void()> task);
@@ -1202,7 +1164,7 @@ namespace pf
 	// network
 	bool is_online();
 
-	using web_params = std::vector<std::pair<std::u8string, std::u8string>>;
+	using web_params = std::vector<std::pair<std::string, std::string>>;
 
 	enum class web_request_verb
 	{
@@ -1212,16 +1174,16 @@ namespace pf
 
 	struct web_request
 	{
-		std::u8string command;
-		std::u8string path;
-		std::u8string body;
+		std::string command;
+		std::string path;
+		std::string body;
 
 		web_params query;
 		web_params headers;
 		web_params form_data;
 
-		std::u8string file_form_data_name;
-		std::u8string file_name;
+		std::string file_form_data_name;
+		std::string file_name;
 		file_path upload_file_path;
 
 		file_path download_file_path;
@@ -1231,17 +1193,17 @@ namespace pf
 
 	struct web_response
 	{
-		std::u8string headers;
-		std::u8string body;
-		std::u8string content_type;
+		std::string headers;
+		std::string body;
+		std::string content_type;
 		int status_code = 0;
 	};
 
 	struct web_host;
 	using web_host_ptr = std::shared_ptr<web_host>;
 
-	web_host_ptr connect_to_host(std::u8string_view host, bool secure = true, int port = 0,
-	                             std::u8string_view user_agent = {});
+	web_host_ptr connect_to_host(std::string_view host, bool secure = true, int port = 0,
+	                             std::string_view user_agent = {});
 	web_response send_request(const web_host_ptr& host, const web_request& req);
 }
 
@@ -1253,6 +1215,6 @@ struct app_init_result
 
 
 // App callbacks implemented by the application layer
-app_init_result app_init(const pf::window_frame_ptr& main_frame, std::span<const std::u8string_view> params);
+app_init_result app_init(const pf::window_frame_ptr& main_frame, std::span<const std::string_view> params);
 void app_idle();
 void app_destroy();

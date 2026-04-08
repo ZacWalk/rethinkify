@@ -16,7 +16,6 @@ enum class view_content : int
 	markdown,
 	hex,
 	csv,
-	chart,
 };
 
 struct index_item;
@@ -24,7 +23,7 @@ using index_item_ptr = std::shared_ptr<index_item>;
 
 struct search_result
 {
-	std::u8string line_text;
+	std::string line_text;
 	int line_number = -1;
 	int line_match_pos = -1;
 	int text_match_start = -1;
@@ -35,7 +34,7 @@ struct create_path_result
 {
 	bool created = false;
 	pf::file_path path;
-	std::u8string name;
+	std::string name;
 
 	[[nodiscard]] explicit operator bool() const { return created; }
 };
@@ -43,7 +42,7 @@ struct create_path_result
 struct index_item
 {
 	pf::file_path path;
-	std::u8string name;
+	std::string name;
 	bool is_folder = false;
 	bool is_deleted = false;
 	view_content saved_view_content = view_content::none;
@@ -53,7 +52,7 @@ struct index_item
 
 	index_item() = default;
 
-	index_item(pf::file_path p, std::u8string n, const bool folder,
+	index_item(pf::file_path p, std::string n, const bool folder,
 	           document_ptr d = nullptr)
 		: path(std::move(p)), name(std::move(n)), is_folder(folder), doc(std::move(d))
 	{
@@ -73,7 +72,6 @@ namespace invalid
 	constexpr auto search_layout = 1 << 8;
 	constexpr auto files_populate = 1 << 9;
 	constexpr auto search_populate = 1 << 11;
-	constexpr auto console = 1 << 12;
 	constexpr auto index = 1 << 15;
 }
 
@@ -87,8 +85,6 @@ enum class view_mode
 	hex_search,
 	csv_files,
 	csv_search,
-	chart_files,
-	chart_search,
 };
 
 inline view_content view_content_of(const view_mode m)
@@ -107,9 +103,6 @@ inline view_content view_content_of(const view_mode m)
 	case view_mode::csv_files:
 	case view_mode::csv_search:
 		return view_content::csv;
-	case view_mode::chart_files:
-	case view_mode::chart_search:
-		return view_content::chart;
 	}
 
 	return view_content::edit_text;
@@ -118,7 +111,7 @@ inline view_content view_content_of(const view_mode m)
 inline bool is_search(const view_mode m)
 {
 	return m == view_mode::edit_text_search || m == view_mode::markdown_search || m == view_mode::hex_search || m ==
-		view_mode::csv_search || m == view_mode::chart_search;
+		view_mode::csv_search;
 }
 
 inline view_mode make_view_mode(const view_content content, const bool search)
@@ -133,8 +126,6 @@ inline view_mode make_view_mode(const view_content content, const bool search)
 		return search ? view_mode::hex_search : view_mode::hex_files;
 	case view_content::csv:
 		return search ? view_mode::csv_search : view_mode::csv_files;
-	case view_content::chart:
-		return search ? view_mode::chart_search : view_mode::chart_files;
 	}
 
 	return search ? view_mode::edit_text_search : view_mode::edit_text_files;
@@ -153,7 +144,6 @@ inline view_mode with_view_content(const view_mode mode, const view_content cont
 inline bool is_markdown(const view_mode m) { return view_content_of(m) == view_content::markdown; }
 inline bool is_hex(const view_mode m) { return view_content_of(m) == view_content::hex; }
 inline bool is_csv(const view_mode m) { return view_content_of(m) == view_content::csv; }
-inline bool is_chart(const view_mode m) { return view_content_of(m) == view_content::chart; }
 
 inline bool is_edit_text(const view_mode m)
 {
@@ -164,7 +154,6 @@ enum class view_focus
 {
 	text,
 	list,
-	console,
 };
 
 enum class spell_check_mode
@@ -192,12 +181,10 @@ struct view_styles
 
 	int list_font_height = 20;
 	int text_font_height = 24;
-	int console_font_height = 20;
 
 	pf::font list_font = {20, pf::font_name::calibri};
 	pf::font edit_font = {30, pf::font_name::calibri};
 	pf::font text_font = {24, pf::font_name::consolas};
-	pf::font console_font = {20, pf::font_name::consolas};
 
 	int padding_x = 5;
 	int padding_y = 5;
@@ -212,13 +199,13 @@ struct view_styles
 	int list_scroll_pad = 64;
 };
 
-enum class zoom_target { text, list, console };
+enum class zoom_target { text, list };
 
 // app_events — Full application event interface used by views and panels.
 class app_events : public document_events
 {
 public:
-	virtual std::u8string_view message_bar_text() const = 0;
+	virtual std::string_view message_bar_text() const = 0;
 	virtual index_item_ptr root_item() const = 0;
 	virtual index_item_ptr active_item() const = 0;
 	virtual view_styles styles() const = 0;
@@ -231,13 +218,13 @@ public:
 	virtual void on_escape() = 0;
 	virtual void open_path_and_select(const index_item_ptr& item, int line, int col, int length) = 0;
 
-	virtual void on_search(const std::u8string& text) = 0;
+	virtual void on_search(const std::string& text) = 0;
 	virtual void on_zoom(int delta, zoom_target target) = 0;
 	virtual pf::menu_command command_menu_item(command_id id,
 	                                           std::function<void()> action_override = nullptr,
 	                                           std::function<bool()> is_enabled_override = nullptr,
 	                                           std::function<bool()> is_checked_override = nullptr,
-	                                           std::u8string text_override = {}) const = 0;
+	                                           std::string text_override = {}) const = 0;
 	virtual bool invoke_menu_accelerator(const pf::window_frame_ptr& window,
 	                                     const std::vector<pf::menu_command>& items,
 	                                     unsigned int vk) const = 0;
@@ -245,8 +232,8 @@ public:
 	virtual pf::file_path save_folder() const = 0;
 	virtual void copy_files_to_folder(const std::vector<pf::file_path>& sources, const pf::file_path& dest_folder) = 0;
 	virtual void delete_item(const index_item_ptr& item) = 0;
-	virtual void rename_item(const index_item_ptr& item, const std::u8string& new_name) = 0;
-	virtual create_path_result create_new_file(const pf::file_path& folder, std::u8string content) = 0;
+	virtual void rename_item(const index_item_ptr& item, const std::string& new_name) = 0;
+	virtual create_path_result create_new_file(const pf::file_path& folder, std::string content) = 0;
 	virtual create_path_result create_new_folder(const pf::file_path& folder) = 0;
 };
 
