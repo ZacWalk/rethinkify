@@ -36,6 +36,12 @@ Thumbs.db
 # Logs
 *.log
 
+# Cards and pictures that are off the page for now; some describe private repos (see AGENTS.md)
+parked/
+
+# Local review notes; not for this public repo (see AGENTS.md)
+todo.md
+
 # Testing
 .pytest_cache/
 .coverage

@@ -1,13 +1,58 @@
+/* Rethinkify: an 80s title screen that scrolls back in time to a Commodore 64.
+
+   The title screen is the attract mode of an arcade shooter in the C64's own palette: deep
+   space over the hull of something huge, a ship and a wave of enemies, and PRESS START, which
+   starts the game (web/static/game). The chrome pipe frames and segmented energy bars come from
+   the C64 Terminator 2 cartridge (Ocean, 1991). The top of the page is today; the page runs
+   back through the work to 1992, and ends at the READY. prompt where it started. */
+
 :root {
-  --bg: #1b1d18;
-  --ink: #e6e8ec;
-  --muted: rgba(230, 232, 236, 0.68);
-  --line: rgba(230, 232, 236, 0.08);
-  --accent: #b8bdc6;
-  --card: rgba(255, 255, 255, 0.05);
-  --card-line: rgba(230, 232, 236, 0.14);
-  --surface-hover: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(230, 232, 236, 0.32);
+  /* The C64 palette, as that cartridge used it. */
+  --c64-blue-dark: #282878;
+  --c64-blue: #4040e0;
+  --c64-light-blue: #a0a0ff;
+  --c64-amber: #e0a040;
+  --c64-brown: #9c7448;
+  --c64-red: #e04040;
+  --c64-light-red: #ffa0a0;
+  --c64-light-green: #9ae29b;
+  /* The start-up screen. Its real text colour is the border colour, at 2.6:1 on the blue, so
+     text uses a lighter blue that passes AA; the border keeps the real one. */
+  --c64-border: #706deb;
+  --c64-screen: #2e2c9b;
+  --c64-text: #b5b3ff;
+
+  --bg: #0a0a0d;
+  /* Where the page has drifted to by the bottom, on the way to the C64's blue. */
+  --bg-deep: #15173f;
+  --ink: #e8e8f0;
+  --desc: #c9cad8;
+  --muted: #a9abc0;
+  --line: #262950;
+  --line-strong: rgba(160, 160, 255, 0.55);
+  --panel: #11132b;
+  /* Faint horizontal raster lines, like the shading on the walls in the game. */
+  --raster: repeating-linear-gradient(to bottom, rgba(160, 160, 255, 0.035) 0 1px, transparent 1px 4px);
+  --highlight: var(--c64-amber);
+  --hud-red: #ff6f61;
+  /* Behind each theme's picture, inside its chrome frame. */
+  --shot-bg: #0b0c16;
+
+  --font-c64: "Sixtyfour", ui-monospace, monospace;
+  /* A DEC VT320 terminal face: a computer of the same era, with lighter strokes than the C64's,
+     so headings stay easy to read. */
+  --font-head: "VT323", ui-monospace, Consolas, monospace;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-hud: "Share Tech Mono", ui-monospace, Consolas, monospace;
+
+  /* The sticky bars: the top bar, and the theme strip that joins it inside Projects. */
+  --topbar-h: 2.75rem;
+  --strip-h: 2.75rem;
+  --bar-bg: rgba(10, 10, 13, 0.92);
+  /* Space between top-level sections, and between themes. The "where you are" highlight
+     bridges exactly these gaps, so change them here. */
+  --section-gap: 4.5rem;
+  --theme-gap: 3.5rem;
 }
 
 * {
@@ -20,135 +65,492 @@ body {
   min-height: 100%;
 }
 
+html {
+  scroll-behavior: smooth;
+  /* Anchor jumps and keyboard focus stop below the sticky bars, not under them. */
+  scroll-padding-top: calc(var(--topbar-h) + var(--strip-h) + 1rem);
+}
+
 body {
   min-height: 100vh;
   color: var(--ink);
   background: var(--bg);
-  font-family: "Newsreader", Georgia, serif;
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  /* Solid pixels for the C64 face; lower values open up scan lines between them. The other
+     faces have no such axis and ignore it. */
+  font-variation-settings: "SCAN" 100;
 }
 
 a {
   color: inherit;
 }
 
+::selection {
+  background: var(--c64-light-blue);
+  color: var(--c64-blue-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--highlight);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3.5rem;
+  z-index: 30;
+  padding: 0.6rem 1rem;
+  background: var(--c64-light-blue);
+  color: var(--c64-blue-dark);
+  font-family: var(--font-c64);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
 .page-shell {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
+  /* clip, not hidden: a hidden box is a scroll container, and view() timelines would bind to
+     it instead of the page, freezing every scroll animation. It would also stop the top bar
+     and the theme strip from sticking. */
+  overflow: clip;
+  /* The journey: the further back in time you scroll, the closer the page gets to C64 blue. */
+  background: linear-gradient(to bottom, var(--bg) 0 12%, #0c0d1b 40%, #10122c 70%, var(--bg-deep));
 }
 
-/* ---------- HERO ---------- */
+/* ---------- TOP BAR ---------- */
+
+/* Sticky, so every section is one click away however far down the page you are. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bar-bg);
+  backdrop-filter: blur(8px);
+  /* A thin chrome pipe along the bottom edge. */
+  box-shadow:
+    0 1px 0 var(--c64-blue-dark),
+    0 2px 0 rgba(160, 160, 255, 0.5),
+    0 3px 0 var(--c64-blue-dark);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 56rem;
+  height: var(--topbar-h);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.topbar-home {
+  flex: none;
+  color: var(--ink);
+  font-family: var(--font-c64);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+/* Scrolls sideways if it ever has to (a tiny screen with large text) rather than clipping. It
+   spans the bar's full height and has side padding, so focus rings stay clear of its edges. */
+.topbar-links {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 1.25rem;
+  margin: 0 -0.4rem;
+  padding: 0 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topbar-links a {
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.topbar-links a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--line-strong);
+}
+
+/* ---------- HERO: THE TITLE SCREEN ---------- */
 
 .hero {
   position: relative;
   z-index: 1;
-  min-height: 50vh;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: clamp(1.5rem, 4vw, 3rem);
-  padding: 4rem 1.5rem 3rem;
-  max-width: 56rem;
-  margin: 0 auto;
-  text-align: left;
+  padding-bottom: clamp(2.5rem, 6vw, 4rem);
 }
 
-.hero-portrait {
-  flex: 0 0 auto;
-  display: block;
-  opacity: 0;
-  animation: rise 900ms ease forwards;
-}
-
-.hero-portrait img {
-  display: block;
-  width: 300px;
-  max-width: 100%;
-  height: auto;
-}
-
-.hero-text {
-  flex: 1 1 24rem;
-  min-width: 0;
-  max-width: 36rem;
+/* Deep space over the hull of something huge, the way an arcade shooter's attract mode opened,
+   drawn in C64 pixels by tools/hero_art.py and scaled up without smoothing, by a whole number so
+   every pixel is the same size: twice on phones, three times on wider screens. --px is one
+   pixel of the pictures, and --tile the width they repeat at; they all tile sideways, so any
+   width works. */
+.hero-scene {
+  --px: 2px;
+  --tile: calc(512 * var(--px));
+  position: relative;
   display: grid;
-  gap: 1rem;
+  place-items: center;
+  height: 17rem;
+  padding-bottom: 1.75rem;
+  background:
+    url("/static/images/hero-hull.webp") left bottom / auto calc(56 * var(--px)) repeat-x,
+    url("/static/images/hero-depths.webp") left bottom / auto calc(136 * var(--px)) repeat-x,
+    url("/static/images/hero-space.webp") left top / auto calc(136 * var(--px)) repeat-x,
+    var(--bg);
+  image-rendering: pixelated;
 }
 
-.eyebrow {
+@media (min-width: 721px) {
+  .hero-scene {
+    --px: 3px;
+    height: 24rem;
+    padding-bottom: 2.5rem;
+  }
+}
+
+/* The ship idles on the left; a wave of enemies comes in on the right, as much of it as fits
+   beside the portrait. Each picture holds two frames, one above the other. */
+.scene-ship,
+.scene-wave {
+  position: absolute;
+  background-repeat: no-repeat;
+}
+
+.scene-ship {
+  left: clamp(0.75rem, 8vw, 10rem);
+  top: 30%;
+  width: calc(40 * var(--px));
+  height: calc(12 * var(--px));
+  background-image: url("/static/images/hero-ship.webp");
+  background-position: 0 0;
+  background-size: 100% 200%;
+}
+
+.scene-wave {
+  right: 1rem;
+  top: 4%;
+  width: min(calc(140 * var(--px)), calc(50% - clamp(4.25rem, 9vw, 6.25rem) - 2.5rem));
+  height: calc(48 * var(--px));
+  background-image: url("/static/images/hero-wave.webp");
+  background-position: right top;
+  background-size: calc(140 * var(--px)) calc(96 * var(--px));
+}
+
+/* PRESS START, under the ship, which is part of the button too. The page hides it (hidden)
+   until boot.js has the game ready to load, so it never shows without scripts. */
+.press-start {
+  position: absolute;
+  left: clamp(0.75rem, 8vw, 10rem);
+  top: 30%;
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+  min-width: calc(40 * var(--px));
   margin: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-  letter-spacing: 0.24em;
+  padding: calc(12 * var(--px) + 0.7rem) 0 0;
+  border: 0;
+  background: none;
+  color: var(--c64-light-blue);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.press-start[hidden] {
+  display: none;
+}
+
+.press-start-label {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--c64-light-blue);
+  background: rgba(10, 10, 13, 0.85);
+  box-shadow:
+    inset 0 0 0 1px #05050a,
+    inset 0 0 0 2px rgba(64, 64, 224, 0.7);
+  font-family: var(--font-c64);
+  font-size: 0.62rem;
+  line-height: 1.2;
   text-transform: uppercase;
-  opacity: 0;
-  animation: rise 700ms ease forwards;
+  white-space: nowrap;
+}
+
+.press-start-label::before {
+  content: "\25B6\00a0";
+  content: "\25B6\00a0" / "";
+  color: var(--highlight);
+}
+
+.press-start:hover .press-start-label,
+.press-start:focus-visible .press-start-label {
+  background: var(--c64-blue-dark);
+  color: #fff;
+}
+
+.press-start-hi {
+  color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+}
+
+.press-start-hi:empty {
+  display: none;
+}
+
+.hud {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+/* The portrait sits in a chrome pipe frame, the way the game framed its faces. */
+.hud-frame {
+  position: relative;
+  width: clamp(8.5rem, 18vw, 12.5rem);
+  aspect-ratio: 677 / 800;
+  background: #000;
+  box-shadow:
+    0 0 0 1px #05050a,
+    0 0 0 2px var(--c64-blue),
+    0 0 0 3px var(--c64-light-blue),
+    0 0 0 4px #fff,
+    0 0 0 5px var(--c64-light-blue),
+    0 0 0 6px var(--c64-blue),
+    0 0 0 7px #05050a,
+    0 1.25rem 2.5rem rgba(0, 0, 0, 0.6);
+}
+
+.hud-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The scene's pixelated scaling is inherited, and it would make the portrait jagged. */
+  image-rendering: auto;
+}
+
+/* Targeting brackets in the corners. */
+.hud-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0.5rem;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--hud-red) 0 0) left top / 1rem 2px,
+    linear-gradient(var(--hud-red) 0 0) left top / 2px 1rem,
+    linear-gradient(var(--hud-red) 0 0) right top / 1rem 2px,
+    linear-gradient(var(--hud-red) 0 0) right top / 2px 1rem,
+    linear-gradient(var(--hud-red) 0 0) left bottom / 1rem 2px,
+    linear-gradient(var(--hud-red) 0 0) left bottom / 2px 1rem,
+    linear-gradient(var(--hud-red) 0 0) right bottom / 1rem 2px,
+    linear-gradient(var(--hud-red) 0 0) right bottom / 2px 1rem;
+  background-repeat: no-repeat;
+  opacity: 0.85;
+}
+
+/* Segmented energy bars either side of the frame. */
+.hud-meter {
+  width: 0.55rem;
+  background: linear-gradient(to top, var(--c64-amber), var(--c64-red) 65%, var(--c64-light-red));
+  mask-image: repeating-linear-gradient(to top, #000 0 0.3rem, transparent 0.3rem 0.45rem);
+}
+
+.hud-readout {
+  position: absolute;
+  left: calc(100% + 1.25rem);
+  bottom: 0.5rem;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(224, 64, 64, 0.55);
+  background: rgba(10, 10, 13, 0.88);
+  color: var(--hud-red);
+  font-family: var(--font-hud);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  letter-spacing: 0.06em;
+  white-space: pre;
+}
+
+/* The title overlaps the bottom of the scene, like a logo over the city. */
+.hero-text {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  gap: 0.9rem;
+  max-width: 44rem;
+  margin: calc(-1 * clamp(1.5rem, 3.6vw, 2.4rem)) auto 0;
+  padding: 0 1.5rem;
+  text-align: center;
 }
 
 h1 {
   margin: 0;
-  color: var(--ink);
-  font-family: "Rufina", Georgia, serif;
-  font-size: clamp(2.5rem, 7vw, 5rem);
-  font-weight: 700;
+  font-family: var(--font-c64);
+  font-size: clamp(1.75rem, 6vw, 3.5rem);
+  font-weight: 400;
+  line-height: 1.1;
   letter-spacing: 0.02em;
-  line-height: 0.95;
-  opacity: 0;
-  animation: rise 900ms ease 120ms forwards;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  text-transform: uppercase;
+}
+
+/* The wordmark is ten characters of a monospaced face, so it has to shrink with the screen to
+   stay on one line on the narrowest phones. */
+@media (max-width: 400px) {
+  .hero h1 {
+    font-size: 7.4vw;
+    letter-spacing: 0;
+  }
+}
+
+/* Chrome, the way 80s film titles did it: steel above a hard horizon line, and a sunset
+   reflected below it. A few scan lines show through. Browsers that cannot clip a background
+   to text keep plain light text rather than an invisible heading. */
+.hero h1 {
+  font-variation-settings: "SCAN" 45;
+  color: var(--ink);
+  filter: drop-shadow(0 3px 0 #000) drop-shadow(0 0 1px #000);
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .hero h1 {
+    background: linear-gradient(
+      to bottom,
+      #fff 8%,
+      #d4d4e6 30%,
+      #7c7c98 48%,
+      #1c1c30 50%,
+      #c98a34 52%,
+      #f2c06a 66%,
+      var(--c64-brown)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@media (forced-colors: active) {
+  .hero h1 {
+    background: none;
+    color: CanvasText;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--highlight);
+  font-family: var(--font-hud);
+  font-size: 0.82rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.eyebrow a {
+  text-decoration-color: rgba(224, 160, 64, 0.5);
+  text-underline-offset: 3px;
+}
+
+.eyebrow a:hover {
+  color: var(--ink);
+}
+
+.about-lede {
+  margin: 0.4rem 0 0;
+  max-width: 40rem;
+  color: var(--ink);
+  font-size: clamp(1.1rem, 1.6vw, 1.25rem);
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .summary {
   margin: 0;
   max-width: 38rem;
   color: var(--muted);
-  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
-  line-height: 1.55;
-  opacity: 0;
-  animation: rise 700ms ease 220ms forwards;
+  font-size: clamp(1rem, 1.4vw, 1.1rem);
+  line-height: 1.6;
 }
 
 .social {
   display: flex;
-  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.5rem;
-  opacity: 0;
-  animation: rise 700ms ease 340ms forwards;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
 }
 
+/* A thinner cut of the same chrome pipe. */
 .social-link {
   display: inline-flex;
   align-items: baseline;
   gap: 0.55rem;
   padding: 0.55rem 1rem;
+  border: 1px solid var(--c64-light-blue);
+  background: #0d0e24;
+  box-shadow:
+    inset 0 0 0 1px #05050a,
+    inset 0 0 0 2px rgba(64, 64, 224, 0.7);
+  color: var(--ink);
   text-decoration: none;
-  border: 1px solid var(--card-line);
-  border-radius: 999px;
-  background: var(--card);
-  backdrop-filter: blur(6px);
-  transition: transform 160ms ease, background 160ms ease;
 }
 
 .social-link:hover {
-  transform: translateY(-1px);
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
+  background: var(--c64-blue-dark);
 }
 
 .social-label {
+  color: var(--c64-light-blue);
+  font-family: var(--font-hud);
   font-size: 0.78rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--accent);
 }
 
 .social-handle {
-  font-family: "Rufina", Georgia, serif;
   font-size: 1rem;
+  font-weight: 600;
+}
+
+.hero-hint {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero-hint::before {
+  content: "\25BC\00a0";
+  content: "\25BC\00a0" / "";
+  color: var(--highlight);
 }
 
 /* ---------- CONTENT ---------- */
@@ -156,196 +558,165 @@ h1 {
 .content {
   position: relative;
   z-index: 1;
+  display: grid;
+  /* minmax(0, ...) lets the theme strip scroll sideways instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--section-gap);
   max-width: 56rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem 5rem;
-  display: grid;
-  gap: 4rem;
+  padding: 1rem 1.5rem 4.5rem;
 }
 
 .stack-head {
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--card-line);
-  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Each section loads like a program off a 1541 disk drive. The status line steps through
+   SEARCHING FOR and LOADING as you scroll to it; without scroll animations it just says READY. */
+.load {
+  margin: 0 0 0.75rem;
+  color: var(--c64-light-blue);
+  font-family: var(--font-c64);
+  font-size: clamp(0.5rem, 2.4vw, 0.6rem);
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.load::after {
+  content: "READY.";
+  display: block;
 }
 
 .stack-head h2 {
   margin: 0;
-  font-family: "Rufina", Georgia, serif;
-  font-size: clamp(1.6rem, 3vw, 2.25rem);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.stack-head .eyebrow {
-  animation: none;
-  opacity: 1;
-}
-
-/* ---------- ROW LIST ---------- */
-
-.row-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: 72px 1fr auto;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 0.9rem 1.1rem;
-  border: 1px solid var(--card-line);
-  border-radius: 14px;
-  background: var(--card);
-  backdrop-filter: blur(6px);
-  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
-}
-
-.row:hover {
-  transform: translateY(-1px);
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
-
-.row-thumb {
-  display: block;
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-  border: 1px solid var(--card-line);
-  text-decoration: none;
-  position: relative;
-}
-
-.row-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.thumb-placeholder {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  font-family: "Rufina", Georgia, serif;
-  font-weight: 700;
-  font-size: 1.5rem;
-  color: var(--accent);
+  font-family: var(--font-head);
+  font-size: clamp(2rem, 5vw, 2.85rem);
+  font-weight: 400;
+  line-height: 1;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.row-body {
-  min-width: 0;
+/* Older screens glowed in other colours, so the headings change phosphor the further back in
+   time you go: amber for the work, green for 1992, then the C64's blue at the bottom. */
+#about .stack-head h2 {
+  color: var(--c64-amber);
 }
 
-.row-title {
-  margin: 0 0 0.15rem;
-  font-family: "Rufina", Georgia, serif;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+#education .stack-head h2 {
+  color: var(--c64-light-green);
 }
 
-.row-title a {
-  text-decoration: none;
+.stack-intro {
+  margin: -0.25rem 0 1.25rem;
+  max-width: 46rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
 }
 
-.row-title a:hover {
-  text-decoration: underline;
+.stack-intro a {
+  color: var(--ink);
+  text-decoration-color: var(--line-strong);
   text-underline-offset: 3px;
 }
 
-.row-desc {
-  margin: 0;
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1.45;
+.stack-intro a:hover {
+  color: var(--highlight);
+  text-decoration-color: currentColor;
 }
 
-.row-cta {
-  font-size: 0.82rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent);
-  text-decoration: none;
-  white-space: nowrap;
-  padding-left: 0.5rem;
-}
-
-.row-cta:hover {
-  color: var(--ink);
-}
-
-/* ---------- SITE CARD GRID (2x2) ---------- */
+/* ---------- SITE CARDS (2x2) ---------- */
 
 .site-grid {
   list-style: none;
-  margin: 0;
-  padding: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  margin: 0;
+  padding: 0;
 }
 
-.site-grid--full {
-  grid-template-columns: 1fr;
-}
-
-.site-grid--full .site-card-link {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.site-grid--full .site-card-image img {
-  height: auto;
-  width: 100%;
-  max-height: 360px;
-  object-fit: contain;
+/* Cut corners where the browser can draw them, rounded ones where it cannot. */
+.site-card,
+.job {
+  border-radius: 10px;
+  corner-shape: bevel;
 }
 
 .site-card {
-  border-radius: 16px;
   overflow: hidden;
-  border: 1px solid var(--card-line);
-  transition: transform 160ms ease, border-color 160ms ease;
+  border: 1px solid var(--line);
+  transition:
+    transform 160ms steps(2, end),
+    border-color 160ms steps(2, end);
 }
 
 .site-card:hover {
   transform: translateY(-2px);
-  border-color: var(--border-strong);
+  border-color: var(--line-strong);
+}
+
+/* The link fills the card, and the card's overflow: hidden would clip a ring drawn around the
+   link, so ring the card instead. */
+.site-card:has(.site-card-link:focus-visible) {
+  outline: 2px solid var(--highlight);
+  outline-offset: 3px;
+}
+
+@supports selector(:has(*)) {
+  .site-card-link:focus-visible {
+    outline: none;
+  }
+}
+
+/* Where :has() is missing, the ring goes inside the link so the card cannot clip it. */
+.site-card-link:focus-visible {
+  outline-offset: -4px;
+}
+
+/* Each site keeps its own colour. They live here, not in style="" attributes, because the
+   CSP's style-src has no 'unsafe-inline', so browsers drop inline styles. */
+.site-card--diffractor {
+  background-color: #232328;
+}
+
+.site-card--turbo8bit {
+  background-color: #056597;
+}
+
+.site-card--alphagalactica {
+  background-color: #050f19;
+}
+
+.site-card--oldthinkpad {
+  background-color: #1e1d1b;
 }
 
 .site-card-link {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr);
   align-items: stretch;
   gap: 1rem;
-  text-decoration: none;
-  color: var(--ink);
   height: 100%;
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .site-card-image {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 0 0.5rem 0.5rem;
+  padding: 0.75rem 0 0.75rem 0.75rem;
 }
 
 .site-card-image img {
   display: block;
-  height: 200px;
-  width: auto;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
   object-fit: contain;
 }
 
@@ -354,179 +725,391 @@ h1 {
   flex-direction: column;
   justify-content: center;
   gap: 0.4rem;
-  padding: 1rem 1.25rem 1rem 0;
   min-width: 0;
+  padding: 1rem 1.25rem 1rem 0;
 }
 
 .site-card-title {
   margin: 0;
-  font-family: "Rufina", Georgia, serif;
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: 1.3rem;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .site-card-desc {
   margin: 0;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.8);
   font-size: 0.98rem;
   line-height: 1.45;
 }
 
 .site-card-cta {
   margin-top: 0.25rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: var(--font-hud);
   font-size: 0.78rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
+  overflow-wrap: anywhere;
 }
 
 .site-card-link:hover .site-card-cta {
   color: #fff;
 }
 
-@media (max-width: 720px) {
-  .site-grid {
-    grid-template-columns: 1fr;
-  }
+/* ---------- THEMES ---------- */
 
-  .site-grid--full .site-card-link {
-    grid-template-columns: 1fr;
-  }
-
-  .site-grid--full .site-card-image {
-    padding: 0.75rem 0.75rem 0;
-  }
-
-  .site-grid--full .site-card-image img {
-    width: 100%;
-    max-height: 240px;
-  }
-
-  .site-grid--full .site-card-body {
-    padding: 0.75rem 1.25rem 1.25rem;
-  }
+/* One row of chips that sticks under the top bar while you are in Projects, and leaves with
+   the section. On narrow screens it scrolls sideways rather than wrapping. */
+.theme-nav {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 5;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar-bg);
+  backdrop-filter: blur(8px);
 }
 
-/* ---------- ABOUT / CV ---------- */
-
-.about-head {
-  max-width: 52rem;
-  margin: 0 auto;
-  padding: 4rem 1.5rem 1rem;
+/* The side padding keeps the end chips' focus rings clear of the scroller's clipping edge. The
+   wide scroll padding makes a chip reached by Tab scroll well clear of the edges, not stop
+   half under the fade. */
+.theme-nav ol {
+  list-style: none;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
   align-items: center;
-  gap: clamp(1.5rem, 4vw, 2.5rem);
-  text-align: left;
+  gap: 0.5rem;
+  height: var(--strip-h);
+  margin: 0 -0.4rem;
+  padding: 0 0.4rem;
+  overflow-x: auto;
+  scroll-padding-inline: 8rem;
+  scrollbar-width: none;
 }
 
-.about-portrait {
-  flex: 0 0 auto;
-  display: block;
-  width: clamp(140px, 22vw, 220px);
-  height: auto;
-  border-radius: 12px;
+/* When the strip is wider than the screen, it fades out at whichever edge has more chips past
+   it. A scroll timeline is only active while there is something to scroll, so a strip that
+   fits never fades. The fade is off while a chip has keyboard focus, so its ring always shows. */
+@supports (animation-timeline: scroll(self inline)) {
+  .theme-nav ol {
+    animation: strip-edges linear both;
+    animation-timeline: scroll(self inline);
+  }
+
+  .theme-nav ol:has(:focus-visible) {
+    animation: none;
+  }
 }
 
-.about-head-text {
-  flex: 1 1 20rem;
-  min-width: 0;
-  max-width: 32rem;
+@keyframes strip-edges {
+  0% {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  }
+  5%,
+  95% {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem calc(100% - 2.5rem), transparent);
+  }
+  100% {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+  }
 }
 
-.about-head h1 {
-  font-size: clamp(2rem, 4vw, 2.75rem);
-  margin: 0.25rem 0 0.75rem;
-  line-height: 1.05;
+.theme-nav li {
+  flex: none;
 }
 
-.about-lede {
-  margin: 0 0 0.6rem;
-  max-width: 38rem;
+.theme-nav a {
+  display: inline-block;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
   color: var(--muted);
-  font-size: clamp(1rem, 1.4vw, 1.1rem);
-  line-height: 1.55;
-}
-
-.about-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-top: 1rem;
-}
-
-.about-links a {
-  color: var(--accent);
-  text-decoration: none;
+  font-family: var(--font-hud);
   font-size: 0.8rem;
-  letter-spacing: 0.18em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.theme-nav a:hover {
+  color: var(--ink);
+  border-color: var(--highlight);
+}
+
+.theme-num {
+  color: var(--highlight);
+  font-family: var(--font-hud);
+}
+
+/* Inside a chip the number follows the chip's colour, so it stays readable when the chip is
+   lit in reverse video. At 0.8 it still passes AA both ways. */
+.theme-nav .theme-num {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.theme {
+  margin-top: var(--theme-gap);
+}
+
+.theme-head {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed var(--line);
+}
+
+.theme-head .theme-num {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+}
+
+.theme-head h3 {
+  justify-self: start;
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: clamp(1.6rem, 3.6vw, 2.05rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.about-links a:hover {
+/* A block cursor, as if the heading had just been typed at a terminal. */
+.theme-head h3::after {
+  content: "";
+  display: inline-block;
+  width: 0.45em;
+  height: 0.8em;
+  margin-left: 0.25em;
+  vertical-align: -0.08em;
+  background: var(--highlight);
+}
+
+/* Each theme is a short story with one picture: the story on the left, the picture on the
+   right. The picture sticks under the bars while you read, so it stays beside its story. */
+.theme-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 1.25rem 2.25rem;
+  align-items: start;
+}
+
+.theme-story {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.theme-story p {
+  margin: 0 0 1rem;
+  color: var(--desc);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.theme-story p:last-child {
+  margin-bottom: 0;
+}
+
+/* The links are the achievements, so they stand out from the story a little, the way the
+   names do on a plain list of projects. */
+.theme-story a {
   color: var(--ink);
+  font-weight: 500;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
 }
 
-@media (max-width: 640px) {
-  .about-head {
-    text-align: center;
+.theme-story a:hover {
+  color: var(--highlight);
+  text-decoration-color: currentColor;
+}
+
+/* Repo names such as spike-db would otherwise break at their hyphen. They are all short, so
+   they stay whole and move to the next line instead. */
+.theme-story a[href^="https://github.com/ZacWalk/"] {
+  white-space: nowrap;
+}
+
+.theme-shot {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--strip-h) + 1.5rem);
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0.35rem 0 0;
+}
+
+/* A thinner cut of the title screen's chrome pipe frame. */
+.theme-shot-screen {
+  position: relative;
+  background: var(--shot-bg);
+  box-shadow:
+    0 0 0 1px #05050a,
+    0 0 0 2px var(--c64-blue),
+    0 0 0 3px var(--c64-light-blue),
+    0 0 0 4px var(--c64-blue),
+    0 0 0 5px #05050a,
+    0 1rem 2rem rgba(0, 0, 0, 0.5);
+}
+
+.theme-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.theme-shot figcaption {
+  margin-top: 0.9rem;
+  color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+/* ---------- WHERE YOU ARE ---------- */
+
+/* Lights the top-bar link and the theme chip for whatever crosses a line 40% of the way down
+   the window, from when it reaches the line until the next one does, gap included. It is a
+   scroll-driven animation, so it needs no script; elsewhere the bars still work, unlit. Each
+   timeline is named after an id in the page, so a new theme needs a name here as well. */
+@supports (timeline-scope: --x) {
+  .page-shell {
+    timeline-scope:
+      --sites, --projects, --about, --education, --theme-photos, --theme-ai, --theme-markets,
+      --theme-compilers, --theme-win32;
   }
 
-  .about-portrait {
-    width: 160px;
+  main > section,
+  .theme {
+    view-timeline-inset: 40% calc(60% - 1px);
   }
 
-  .about-links {
-    justify-content: center;
+  #sites {
+    view-timeline-name: --sites;
+  }
+
+  #projects {
+    view-timeline-name: --projects;
+  }
+
+  #about {
+    view-timeline-name: --about;
+  }
+
+  #education {
+    view-timeline-name: --education;
+  }
+
+  #theme-photos {
+    view-timeline-name: --theme-photos;
+  }
+
+  #theme-ai {
+    view-timeline-name: --theme-ai;
+  }
+
+  #theme-markets {
+    view-timeline-name: --theme-markets;
+  }
+
+  #theme-compilers {
+    view-timeline-name: --theme-compilers;
+  }
+
+  #theme-win32 {
+    view-timeline-name: --theme-win32;
+  }
+
+  .topbar-links a {
+    animation: here linear;
+    animation-range: cover 0% cover calc(100% + var(--section-gap));
+  }
+
+  .theme-nav a {
+    animation: here-chip linear;
+    animation-range: cover 0% cover calc(100% + var(--theme-gap));
+  }
+
+  .topbar-links a[href="#sites"] {
+    animation-timeline: --sites;
+  }
+
+  .topbar-links a[href="#projects"] {
+    animation-timeline: --projects;
+  }
+
+  .topbar-links a[href="#about"] {
+    animation-timeline: --about;
+  }
+
+  .topbar-links a[href="#education"] {
+    animation-timeline: --education;
+  }
+
+  .theme-nav a[href="#theme-photos"] {
+    animation-timeline: --theme-photos;
+  }
+
+  .theme-nav a[href="#theme-ai"] {
+    animation-timeline: --theme-ai;
+  }
+
+  .theme-nav a[href="#theme-markets"] {
+    animation-timeline: --theme-markets;
+  }
+
+  .theme-nav a[href="#theme-compilers"] {
+    animation-timeline: --theme-compilers;
+  }
+
+  .theme-nav a[href="#theme-win32"] {
+    animation-timeline: --theme-win32;
   }
 }
 
-.hero-compact {
-  min-height: auto;
-  padding: 4rem 2rem 2rem;
+@keyframes here {
+  from,
+  to {
+    color: var(--ink);
+    border-bottom-color: var(--highlight);
+  }
 }
 
-.hero-compact h1 {
-  font-size: clamp(3rem, 9vw, 6rem);
+/* The lit chip is in reverse video, the C64's only way of highlighting text. */
+@keyframes here-chip {
+  from,
+  to {
+    color: var(--bg);
+    border-color: var(--highlight);
+    background-color: var(--highlight);
+  }
 }
 
-.cv {
-  gap: 3rem;
-  max-width: 52rem;
-}
+/* ---------- WORK & EDUCATION ---------- */
 
 .cv-section p {
   margin: 0 0 1rem;
+  color: var(--desc);
   line-height: 1.6;
-  color: var(--ink);
-}
-
-.cv-section ul,
-.cv-section ol {
-  line-height: 1.55;
-  color: var(--ink);
 }
 
 .cv-section a {
   color: var(--ink);
   text-decoration: underline;
-  text-decoration-color: var(--card-line);
+  text-decoration-color: var(--line-strong);
   text-underline-offset: 3px;
 }
 
 .cv-section a:hover {
-  text-decoration-color: var(--ink);
+  color: var(--highlight);
+  text-decoration-color: currentColor;
 }
 
 .job {
-  padding: 1.25rem 1.5rem 1.5rem;
   margin-bottom: 1.25rem;
-  border: 1px solid var(--card-line);
-  border-radius: 14px;
-  background: var(--card);
-  backdrop-filter: blur(6px);
+  padding: 1.4rem 1.6rem 1.5rem;
+  border: 1px solid var(--line);
+  background: var(--raster), var(--panel);
 }
 
 .job-head {
@@ -535,33 +1118,33 @@ h1 {
 
 .job-role {
   margin: 0;
-  font-family: "Rufina", Georgia, serif;
   font-size: 1.4rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .job-meta {
-  margin: 0.25rem 0 0.75rem;
+  margin: 0.3rem 0 0.9rem;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-family: var(--font-hud);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .job-org {
-  font-weight: 500;
-  color: var(--ink);
+  color: var(--c64-light-blue);
 }
 
 .job-sep {
-  margin: 0 0.4rem;
-  color: var(--card-line);
+  margin: 0 0.45rem;
+  color: var(--line-strong);
 }
 
 .job-figure {
   margin: 1rem 0 0;
-  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--card-line);
+  border: 1px solid var(--line);
 }
 
 .job-figure img {
@@ -570,67 +1153,701 @@ h1 {
   height: auto;
 }
 
+.job-figure figcaption {
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
 .timeline {
   list-style: none;
   margin: 0.5rem 0 0;
   padding: 0;
-  border-left: 1px solid var(--card-line);
+  border-left: 2px solid rgba(160, 160, 255, 0.35);
 }
 
 .entry {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr;
-  gap: 1rem;
-  padding: 0.9rem 0 0.9rem 1rem;
-  margin-left: -1px;
-  border-left: 2px solid transparent;
   position: relative;
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 1rem;
+  padding: 0.9rem 0 0.9rem 1.1rem;
 }
 
 .entry + .entry {
-  border-top: 1px dashed var(--card-line);
+  border-top: 1px dashed var(--line);
+}
+
+/* A pixel on the line for each year. */
+.entry::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 1.35rem;
+  width: 8px;
+  height: 8px;
+  background: var(--highlight);
 }
 
 .entry-year {
-  font-family: "Rufina", Georgia, serif;
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--accent);
+  padding-top: 0.2rem;
+  color: var(--highlight);
+  font-family: var(--font-c64);
+  font-size: 0.95rem;
   letter-spacing: 0.04em;
 }
 
 .entry-body h4 {
   margin: 0 0 0.35rem;
-  font-family: "Newsreader", Georgia, serif;
-  font-size: 1.05rem;
-  font-weight: 500;
   color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 500;
   line-height: 1.4;
 }
 
 .entry-body p {
   margin: 0 0 0.5rem;
   color: var(--muted);
-  font-size: 0.98rem;
+  font-size: 1rem;
   line-height: 1.55;
 }
 
-.entry-body ul,
-.bullets {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
+/* ---------- THE C64: FOOTER AND ERROR PAGE ---------- */
+
+.foot {
+  position: relative;
+  z-index: 1;
+  padding: 0.5rem 1.5rem 3rem;
+}
+
+/* The border is the C64's own light blue; the screen inside is its blue. */
+.c64 {
+  position: relative;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(1.1rem, 4vw, 2.25rem) clamp(1rem, 5vw, 2.75rem);
+  background: var(--c64-border);
+  box-shadow:
+    0 0 0 1px #05050a,
+    0 1.5rem 3rem rgba(0, 0, 0, 0.5);
+}
+
+.c64-screen {
+  position: relative;
+  z-index: 1;
+  padding: clamp(0.9rem, 2.5vw, 1.4rem);
+  background: var(--c64-screen);
+  color: var(--c64-text);
+  font-family: var(--font-c64);
+  font-size: clamp(0.58rem, 1.75vw, 0.82rem);
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.c64-screen p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.c64-screen .c64-gap {
+  margin-bottom: 1lh;
+}
+
+.c64-links a {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25em;
+}
+
+/* Reverse video, as the C64 would have highlighted it. */
+.c64-links a:hover,
+.c64-links a:focus-visible {
+  background: var(--c64-text);
+  color: var(--c64-screen);
+  text-decoration: none;
+}
+
+.c64-cursor::before {
+  content: "";
+  display: inline-block;
+  width: 1ch;
+  height: 1em;
+  vertical-align: -0.15em;
+  background: var(--c64-text);
+}
+
+.foot-copy {
+  margin: 1.25rem 0 0;
   color: var(--muted);
+  font-family: var(--font-hud);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
-.entry-body ul li,
-.bullets li {
-  margin: 0.25rem 0;
-  font-size: 0.98rem;
-  line-height: 1.5;
+.error-page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 12vh, 7rem) 1rem;
 }
 
-.bullets {
+.c64-title {
+  margin: 1lh 0 0;
+  color: #fff;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: 0;
+}
+
+.c64-code {
+  color: var(--c64-text);
+}
+
+.c64-screen .c64-message {
+  margin-bottom: 1lh;
+}
+
+/* ---------- THE GAME ---------- */
+
+/* PRESS START opens the game (web/static/game) in a <dialog> over the whole window. arcade.js
+   scales the screen by a whole number of device pixels; around it goes the chrome pipe frame
+   the portrait wears. The page behind stays put while it is open. */
+html.arcade-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.arcade {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #000;
   color: var(--ink);
+  overflow: hidden;
+}
+
+.arcade[open] {
+  display: grid;
+  place-items: center;
+}
+
+.arcade::backdrop {
+  background: #000;
+}
+
+.arcade-screen {
+  display: block;
+  image-rendering: pixelated;
+  touch-action: none;
+  box-shadow:
+    0 0 0 1px #05050a,
+    0 0 0 2px var(--c64-blue),
+    0 0 0 3px var(--c64-light-blue),
+    0 0 0 4px #fff,
+    0 0 0 5px var(--c64-light-blue),
+    0 0 0 6px var(--c64-blue),
+    0 0 0 7px #05050a;
+}
+
+/* Only ever focused by script, to take the keys; the frame already shows where it is. */
+.arcade-screen:focus {
+  outline: none;
+}
+
+.arcade-bar {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.arcade-button {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--c64-light-blue);
+  background: rgba(10, 10, 13, 0.85);
+  color: var(--c64-light-blue);
+  font-family: var(--font-hud);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.arcade-button:hover {
+  background: var(--c64-blue-dark);
+  color: #fff;
+}
+
+.arcade-button[aria-pressed="true"] {
+  background: var(--c64-light-blue);
+  color: var(--c64-blue-dark);
+}
+
+/* For screen readers only, such as the game's controls. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- MOTION ---------- */
+
+/* Everything below moves, so none of it runs for anyone who prefers reduced motion. Without
+   it, and in browsers without scroll timelines, the page is complete and simply holds still.
+   Every animation is stepped rather than eased, for the look of an 8-bit machine rather than
+   a modern slide. */
+@media (prefers-reduced-motion: no-preference) {
+  /* The title screen powers up once, on load: the frame switches on like a CRT, a scan line
+     runs down the portrait, then the readout prints. */
+  .hud-frame {
+    animation: crt-on 520ms steps(6, end) 120ms both;
+  }
+
+  .hud-frame::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(
+        to bottom,
+        transparent 46%,
+        rgba(255, 111, 97, 0.18) 46% 49%,
+        rgba(255, 111, 97, 0.9) 49% 51%,
+        transparent 51%
+      )
+      0 0 / 100% 40% no-repeat;
+    animation: hud-scan 1.4s steps(20, end) 700ms both;
+  }
+
+  .hud-readout {
+    animation: print-lines 900ms steps(4, end) 1.9s both;
+  }
+
+  /* The attract mode: the layers drift past, the nearer the faster, a picture pixel at a time,
+     while the ship idles and the wave flaps. Pointing at PRESS START revs the engine. */
+  .hero-scene {
+    animation: attract 180s steps(2048, end) infinite;
+  }
+
+  .scene-ship {
+    animation:
+      exhaust 200ms steps(1, end) infinite,
+      idle 2.4s steps(2, end) infinite alternate;
+  }
+
+  .hero-scene:has(.press-start:hover, .press-start:focus-visible) .scene-ship {
+    animation-duration: 90ms, 2.4s;
+  }
+
+  .scene-wave {
+    animation:
+      flap 360ms steps(1, end) infinite,
+      idle 3.2s steps(3, end) infinite alternate;
+  }
+
+  .press-start-label::before {
+    animation: cursor 1.1s steps(1, end) infinite;
+  }
+
+  /* The game's screen switches on like the portrait's frame does. */
+  .arcade[open] .arcade-screen {
+    animation: crt-on 420ms steps(6, end) both;
+  }
+
+  .hero-text > * {
+    animation: flicker 420ms steps(4, end) both;
+  }
+
+  .hero-text > :nth-child(1) {
+    animation-delay: 300ms;
+  }
+
+  .hero-text > :nth-child(2) {
+    animation-delay: 420ms;
+  }
+
+  .hero-text > :nth-child(3) {
+    animation-delay: 540ms;
+  }
+
+  .hero-text > :nth-child(4) {
+    animation-delay: 620ms;
+  }
+
+  .hero-text > :nth-child(5) {
+    animation-delay: 700ms;
+  }
+
+  .hero-text > :nth-child(6) {
+    animation-delay: 900ms;
+  }
+
+  .c64-cursor::before {
+    animation: cursor 1.1s steps(1, end) infinite;
+  }
+
+  /* The error page has no scroll to drive it, so its screen prints on load instead. */
+  .error-page .c64-lines {
+    animation: print-lines 900ms steps(8, end) 200ms both;
+  }
+
+  @supports (animation-timeline: view()) {
+    /* A segmented energy bar across the top of the window fills as you scroll. */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 20;
+      height: 3px;
+      background: linear-gradient(90deg, var(--c64-amber), var(--c64-red) 70%, var(--c64-light-red));
+      mask-image: repeating-linear-gradient(90deg, #000 0 12px, transparent 12px 16px);
+      animation: load-bar linear both;
+      animation-timeline: scroll(root);
+    }
+
+    /* SEARCHING FOR, then LOADING, then READY., as the heading comes up the screen. */
+    .load::after {
+      animation: load-status linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+    }
+
+    /* Section headings draw from the top down, a few raster lines at a time. */
+    .stack-head h2 {
+      animation: raster-in steps(6, end) both;
+      animation-timeline: view();
+      animation-range: entry 40% cover 30%;
+    }
+
+    /* Theme headings type themselves in as they come into view. */
+    .theme-head h3 {
+      animation: type-in steps(14, end) both;
+      animation-timeline: view();
+      animation-range: entry 20% cover 35%;
+    }
+
+    /* The cursor blinks while you scroll, and rests when you stop. */
+    .theme-head h3::after {
+      animation: blink steps(1, end) both;
+      animation-timeline: view();
+    }
+
+    .theme-head .theme-num {
+      animation: flicker steps(4, end) both;
+      animation-timeline: view();
+      animation-range: entry 30% cover 35%;
+    }
+
+    /* Each theme's picture arrives at a low frame rate. It is done well before the picture
+       sticks, which would freeze its timeline part way. */
+    .theme-shot {
+      animation: step-in steps(5, end) both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 25%;
+    }
+
+    /* Scan lines over each picture fade as it settles, like a CRT warming up. */
+    .theme-shot-screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.5) 0 2px, transparent 2px 4px);
+      animation: warm-up steps(6, end) both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 40%;
+    }
+
+    /* The C64 at the bottom boots as it comes into view: loading stripes run through the
+       border, then the screen prints a line at a time. Both finish by the time the screen is
+       fully in view, which the end of the page always allows. The error page's C64 does not
+       scroll, so it gets no stripes. */
+    .foot .c64::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        var(--c64-light-blue) 0 7px,
+        #ffe080 7px 10px,
+        var(--c64-blue) 10px 16px,
+        var(--c64-light-red) 16px 18px,
+        var(--c64-blue-dark) 18px 25px,
+        var(--c64-amber) 25px 28px
+      );
+      animation: tape-load steps(10, end) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 80%;
+    }
+
+    .foot .c64-lines {
+      animation: print-lines steps(13, end) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+  }
+}
+
+@keyframes crt-on {
+  0% {
+    scale: 1 0.02;
+    filter: brightness(3);
+  }
+  60% {
+    scale: 1 1;
+    filter: brightness(1.6);
+  }
+  100% {
+    scale: 1 1;
+    filter: brightness(1);
+  }
+}
+
+@keyframes hud-scan {
+  0% {
+    opacity: 1;
+    background-position: 0 -60%;
+  }
+  90% {
+    opacity: 1;
+    background-position: 0 160%;
+  }
+  100% {
+    opacity: 0;
+    background-position: 0 160%;
+  }
+}
+
+@keyframes print-lines {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes cursor {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Each layer moves on by a whole number of its tiles, so the loop has no seam: the hull four,
+   the nearer stars and the distant hulks two, the far stars one. */
+@keyframes attract {
+  from {
+    background-position:
+      0 100%,
+      0 100%,
+      0 0;
+  }
+  to {
+    background-position:
+      calc(-4 * var(--tile)) 100%,
+      calc(-2 * var(--tile)) 100%,
+      calc(-1 * var(--tile)) 0;
+  }
+}
+
+@keyframes exhaust {
+  50% {
+    background-position: 0 100%;
+  }
+}
+
+@keyframes flap {
+  50% {
+    background-position: right bottom;
+  }
+}
+
+@keyframes idle {
+  to {
+    translate: 0 calc(2 * var(--px));
+  }
+}
+
+@keyframes load-status {
+  0%,
+  35% {
+    content: "SEARCHING FOR " attr(data-name);
+  }
+  36%,
+  70% {
+    content: "LOADING";
+  }
+  71%,
+  100% {
+    content: "READY.";
+  }
+}
+
+@keyframes raster-in {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes tape-load {
+  0% {
+    opacity: 1;
+    background-position: 0 0;
+  }
+  85% {
+    opacity: 1;
+    background-position: 0 -112px;
+  }
+  100% {
+    opacity: 0;
+    background-position: 0 -112px;
+  }
+}
+
+@keyframes load-bar {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes type-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 -1em 0 0);
+  }
+}
+
+@keyframes blink {
+  0%,
+  20%,
+  40%,
+  60%,
+  80% {
+    opacity: 1;
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    opacity: 0;
+  }
+}
+
+@keyframes flicker {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    translate: 0 2.5rem;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes warm-up {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------- RESPONSIVE ---------- */
+
+@media (max-width: 760px) {
+  /* No room beside the frame; the same facts are in the text below it. */
+  .hud-readout {
+    display: none;
+  }
+}
+
+/* On a phone the ship and PRESS START tuck into the corner beside the portrait, the label
+   wraps onto two lines, and the high score waits for the game. */
+@media (max-width: 560px) {
+  .scene-ship,
+  .press-start {
+    left: 0.5rem;
+  }
+
+  .press-start-label {
+    max-width: 4.75rem;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.55rem;
+    white-space: normal;
+  }
+
+  .press-start-hi {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .site-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* A narrower logo leaves the text column room for "alphagalactica.com" on one line. */
+  .site-card-link {
+    grid-template-columns: minmax(0, 6rem) minmax(0, 1fr);
+  }
+
+  /* One column: the picture first, then its story. No room to stick beside it. */
+  .theme-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .theme-shot,
+  .theme-story {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .theme-shot {
+    position: static;
+    margin: 0 0 0.5rem;
+  }
 }
 
 @media (max-width: 640px) {
@@ -644,70 +1861,50 @@ h1 {
   }
 }
 
-/* ---------- FOOTER ---------- */
-
-.foot {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  padding: 2rem 1rem 3rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-  letter-spacing: 0.05em;
-}
-
-/* ---------- ANIMATION ---------- */
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ---------- RESPONSIVE ---------- */
-
-@media (max-width: 640px) {
-  .hero {
-    padding: 3rem 1.25rem 2rem;
-    grid-template-columns: 1fr;
-    text-align: center;
-    min-height: auto;
-  }
-
-  .hero-portrait img {
-    max-width: 240px;
-  }
-
-  .social {
+/* The four links need the whole bar on a phone; the wordmark only repeats the heading. */
+@media (max-width: 520px) {
+  .topbar-inner {
     justify-content: center;
+    padding: 0 1rem;
   }
 
-  .row {
-    grid-template-columns: 56px 1fr;
-    gap: 0.9rem;
-    padding: 0.8rem 0.9rem;
+  .topbar-home {
+    display: none;
   }
 
-  .row-thumb {
-    width: 56px;
-    height: 56px;
+  .topbar-links {
+    gap: 1rem;
   }
 
-  .row-cta {
-    grid-column: 1 / -1;
-    text-align: right;
-    padding-left: 0;
-  }
-
-  .stack-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
+  .topbar-links a {
+    letter-spacing: 0.08em;
   }
 }
 
+@media (max-width: 360px) {
+  .topbar-links {
+    gap: 0.75rem;
+  }
+
+  .topbar-links a {
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+  }
+}
+
+/* ---------- REDUCED MOTION ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

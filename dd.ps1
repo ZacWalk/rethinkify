@@ -13,7 +13,11 @@ param(
     # Deploy options
     [string]$Region = "europe-west1",
     [switch]$NoPromote,
-    [string]$Version = ""
+    [string]$Version = "",
+
+    # Anything after the command that is not a named option, such as `format --check`.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest = @()
 )
 
 # Hard-pinned: this repo is the rethinkify project. Never deploy
@@ -71,7 +75,10 @@ function Get-VenvPython {
 }
 
 function Invoke-Format {
+    param([switch]$Check)
+
     $VenvPython = Get-VenvPython
+    $paths = @((Join-Path $ScriptRoot "web"), (Join-Path $ScriptRoot "tools"))
 
     & $VenvPython -m black --version 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -79,12 +86,13 @@ function Invoke-Format {
         & $VenvPython -m pip install black
     }
 
-    if ($Args -contains "--check") {
+    if ($Check) {
         Write-Host "Checking Python formatting..." -ForegroundColor Cyan
-        & $VenvPython -m black --check web/
+        & $VenvPython -m black --check @paths
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-Host "Formatting Python files..." -ForegroundColor Cyan
-        & $VenvPython -m black web/
+        & $VenvPython -m black @paths
     }
 }
 
@@ -213,10 +221,20 @@ function Invoke-Run {
 }
 
 # Main
+# Only `format --check` takes a free-form argument. Anything else left over is a typo or a
+# --flag PowerShell could not bind (it only knows -Name options), so stop rather than, say,
+# deploy and promote a version the caller asked not to promote.
+$unknown = @($Rest | Where-Object { -not ($Command -eq "format" -and $_ -eq "--check") })
+if ($unknown.Count -gt 0) {
+    Write-Host "Unknown argument(s): $($unknown -join ' ')" -ForegroundColor Red
+    Write-Host "Run .\dd.ps1 help for the options." -ForegroundColor Yellow
+    exit 1
+}
+
 switch ($Command) {
     "deploy" { Invoke-Deploy }
     "run"    { Invoke-Run }
-    "format" { Invoke-Format }
+    "format" { Invoke-Format -Check:($Rest -contains "--check") }
     "help"   { Show-Help }
     default  { Show-Help }
 }

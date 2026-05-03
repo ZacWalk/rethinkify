@@ -1,72 +1,156 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zac Walker — rethinkify</title>
+  <title>Zac Walker — software maker | Rethinkify</title>
   <meta name="description"
-    content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research. Projects, writing, and links." />
+    content="Zac Walker builds photo software, compilers, emulators and market-data tools — Diffractor, GCC's Windows on Arm target, an LLM compiler for the CPU, a C64 emulator and more. Projects, code and career." />
   <meta name="author" content="Zac Walker" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#0a0a0d" />
+  <meta name="color-scheme" content="dark" />
   <link rel="canonical" href="{{ canonical_url }}" />
+  <link rel="icon" href="/static/favicon-c64.svg" type="image/svg+xml" />
 
   <!-- Open Graph -->
-  <meta property="og:type" content="website" />
+  <meta property="og:type" content="profile" />
   <meta property="og:site_name" content="Rethinkify" />
-  <meta property="og:title" content="Zac Walker — rethinkify" />
+  <meta property="og:title" content="Zac Walker — software maker | Rethinkify" />
   <meta property="og:description"
-    content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research." />
+    content="Photo software, compilers, emulators and market-data tools — Diffractor, GCC's Windows on Arm target, an LLM compiler for the CPU, a C64 emulator and more." />
   <meta property="og:url" content="{{ canonical_url }}" />
   <meta property="og:locale" content="en_GB" />
+  <meta property="og:image" content="{{ site_origin }}/static/images/zac.webp" />
+  <meta property="og:image:width" content="677" />
+  <meta property="og:image:height" content="800" />
+  <meta property="og:image:alt" content="Zac Walker" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Zac Walker — rethinkify" />
+  <meta name="twitter:title" content="Zac Walker — software maker | Rethinkify" />
   <meta name="twitter:description"
-    content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research." />
+    content="Photo software, compilers, emulators and market-data tools — Diffractor, GCC's Windows on Arm target, an LLM compiler for the CPU, a C64 emulator and more." />
+  <meta name="twitter:image" content="{{ site_origin }}/static/images/zac.webp" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Rufina:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Share+Tech+Mono&family=Sixtyfour:BLED,SCAN@0..100,-53..100&family=VT323&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  <link rel="preload" as="image" href="/static/images/zac.webp" fetchpriority="high" />
+  <!-- Shows PRESS START on the title screen; the game itself loads only when it is pressed. -->
+  <script type="module" src="/game/{{ game_version }}/boot.js"></script>
 
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Rethinkify",
-      "url": "https://rethinkify.com/",
-      "author": {
-        "@type": "Person",
-        "name": "Zac Walker",
-        "url": "https://rethinkify.com/#about",
-        "sameAs": [
-          "https://github.com/ZacWalk",
-          "https://www.linkedin.com/in/zacwalker/"
-        ]
-      }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "{{ site_origin }}/#website",
+          "name": "Rethinkify",
+          "url": "{{ site_origin }}/",
+          "inLanguage": "en-GB",
+          "publisher": { "@id": "{{ site_origin }}/#zac" }
+        },
+        {
+          "@type": "Person",
+          "@id": "{{ site_origin }}/#zac",
+          "name": "Zac Walker",
+          "url": "{{ site_origin }}/",
+          "image": "{{ site_origin }}/static/images/zac.webp",
+          "jobTitle": "Principal Engineer",
+          "worksFor": { "@type": "Organization", "name": "Microsoft" },
+          "alumniOf": {
+            "@type": "CollegeOrUniversity",
+            "name": "Queensland University of Technology"
+          },
+          "knowsAbout": [
+            "C++",
+            "Rust",
+            "SIMD and performance optimisation",
+            "Compilers and JIT",
+            "Windows on Arm",
+            "Windows desktop development",
+            "Retro computing"
+          ],
+          "sameAs": [
+            "https://github.com/ZacWalk",
+            "https://www.linkedin.com/in/zacwalker/"
+          ]
+        },
+        {
+          "@type": "ProfilePage",
+          "@id": "{{ canonical_url }}#page",
+          "url": "{{ canonical_url }}",
+          "name": "Zac Walker — software maker",
+          "isPartOf": { "@id": "{{ site_origin }}/#website" },
+          "about": { "@id": "{{ site_origin }}/#zac" }
+        },
+        {
+          "@type": "ItemList",
+          "name": "Sites by Zac Walker",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Diffractor", "url": "https://diffractor.com" },
+            { "@type": "ListItem", "position": 2, "name": "Turbo 8bit", "url": "https://turbo8bit.com" },
+            { "@type": "ListItem", "position": 3, "name": "Alpha Galactica", "url": "https://alphagalactica.com" },
+            { "@type": "ListItem", "position": 4, "name": "Old Think Pad", "url": "https://oldthinkpad.com" }
+          ]
+        }
+      ]
     }
     </script>
 </head>
 
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="page-shell">
-    <header class="hero" aria-label="Introduction">
-      <div class="hero-portrait">
-        <img src="/static/images/zac.webp" alt="Zac Walker" width="500" height="800" />
+    <nav class="topbar" aria-label="Sections">
+      <div class="topbar-inner">
+        <a class="topbar-home" href="#top">Rethinkify</a>
+        <ul class="topbar-links">
+          <li><a href="#sites">Sites</a></li>
+          <li><a href="#projects">Projects</a></li>
+          <li><a href="#about">Work</a></li>
+          <li><a href="#education">Education</a></li>
+        </ul>
+      </div>
+    </nav>
+    <header class="hero" id="top" aria-label="Introduction">
+      <div class="hero-scene">
+        <div class="scene-ship" aria-hidden="true"></div>
+        <div class="scene-wave" aria-hidden="true"></div>
+        <div class="hud">
+          <span class="hud-meter" aria-hidden="true"></span>
+          <div class="hud-frame">
+            <img src="/static/images/zac.webp" alt="Zac Walker" width="677" height="800" fetchpriority="high"
+              decoding="async" />
+          </div>
+          <span class="hud-meter" aria-hidden="true"></span>
+          <pre class="hud-readout" aria-hidden="true">SCAN     COMPLETE
+SUBJECT  ZAC WALKER
+ORIGIN   COMMODORE 64
+STATUS   STILL LEARNING</pre>
+        </div>
+        <button class="press-start" type="button" data-press-start hidden>
+          <span class="press-start-label">Press start</span><span class="visually-hidden"> to play a
+            shoot-’em-up</span>
+          <span class="press-start-hi" data-hi aria-hidden="true"></span>
+        </button>
       </div>
       <div class="hero-text">
-        <p class="eyebrow">Learn, unlearn, relearn. <a href="https://en.wikipedia.org/wiki/Alvin_Toffler"
-            target="_blank" rel="noopener">AT</a></p>
         <h1>Rethinkify</h1>
-        <p class="about-lede">My name is Zac Walker: Father of 3, software maker and pragmatist.</p>
+        <p class="eyebrow">Learn, unlearn, relearn —
+          <a href="https://en.wikipedia.org/wiki/Alvin_Toffler" target="_blank" rel="noopener">Alvin Toffler</a>
+        </p>
+        <p class="about-lede">My name is Zac Walker: father of 3, software maker and pragmatist.</p>
         <p class="summary">
-          This site is about my digital side — desktop apps, web tools,
-          and research software, from photo management and emulators to
-          financial research and AI experiments.
+          This site is about my digital side — the desktop apps, web tools,
+          and research software I build. Everything from photo management and
+          emulators to financial research and AI experiments.
         </p>
         <nav class="social" aria-label="Site links">
           <a class="social-link" href="https://github.com/ZacWalk" rel="me noopener" target="_blank">
@@ -78,47 +162,50 @@
             <span class="social-handle">in/zacwalker</span>
           </a>
         </nav>
+        <p class="hero-hint">Scroll down to go back in time</p>
       </div>
     </header>
 
-    <main class="content">
-      <section class="stack" aria-labelledby="sites-heading">
+    <main class="content" id="main">
+      <section class="stack" id="sites" aria-labelledby="sites-heading">
         <header class="stack-head">
+          <p class="load" data-name="SITES" aria-hidden="true">LOAD"SITES",8,1</p>
           <h2 id="sites-heading">My Sites</h2>
         </header>
         <ul class="site-grid">
-          <li class="site-card" style="background-color: #232328">
-            <a class="site-card-link" href="https://diffractor.com" target="_blank" rel="noopener"
-              aria-label="Visit Diffractor">
+          <li class="site-card site-card--diffractor">
+            <a class="site-card-link" href="https://diffractor.com" target="_blank" rel="noopener">
               <div class="site-card-image">
-                <img src="/static/images/diffractor.webp" alt="Diffractor" loading="lazy" />
+                <img src="/static/images/diffractor.webp" alt="Diffractor logo" width="400" height="400"
+                  loading="lazy" decoding="async" />
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Diffractor</h3>
-                <p class="site-card-desc">The fastest photo and video organizer on Windows.</p>
+                <p class="site-card-desc">The fastest photo and video organiser on Windows. Free, local-only, no
+                  subscription.</p>
                 <span class="site-card-cta">diffractor.com</span>
               </div>
             </a>
           </li>
-          <li class="site-card" style="background-color: #056597">
-            <a class="site-card-link" href="https://turbo8bit.com" target="_blank" rel="noopener"
-              aria-label="Visit Turbo 8bit">
+          <li class="site-card site-card--turbo8bit">
+            <a class="site-card-link" href="https://turbo8bit.com" target="_blank" rel="noopener">
               <div class="site-card-image">
-                <img src="/static/images/turbothinkpad.webp" alt="Turbo 8bit" loading="lazy" />
+                <img src="/static/images/turbothinkpad.webp" alt="Turbo 8bit artwork" width="317" height="400"
+                  loading="lazy" decoding="async" />
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Turbo 8bit</h3>
-                <p class="site-card-desc">A Commodore 64 emulator running in the browser, and an interactive guide to
-                  how it works.</p>
+                <p class="site-card-desc">A Commodore 64 emulator in the browser, with labs for BASIC and 6502
+                  assembly and an interactive guide to how the machine works.</p>
                 <span class="site-card-cta">turbo8bit.com</span>
               </div>
             </a>
           </li>
-          <li class="site-card" style="background-color: #050f19">
-            <a class="site-card-link" href="https://alphagalactica.com" target="_blank" rel="noopener"
-              aria-label="Visit Alpha Galactica">
+          <li class="site-card site-card--alphagalactica">
+            <a class="site-card-link" href="https://alphagalactica.com" target="_blank" rel="noopener">
               <div class="site-card-image">
-                <img src="/static/images/alphagalactica.webp" alt="Alpha Galactica" loading="lazy" />
+                <img src="/static/images/alphagalactica.webp" alt="Alpha Galactica artwork" width="373" height="400"
+                  loading="lazy" decoding="async" />
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Alpha Galactica</h3>
@@ -128,16 +215,16 @@
               </div>
             </a>
           </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://oldthinkpad.com" target="_blank" rel="noopener"
-              aria-label="Visit Old Think Pad">
+          <li class="site-card site-card--oldthinkpad">
+            <a class="site-card-link" href="https://oldthinkpad.com" target="_blank" rel="noopener">
               <div class="site-card-image">
-                <img src="/static/images/oldthinkpad.webp" alt="Old Think Pad" loading="lazy" />
+                <img src="/static/images/oldthinkpad.webp" alt="Old Think Pad artwork" width="332" height="400"
+                  loading="lazy" decoding="async" />
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Old Think Pad</h3>
-                <p class="site-card-desc">A collection of vintage ThinkPad manuals, brochures, and other information.
-                </p>
+                <p class="site-card-desc">A field guide to vintage IBM ThinkPads, from the 700C to the 770, with a
+                  searchable library of original manuals and brochures.</p>
                 <span class="site-card-cta">oldthinkpad.com</span>
               </div>
             </a>
@@ -145,245 +232,212 @@
         </ul>
       </section>
 
-      <section class="stack" aria-labelledby="projects-heading">
+      <section class="stack" id="projects" aria-labelledby="projects-heading">
         <header class="stack-head">
+          <p class="load" data-name="PROJECTS" aria-hidden="true">LOAD"PROJECTS",8,1</p>
           <h2 id="projects-heading">My Projects</h2>
         </header>
-        <ul class="site-grid site-grid--full">
-          <li class="site-card" style="background-color: #232328">
-            <a class="site-card-link" href="https://github.com/diffractor/diffractor" target="_blank" rel="noopener"
-              aria-label="Visit diffractor on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/diffractor-app.webp" alt="diffractor" loading="lazy" />
+        <p class="stack-intro">Five things I keep coming back to. Most of the code is open source: mostly C++, mostly
+          Windows, and mostly written to answer a question I could not stop thinking about.</p>
+        <nav class="theme-nav" aria-label="Project themes">
+          <ol>
+            <li><a href="#theme-photos"><span class="theme-num">01</span> Photos</a></li>
+            <li><a href="#theme-ai"><span class="theme-num">02</span> AI &amp; ML</a></li>
+            <li><a href="#theme-markets"><span class="theme-num">03</span> Markets</a></li>
+            <li><a href="#theme-compilers"><span class="theme-num">04</span> Compilers</a></li>
+            <li><a href="#theme-win32"><span class="theme-num">05</span> Win32</a></li>
+          </ol>
+        </nav>
+        <section class="theme" id="theme-photos" aria-labelledby="theme-photos-heading">
+          <header class="theme-head">
+            <p class="theme-num" aria-hidden="true">01/05</p>
+            <h3 id="theme-photos-heading">Photos &amp; video</h3>
+          </header>
+          <div class="theme-body">
+            <figure class="theme-shot">
+              <div class="theme-shot-screen">
+                <img src="/static/images/diffractor-screenshot.webp" alt="Diffractor browsing a photo library"
+                  width="1415" height="874" loading="lazy" decoding="async" />
               </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">diffractor app</h3>
-                <p class="site-card-desc">Lightweight photo and video management for Windows. Optimised with
-                  Direct3D/HLSL and SIMD. I have been working on it for 20 years, and I am still not sure my photos are
-                  organised. It used to be called ImageWalker.</p>
-                <span class="site-card-cta">github.com/diffractor</span>
+              <figcaption>Diffractor browsing a photo library.</figcaption>
+            </figure>
+            <div class="theme-story">
+              <p>I take a lot of photos and videos. In 1998 I wrote my own PC photo management software, ArtMate, a
+                tiny thumbnail browser. It was fast and minimal because life is too short for slow software. It grew
+                into ImageWalker, shareware that turned out to be surprisingly popular, and
+                <a href="https://imagewalker.com" target="_blank" rel="noopener">ImageWalker</a> grew into
+                <a href="https://diffractor.com" target="_blank" rel="noopener">Diffractor</a>.</p>
+              <p>Diffractor is free, local-only and fast, with Direct3D and SIMD doing the heavy lifting. It reads RAW,
+                puts photos on a map from their GPS, spots duplicates even after they have been resized or re-encoded,
+                and speaks 14 languages. It is <a href="https://github.com/diffractor/diffractor" target="_blank"
+                  rel="noopener">open source</a> too. Twenty-odd years in, I am still not sure it is finished.</p>
+            </div>
+          </div>
+        </section>
+        <section class="theme" id="theme-ai" aria-labelledby="theme-ai-heading">
+          <header class="theme-head">
+            <p class="theme-num" aria-hidden="true">02/05</p>
+            <h3 id="theme-ai-heading">AI &amp; machine learning</h3>
+          </header>
+          <div class="theme-body">
+            <figure class="theme-shot">
+              <div class="theme-shot-screen">
+                <img src="/static/images/low-ban.webp"
+                  alt="low-ban showing a 500 kbit/s webcam feed next to an 11 kbit/s version with face landmarks drawn on"
+                  width="1200" height="559" loading="lazy" decoding="async" />
               </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/nnc" target="_blank" rel="noopener"
-              aria-label="Visit nnc on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/nnc.png" alt="nnc" loading="lazy" />
+              <figcaption>low-ban: a webcam at 500 kbit/s, and at 11 kbit/s with the face landmarks drawn
+                on.</figcaption>
+            </figure>
+            <div class="theme-story">
+              <p>My first brush with machine learning came at a Microsoft hackathon around 2015, while I was working on
+                Skype. The idea was a video call that worked over a 2G network, at about 10 kbit/s. At that speed all
+                you can send is a blurry mess, so <a href="https://github.com/ZacWalk/low-ban" target="_blank"
+                  rel="noopener">low-ban</a> tracks the landmarks of your face and sends those along too: you can at
+                least see whether someone is smiling. I demoed it to Skype's head of design, who wore all black and
+                really looked the part. Nothing came of it, but I still poke at it; these days a learned autoencoder
+                runs beside a classic codec on the same webcam frame.</p>
+              <p>I later wrote <a href="https://github.com/ZacWalk/libcmlp" target="_blank" rel="noopener">libcmlp</a>,
+                a multi-layer perceptron. It tells a sock from a shirt in Fashion-MNIST about 89.9% of the time, about
+                as well as any perceptron, and it can train a reinforcement learner too. Then, having been a compiler
+                engineer for a while, I wondered if I could compile an LLM to run on the CPU.
+                <a href="https://github.com/ZacWalk/nnc" target="_blank" rel="noopener">nnc</a> is that compiler. It
+                writes AVX2 machine code for the model as it loads, and runs Gemma 3 1B at about 28 tokens a second on
+                my PC. It is an embeddable library, if you want to add CPU LLM support to your own app.</p>
+            </div>
+          </div>
+        </section>
+        <section class="theme" id="theme-markets" aria-labelledby="theme-markets-heading">
+          <header class="theme-head">
+            <p class="theme-num" aria-hidden="true">03/05</p>
+            <h3 id="theme-markets-heading">Markets &amp; money</h3>
+          </header>
+          <div class="theme-body">
+            <figure class="theme-shot">
+              <div class="theme-shot-screen">
+                <img src="/static/images/price-app.webp"
+                  alt="price-app's viewer: a synthetic price line, long and short bands and an equity curve"
+                  width="1200" height="718" loading="lazy" decoding="async" />
               </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">nnc</h3>
-                <p class="site-card-desc">For a while I was a compiler engineer — and I always had this idea that
-                  if you could just compile an LLM for CPU, then Jensen Huang would be out of business. NNC is my LLM
-                  compiler and JIT. It can compile and run Gemma 3 at about 200 ms per token on my PC with AVX2. Jensen
-                  Huang is safe for the moment, but I am looking forward to FP8 landing in SIMD on the CPU. Inference
-                  is mostly memory-bandwidth bound at this point, so FP8 would let the model run a lot more
-                  efficiently. Intel has already committed to FP8 vector instructions in AVX10.2, and hopefully AMD
-                  follows with FP8 SIMD in Zen 6 or Zen 7 for Ryzen and EPYC. Once that lands, a CPU-only LLM stack
-                  starts to look a lot more interesting.</p>
-                <span class="site-card-cta">github.com/ZacWalk/nnc</span>
+              <figcaption>price-app on synthetic prices: green is long, red is short and grey is flat.</figcaption>
+            </figure>
+            <div class="theme-story">
+              <p>I have always found the financial world fascinating. In 2007 I worked at Merrill Lynch, the year it
+                lost more than $20 billion on subprime mortgages. Not my fault. I invest in technology stocks myself
+                and publish my research at
+                <a href="https://alphagalactica.com" target="_blank" rel="noopener">Alpha Galactica</a>. It is not
+                financial advice. I also did experiments with reinforcement learning and trading in
+                <a href="https://github.com/ZacWalk/price-app" target="_blank" rel="noopener">price-app</a>. Sadly, any
+                edge is offset by retail trading fees.</p>
+              <p>I have a few components to support this.
+                <a href="https://github.com/ZacWalk/libcfindata" target="_blank" rel="noopener">libcfindata</a> fetches
+                the data from SEC filings and FRED. <a href="https://github.com/ZacWalk/spike-db" target="_blank"
+                  rel="noopener">spike-db</a> stores market data and reads it back at around 80 million records a
+                second.</p>
+            </div>
+          </div>
+        </section>
+        <section class="theme" id="theme-compilers" aria-labelledby="theme-compilers-heading">
+          <header class="theme-head">
+            <p class="theme-num" aria-hidden="true">04/05</p>
+            <h3 id="theme-compilers-heading">Compilers &amp; emulators</h3>
+          </header>
+          <div class="theme-body">
+            <figure class="theme-shot">
+              <div class="theme-shot-screen">
+                <img src="/static/images/lib8bit.webp" alt="lib8bit's Windows host running a Commodore 64 BASIC demo"
+                  width="1200" height="750" loading="lazy" decoding="async" />
               </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/spike-db" target="_blank" rel="noopener"
-              aria-label="Visit spike-db on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/spike-db.png" alt="spike-db" loading="lazy" />
+              <figcaption>lib8bit, my C64 emulator, running a BASIC demo.</figcaption>
+            </figure>
+            <div class="theme-story">
+              <p>I learned to program on a Commodore 64. I think it is a machine simple enough for anyone to understand
+                how computers work. <a href="https://turbo8bit.com" target="_blank" rel="noopener">Turbo 8bit</a> is my
+                educational C64 emulator in the browser: type BASIC into a live machine, single-step 6502 assembly, or
+                watch the bus traffic as it boots. <a href="https://github.com/ZacWalk/lib8bit" target="_blank"
+                  rel="noopener">lib8bit</a> is the same emulator as a C++20 library.</p>
+              <p>When Microsoft open-sourced MS-DOS 4.0, I wanted to build it myself, but that needs the original 16-bit
+                tools, so I wrote <a href="https://github.com/ZacWalk/libdos" target="_blank" rel="noopener">libdos</a>,
+                a little DOS emulator to run them. That allowed me to create
+                <a href="https://github.com/ZacWalk/dos4z" target="_blank" rel="noopener">dos4z</a>, a version of DOS 4.0
+                with bug fixes and larger disk support. It allows my IBM 5150 to boot and work well with my CF hard
+                drive adapter.</p>
+              <p>In 2022 I wrote the proposal for Microsoft to back a
+                <a href="https://gcc.gnu.org/gcc-15/changes.html#aarch64" target="_blank" rel="noopener">GNU toolchain
+                  for Windows on Arm</a>. It was accepted, and I worked with Linaro's compiler team and other
+                open-source contributors to <a href="https://github.com/gcc-mirror/gcc/commits?author=ZacWalk"
+                  target="_blank" rel="noopener">add support for that backend</a>.</p>
+              <p>In that role I did a lot of low-level training inside Microsoft.
+                <a href="https://github.com/ZacWalk/vector-experiments" target="_blank"
+                  rel="noopener">vector-experiments</a> started life as that course: hand-written AVX2 beats a plain
+                loop by about 34 times.</p>
+              <p>Later I moved to work on Rust at Microsoft, where
+                <a href="https://github.com/microsoft/oxidizer" target="_blank" rel="noopener">Oxidizer</a> is the
+                framework behind some of its most critical services. One of my first Rust experiments was
+                <a href="https://github.com/ZacWalk/rust-http-sys" target="_blank" rel="noopener">rust-http-sys</a>, a
+                wrapper for the Windows kernel's web server, and one of our Rust experts said it looked like a C++
+                developer trying to write Rust. Fair enough.</p>
+            </div>
+          </div>
+        </section>
+        <section class="theme" id="theme-win32" aria-labelledby="theme-win32-heading">
+          <header class="theme-head">
+            <p class="theme-num" aria-hidden="true">05/05</p>
+            <h3 id="theme-win32-heading">Win32 apps</h3>
+          </header>
+          <div class="theme-body">
+            <figure class="theme-shot">
+              <div class="theme-shot-screen">
+                <img src="/static/images/win32-desktop.webp"
+                  alt="Four of my apps: the rethinkify editor, the potato browser, system-stuff and ergo-active"
+                  width="1200" height="750" loading="lazy" decoding="async" />
               </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">spike-db</h3>
-                <p class="site-card-desc">A time-series database designed for financial market data. This is used in my
-                  trading experiments and Alpha Galactica. The unique feature is very fast in-order iteration of
-                  market data. Useful if you need to do that sort of thing.</p>
-                <span class="site-card-cta">github.com/ZacWalk/spike-db</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/dos4z" target="_blank" rel="noopener"
-              aria-label="Visit dos4z on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/ibm5150.jpg" alt="dos4z" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">dos4z</h3>
-                <p class="site-card-desc">A while back, with the help of Scott Hanselman, MS-DOS 4.0 was made open
-                  source. I had the idea of adding large hard drive support so that my IBM 5150 could use bigger disks.
-                  Building it is tricky because it relies on some bundled DOS-only compilers and assemblers, so I wrote
-                  my own DOS shim that lets those DOS programs run on a modern Windows machine. You can now build this
-                  version of DOS on a modern machine, and my IBM 5150 will boot from the result. I still have not
-                  figured out how to add the large disk support though.</p>
-                <span class="site-card-cta">github.com/ZacWalk/dos4z</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/electron-bench" target="_blank" rel="noopener"
-              aria-label="Visit electron-bench on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/electron-bench.png" alt="electron-bench" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">electron-bench</h3>
-                <p class="site-card-desc">Measuring messaging cost across Electron communication paths. I originally
-                  wrote this when I worked on Microsoft Teams to improve performance. Teams does not use Electron
-                  any more, but if you do, this might be helpful.</p>
-                <span class="site-card-cta">github.com/ZacWalk/electron-bench</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/rust-http-sys" target="_blank" rel="noopener"
-              aria-label="Visit rust-http-sys on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/httpsys.svg" alt="rust-http-sys" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">rust-http-sys</h3>
-                <p class="site-card-desc">A few years ago I started working with Rust at Microsoft, with the goal of
-                  improving performance for some important services that make Office work. Those services are used by
-                  hundreds of millions of people, so making them more efficient adds up to a lot of money saved. One of
-                  my initial tasks was to prototype this wrapper for http.sys, the Windows kernel-mode web server. I was
-                  quite proud of it, but one of the Rust experts told me it was written like a C++ developer trying to
-                  write Rust — and he rewrote it all. Not surprising really, because I am a C++ guy trying to write
-                  Rust.</p>
-                <span class="site-card-cta">github.com/ZacWalk/rust-http-sys</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/stuntcarracer" target="_blank" rel="noopener"
-              aria-label="Visit stuntcarracer on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/stuntcarracer.png" alt="stuntcarracer" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">stuntcarracer</h3>
-                <p class="site-card-desc">I used to love Stunt Car Racer when I was a kid on my Commodore 64. I noticed
-                  that the code from the Amiga version was floating around, so I got a copy and rewrote it to use
-                  floating-point math instead of fixed-point. The fact that the 3D graphics were fully implemented in
-                  fixed-point math shows how amazing those old-school programmers were. On modern hardware, floating
-                  point has no real performance penalty any more, but unfortunately I introduced a bug where you
-                  occasionally fall through the track. I am stumped by it — even Claude Opus 4.7 could not diagnose the
-                  root cause. Maybe I will change it all back to fixed point if I get the time.</p>
-                <span class="site-card-cta">github.com/ZacWalk/stuntcarracer</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/low-ban" target="_blank" rel="noopener"
-              aria-label="Visit low-ban on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/lowban.png" alt="low-ban" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">low-ban</h3>
-                <p class="site-card-desc">Around 2015 I made low-ban as a hackathon project at Microsoft. At the time I
-                  was working on Skype. The basic concept was a video feed that could work on a 2G network, around
-                  10 kbps. At that speed you can only send a blurry mess, so I used facial landmarks to transmit
-                  coordinates representing facial expressions. That way you could at least see whether the person was
-                  smiling. There was some interest, and I even presented it to the head of design for Skype — he wore
-                  black and really looked the part. In the end nothing came of it, and now we all have enough bandwidth
-                  for high-resolution video all the time.</p>
-                <span class="site-card-cta">github.com/ZacWalk/low-ban</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/system-stuff" target="_blank" rel="noopener"
-              aria-label="Visit system-stuff on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/sysstuff.png" alt="system-stuff" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">system-stuff</h3>
-                <p class="site-card-desc">Way back around 2000, the company I worked for still supported Windows 95 and
-                  98 for the desktop application we sold. I usually volunteered to test on those platforms, and I had
-                  written my own task-manager-like program. The Windows 95 task manager is very basic, and I thought I
-                  could do better. Every five years or so I get it building again and make a few updates. It was
-                  originally called sys-mate, and is now called more generically system-stuff.</p>
-                <span class="site-card-cta">github.com/ZacWalk/system-stuff</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/noterad" target="_blank" rel="noopener"
-              aria-label="Visit rethinkify editor on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/noterad.png" alt="noterad" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">noterad</h3>
-                <p class="site-card-desc">A simple Windows text editor for programmers and normal people. I don’t know
-                  why I wrote this — some weird rite of passage for every software engineer, to write their own
-                  editor.</p>
-                <span class="site-card-cta">github.com/ZacWalk/noterad</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/ergo-active" target="_blank" rel="noopener"
-              aria-label="Visit ergo-active on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/ergoactive.png" alt="ergo-active" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">ergo-active</h3>
-                <p class="site-card-desc">Back in the late 90s my neighbour in London, a Swedish furniture designer,
-                  came up with the idea for Ergo Active over beers. The premise was simple: remind you to take a break
-                  when you have been using the computer for too long. We had so much fun making the app, and filled it
-                  with information starting with “experts recommend…” Once it was finished we were not sure what to do
-                  next — there was no app store in those days. Luckily it is preserved here. If you forget to take
-                  breaks, this is the app for you.</p>
-                <span class="site-card-cta">github.com/ZacWalk/ergo-active</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/nn" target="_blank" rel="noopener"
-              aria-label="Visit nn on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/mnist.png" alt="nn" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">nn</h3>
-                <p class="site-card-desc">Fashion-MNIST is a dataset of pictures of clothes. It is used for a machine
-                  learning challenge to train a model to recognise the different items. As a learning exercise, I wrote
-                  my own multi-layer perceptron to understand how deep learning is implemented. Anyway, my
-                  implementation does as well as any other multi-layer perceptron, and I was able to optimise it for
-                  modern SIMD hardware, so it is fast — for a CPU. If you need to tell the difference between a sock
-                  and a shirt, this is the program!</p>
-                <span class="site-card-cta">github.com/ZacWalk/nn</span>
-              </div>
-            </a>
-          </li>
-          <li class="site-card" style="background-color: #1e1d1b">
-            <a class="site-card-link" href="https://github.com/ZacWalk/potato" target="_blank" rel="noopener"
-              aria-label="Visit potato on GitHub">
-              <div class="site-card-image">
-                <img src="/static/images/potato.png" alt="potato" loading="lazy" />
-              </div>
-              <div class="site-card-body">
-                <h3 class="site-card-title">potato</h3>
-                <p class="site-card-desc">Back in the 2000s I needed to move from C++ to work on a web project for a
-                  while. I wanted to learn CSS better, so I decided the best thing to do was write my own web browser in
-                  C++. Here is what I came up with — probably the worst web browser in the world. I try to keep it
-                  working well enough to display Wikipedia. It is not working right now because Wikipedia keeps adopting
-                  more modern CSS, but it works fine on Wikipedia from 2015 — so super useful if you ever go back in
-                  time.</p>
-                <span class="site-card-cta">github.com/ZacWalk/potato</span>
-              </div>
-            </a>
-          </li>
-        </ul>
+              <figcaption>Rethinkify editor, potato, system-stuff and ergo-active, on a Windows 95 teal
+                desktop.</figcaption>
+            </figure>
+            <div class="theme-story">
+              <p>I grew up in the glory days of Win32, when an app was one small, fast .exe, and I have been writing
+                them ever since. Around 2000 my employer still supported Windows 95, whose task manager really was
+                basic, so I wrote my own improved version,
+                <a href="https://github.com/ZacWalk/system-stuff" target="_blank" rel="noopener">system-stuff</a>.
+                Around that time I also wrote <a href="https://github.com/ZacWalk/ergo-active" target="_blank"
+                  rel="noopener">ergo-active</a> with my London neighbour, a Swedish furniture designer. It reminds you
+                to take a break if you have been using the computer too long.</p>
+              <p>Then I spent a few years on the other side of the fence, owning the native code in the Teams desktop
+                app, which ran on Electron. I managed that team but did make a few Electron contributions: I
+                <a href="https://github.com/electron/electron/pull/13463" target="_blank" rel="noopener">swapped
+                  Electron's WTL file dialogs for plain Win32</a>,
+                <a href="https://github.com/electron/electron/pull/13914" target="_blank" rel="noopener">extended its
+                  tracing</a> so we could see where the memory went, and wrote
+                <a href="https://github.com/ZacWalk/electron-bench" target="_blank" rel="noopener">electron-bench</a>,
+                which shows that the IPC path everyone argues about barely changes latency, but changes main-process CPU
+                by more than 20 times. My longest-lasting contribution is a &ldquo;temporary&rdquo; fix to Chromium's build from
+                2018. It is still in Electron today,
+                <a href="https://github.com/electron/electron/blob/main/patches/chromium/ignore_rc_check.patch"
+                  target="_blank" rel="noopener">FIXME</a> and all.</p>
+              <p>I have my own C++ layer for small native apps,
+                <a href="https://github.com/ZacWalk/platform-h" target="_blank" rel="noopener">platform-h</a>, built with
+                <a href="https://github.com/ZacWalk/dd" target="_blank" rel="noopener">dd</a>, a PowerShell script that
+                thinks it is a package manager. The <a href="https://github.com/ZacWalk/rethinkify-app" target="_blank"
+                  rel="noopener">rethinkify editor</a> is my text editor, with GitHub Copilot in a side panel, and
+                <a href="https://github.com/ZacWalk/potato" target="_blank" rel="noopener">potato</a> is a web browser I
+                wrote to learn CSS: probably the worst in the world, but it shows Wikipedia from 2015 nicely. And a few
+                games: <a href="https://github.com/ZacWalk/zpilot" target="_blank" rel="noopener">zpilot</a> began in
+                1995 as a Turbo C++ game for DOS, and
+                <a href="https://github.com/ZacWalk/stuntcarracer" target="_blank" rel="noopener">Stunt Car Racer</a>,
+                which I loved on my C64, is the Amiga code rewritten from fixed-point to floating-point maths. That it
+                ever ran in fixed-point shows how amazing those programmers were.</p>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section class="cv" id="about" aria-labelledby="about-heading">
         <header class="stack-head">
+          <p class="load" data-name="WORK" aria-hidden="true">LOAD"WORK",8,1</p>
           <h2 id="about-heading">Professional Work</h2>
         </header>
-        <section class="cv-section" aria-labelledby="experience-heading">
+        <div class="cv-section">
           <article class="job">
             <header class="job-head">
               <h3 class="job-role">Principal Engineer</h3>
@@ -397,15 +451,16 @@
             </header>
 
             <p>Microsoft is one of the world's great companies. The challenge is the sheer scale: you work on systems
-              with hundreds of millions of users and need to align with thousands of other employees across all time
-              zones. That is an intense experience, and other companies don't come close to the level of immersion. I
-              really don't know where 10+ years went.</p>
+              with hundreds of millions of users, and you have to stay aligned with thousands of colleagues across every
+              time zone. It is an intense experience, and no other company I know comes close to that level of
+              immersion. I honestly don't know where the last 10+ years went.</p>
 
             <ol class="timeline">
               <li class="entry">
                 <div class="entry-year">2024</div>
                 <div class="entry-body">
-                  <h4>Helping develop Oxidizer — the Rust Substrate services framework used to power some of
+                  <h4>Helping develop <a href="https://github.com/microsoft/oxidizer" target="_blank"
+                      rel="noopener">Oxidizer</a> — the Rust Substrate services framework used to power some of
                     Microsoft's most mission-critical services.</h4>
                   <p>Wrote Oxidizer components and optimised performance, and worked with partner teams to replace
                     existing C# services with Rust.</p>
@@ -416,10 +471,11 @@
                 <div class="entry-year">2022</div>
                 <div class="entry-body">
                   <h4>Improved Windows-on-Arm for developers.</h4>
-                  <p>Wrote the Windows-on-Arm64 backend for the GNU toolchain, actively engaging with upstream and
+                  <p>Wrote the Windows-on-Arm64 backend for the <a href="https://github.com/gcc-mirror/gcc/commits?author=ZacWalk"
+                      target="_blank" rel="noopener">GNU toolchain</a>, working closely with the upstream and
                     downstream open-source compiler communities as a member developer on Linaro's compiler team. Along
-                    the way I gained a solid understanding of the Arm architecture, and trained and coached developers
-                    on Arm and Qualcomm hardware across GPU, SIMD, CPU and NPU/DSP.</p>
+                    the way I got a solid grasp of the Arm architecture, and trained and coached developers on Arm and
+                    Qualcomm hardware across GPU, SIMD, CPU and NPU/DSP.</p>
                 </div>
               </li>
 
@@ -433,14 +489,14 @@
               <li class="entry">
                 <div class="entry-year">2018</div>
                 <div class="entry-body">
-                  <h4>Led the Teams Desktop Development Team in Prague (15 devs).</h4>
-                  <p>Responsible for native desktop code in Microsoft Teams — Windows, Mac, Linux — infrastructure that
-                    supports over 200 million active users. Collaborated with more than 20 separate teams to enable
-                    platform-specific features, and led hardware video rendering integration in an internal fork of
-                    Chromium across CPU/GPU, Direct3D and OpenGL. Increased desktop reliability from 99.9 to 99.99 by
-                    setting up a native crash swat team, and led development of Teams for Linux — the first Linux
-                    application in Microsoft Office. I also led Microsoft's engagement with the Electron open-source
-                    community, regularly attending community events and joining the Electron administration board.</p>
+                  <h4>Led the Teams Desktop Development Team in Prague.</h4>
+                  <p>Owned the native desktop code in Microsoft Teams — Windows, Mac and Linux — the infrastructure
+                    behind over 200 million active users. I worked with more than 20 separate teams to enable
+                    platform-specific features, and led hardware video rendering in an internal fork of Chromium across
+                    CPU/GPU, Direct3D and OpenGL. I took desktop reliability from 99.9 to 99.99 by setting up a native
+                    crash SWAT team, and led Teams for Linux — the first Linux application in Microsoft Office. I also
+                    led Microsoft's engagement with the Electron open-source community, regularly attending events and
+                    joining the Electron administration board.</p>
                 </div>
               </li>
 
@@ -501,11 +557,15 @@
               and my colleagues and I did some amazing work; maybe the most enjoyable and productive period of my
               career.</p>
           </article>
-        </section>
-        <section class="cv-section" aria-labelledby="education-heading">
-          <header class="stack-head">
-            <h2 id="education-heading">Education</h2>
-          </header>
+        </div>
+      </section>
+
+      <section class="cv" id="education" aria-labelledby="education-heading">
+        <header class="stack-head">
+          <p class="load" data-name="EDUCATION" aria-hidden="true">LOAD"EDUCATION",8,1</p>
+          <h2 id="education-heading">Education</h2>
+        </header>
+        <div class="cv-section">
           <article class="job">
             <header class="job-head">
               <h3 class="job-role">Bachelor of Computer Science</h3>
@@ -524,15 +584,42 @@
               continuous change.</p>
             <p>It is an extremely beautiful campus in the centre of Brisbane, if you ever get the chance to visit.</p>
             <figure class="job-figure">
-              <img src="/static/images/qut.jpg" alt="QUT campus, Brisbane" loading="lazy" />
+              <img src="/static/images/qut.webp" alt="QUT campus in Brisbane" width="1100" height="404" loading="lazy"
+                decoding="async" />
+              <figcaption>QUT's Gardens Point campus, on the river in central Brisbane.</figcaption>
             </figure>
           </article>
-        </section>
+        </div>
       </section>
     </main>
 
     <footer class="foot">
-      <p>&copy; 2026 Zac Walker</p>
+      <div class="c64">
+        <div class="c64-screen">
+          <div class="c64-lines" aria-hidden="true">
+            <p class="c64-gap">    **** COMMODORE 64 BASIC V2 ****</p>
+            <p class="c64-gap"> 64K RAM SYSTEM  38911 BASIC BYTES FREE</p>
+            <p>READY.</p>
+            <p>10 PRINT "THANKS FOR SCROLLING"</p>
+            <p>20 GOTO 10</p>
+            <p>RUN</p>
+            <p>THANKS FOR SCROLLING</p>
+            <p>THANKS FOR SCROLLING</p>
+            <p>THANKS FOR SCROLLING</p>
+            <p>BREAK IN 10</p>
+            <p>READY.</p>
+          </div>
+          <nav class="c64-links" aria-label="Footer">
+            <p><span aria-hidden="true">LOAD"</span><a href="https://github.com/ZacWalk" rel="me noopener"
+                target="_blank">GitHub</a><span aria-hidden="true">",8</span></p>
+            <p><span aria-hidden="true">LOAD"</span><a href="https://www.linkedin.com/in/zacwalker/"
+                rel="me noopener" target="_blank">LinkedIn</a><span aria-hidden="true">",8</span></p>
+            <p><a href="#top"><span aria-hidden="true">SYS 64738 :REM </span>Back to top</a></p>
+          </nav>
+          <p class="c64-cursor" aria-hidden="true"></p>
+        </div>
+      </div>
+      <p class="foot-copy">&copy; {{ current_year }} Zac Walker</p>
     </footer>
   </div>
 </body>
