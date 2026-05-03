@@ -11,11 +11,16 @@ param(
     [string]$Command = "help",
 
     # Deploy options
-    [string]$Project = "rethinkify",
     [string]$Region = "europe-west1",
     [switch]$NoPromote,
     [string]$Version = ""
 )
+
+# Hard-pinned: this repo is the rethinkify project. Never deploy
+# anywhere else, even if `gcloud config set project ...` points at
+# another project on this machine. Intentionally not exposed as a
+# parameter so a stray `-Project foo` cannot ship to the wrong project.
+$TARGET_PROJECT = "rethinkify"
 
 $ErrorActionPreference = "Stop"
 $ScriptRoot = $PSScriptRoot
@@ -35,7 +40,7 @@ function Show-Help {
     Write-Host "  help           - Show this help message"
     Write-Host ""
     Write-Host "Deploy Options:" -ForegroundColor Green
-    Write-Host "  -Project <name>   - GCP project ID (default: rethinkify)"
+    Write-Host "  (deploy target is hard-pinned to project '$TARGET_PROJECT')"
     Write-Host "  -Region <region>  - GAE region (default: europe-west1)"
     Write-Host "  -NoPromote        - Don't promote the new version"
     Write-Host "  -Version <ver>    - Specific version name"
@@ -43,7 +48,7 @@ function Show-Help {
     Write-Host "Examples:" -ForegroundColor Green
     Write-Host "  .\dd.ps1 run"
     Write-Host "  .\dd.ps1 deploy"
-    Write-Host "  .\dd.ps1 deploy -Project myproject -Version v2"
+    Write-Host "  .\dd.ps1 deploy -Version v2"
     Write-Host ""
 }
 
@@ -99,21 +104,36 @@ function Invoke-Deploy {
             exit 1
         }
 
-        Write-Host "Project:   $Project" -ForegroundColor Yellow
+        # Verify the target project actually exists and is accessible to the
+        # active gcloud account.
+        $describe = gcloud projects describe $TARGET_PROJECT --format="value(projectId)" 2>&1
+        if ($LASTEXITCODE -ne 0 -or $describe -ne $TARGET_PROJECT) {
+            Write-Host "[FAIL] Target project '$TARGET_PROJECT' is not accessible to the active gcloud account." -ForegroundColor Red
+            Write-Host "       gcloud said: $describe" -ForegroundColor DarkGray
+            Write-Host "       Run 'gcloud auth login' and ensure you have access to the $TARGET_PROJECT project." -ForegroundColor Yellow
+            exit 1
+        }
+
+        $current = (gcloud config get-value project 2>$null).Trim()
+        if ($current -ne $TARGET_PROJECT) {
+            Write-Host "Note: gcloud active project is '$current'; this deploy will use '--project=$TARGET_PROJECT' regardless." -ForegroundColor Yellow
+        }
+
+        Write-Host "Project:   $TARGET_PROJECT" -ForegroundColor Yellow
         Write-Host "Region:    $Region" -ForegroundColor Yellow
         Write-Host "Directory: $webDir" -ForegroundColor Yellow
         Write-Host ""
 
         # Make sure App Engine is enabled and an app exists in the chosen region
-        & gcloud services enable appengine.googleapis.com --project $Project | Out-Null
+        & gcloud services enable appengine.googleapis.com --project $TARGET_PROJECT | Out-Null
 
-        & gcloud app describe --project $Project --format=json *> $null
+        & gcloud app describe --project $TARGET_PROJECT --format=json *> $null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "No App Engine app found for project $Project. Creating one in region $Region..." -ForegroundColor Yellow
-            & gcloud app create --project $Project --region $Region --quiet
+            Write-Host "No App Engine app found for project $TARGET_PROJECT. Creating one in region $Region..." -ForegroundColor Yellow
+            & gcloud app create --project $TARGET_PROJECT --region $Region --quiet
         }
 
-        $deployArgs = @("app", "deploy", "app.yaml", "--project", $Project, "--quiet")
+        $deployArgs = @("app", "deploy", "app.yaml", "--project", $TARGET_PROJECT, "--quiet")
 
         if ($Version) {
             $deployArgs += "--version"
@@ -135,7 +155,7 @@ function Invoke-Deploy {
             Write-Host "  Deployment successful!" -ForegroundColor Green
             Write-Host "========================================" -ForegroundColor Green
             Write-Host ""
-            Write-Host "View at: https://$Project.appspot.com" -ForegroundColor Cyan
+            Write-Host "View at: https://$TARGET_PROJECT.appspot.com" -ForegroundColor Cyan
         } else {
             Write-Host ""
             Write-Host "Deployment failed with exit code: $LASTEXITCODE" -ForegroundColor Red

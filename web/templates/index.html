@@ -95,7 +95,7 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Diffractor</h3>
-                <p class="site-card-desc">Lightweight photo and video management for Windows.</p>
+                <p class="site-card-desc">The fastest photo and video organizer on Windows.</p>
                 <span class="site-card-cta">diffractor.com</span>
               </div>
             </a>
@@ -122,7 +122,7 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Alpha Galactica</h3>
-                <p class="site-card-desc">Independent equity research with a quantitative tilt — semis, infra, software,
+                <p class="site-card-desc">Independent technology stock research — semis, software,
                   AI.</p>
                 <span class="site-card-cta">alphagalactica.com</span>
               </div>
@@ -173,11 +173,14 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">nnc</h3>
-                <p class="site-card-desc">For a while I was a compiler engineer — back when Microsoft paid me to write the
-                  Windows-on-ARM backend for GCC. That was a lot of fun, and I always had this idea that if you could
-                  just compile an LLM for CPU, then Jensen Huang would be out of business. So this is my attempt. It can
-                  compile and run Gemma 3 at about 200 ms per token on my PC with AVX2. Jensen Huang is safe for the
-                  moment, at least until the CPU vendors get their act together and add a SIMD instruction set for FP8.</p>
+                <p class="site-card-desc">For a while I was a compiler engineer — and I always had this idea that
+                  if you could just compile an LLM for CPU, then Jensen Huang would be out of business. NNC is my LLM
+                  compiler and JIT. It can compile and run Gemma 3 at about 200 ms per token on my PC with AVX2. Jensen
+                  Huang is safe for the moment, but I am looking forward to FP8 landing in SIMD on the CPU. Inference
+                  is mostly memory-bandwidth bound at this point, so FP8 would let the model run a lot more
+                  efficiently. Intel has already committed to FP8 vector instructions in AVX10.2, and hopefully AMD
+                  follows with FP8 SIMD in Zen 6 or Zen 7 for Ryzen and EPYC. Once that lands, a CPU-only LLM stack
+                  starts to look a lot more interesting.</p>
                 <span class="site-card-cta">github.com/ZacWalk/nnc</span>
               </div>
             </a>
@@ -346,11 +349,11 @@
               <div class="site-card-body">
                 <h3 class="site-card-title">nn</h3>
                 <p class="site-card-desc">Fashion-MNIST is a dataset of pictures of clothes. It is used for a machine
-                  learning challenge to train a model to recognize the different items. As a learning exercise, I wrote
+                  learning challenge to train a model to recognise the different items. As a learning exercise, I wrote
                   my own multi-layer perceptron to understand how deep learning is implemented. Anyway, my
-                  implementation does as well as any other multi-layer perceptron, and I was able to optimize it for
-                  modern SIMD hardware, so it is fast, for a CPU. If you need to tell the difference between a sock and
-                  a shirt, this is the program!</p>
+                  implementation does as well as any other multi-layer perceptron, and I was able to optimise it for
+                  modern SIMD hardware, so it is fast — for a CPU. If you need to tell the difference between a sock
+                  and a shirt, this is the program!</p>
                 <span class="site-card-cta">github.com/ZacWalk/nn</span>
               </div>
             </a>
@@ -393,16 +396,19 @@
               </p>
             </header>
 
+            <p>Microsoft is one of the world's great companies. The challenge is the sheer scale: you work on systems
+              with hundreds of millions of users and need to align with thousands of other employees across all time
+              zones. That is an intense experience, and other companies don't come close to the level of immersion. I
+              really don't know where 10+ years went.</p>
+
             <ol class="timeline">
               <li class="entry">
                 <div class="entry-year">2024</div>
                 <div class="entry-body">
-                  <h4>Helping develop Oxidizer — the Rust Substrate services framework.</h4>
-                  <ul>
-                    <li>Developed optimised memory management and collection types in Rust.</li>
-                    <li>Identified and proved the scalability/performance strategy with benchmarking data, showing
-                      hidden locks were the biggest limitation.</li>
-                  </ul>
+                  <h4>Helping develop Oxidizer — the Rust Substrate services framework used to power some of
+                    Microsoft's most mission-critical services.</h4>
+                  <p>Wrote Oxidizer components and optimised performance, and worked with partner teams to replace
+                    existing C# services with Rust.</p>
                 </div>
               </li>
 
@@ -410,12 +416,10 @@
                 <div class="entry-year">2022</div>
                 <div class="entry-body">
                   <h4>Improved Windows-on-Arm for developers.</h4>
-                  <ul>
-                    <li>Wrote the Windows-on-Arm64 backend for the GNU toolchain. Actively engaged with upstream and
-                      downstream open-source compiler communities. Member developer on Linaro's compiler team.</li>
-                    <li>Gained a solid understanding of the Arm architecture. Trained and coached developers on Arm and
-                      Qualcomm hardware — GPU, SIMD, CPU and NPU/DSP.</li>
-                  </ul>
+                  <p>Wrote the Windows-on-Arm64 backend for the GNU toolchain, actively engaging with upstream and
+                    downstream open-source compiler communities as a member developer on Linaro's compiler team. Along
+                    the way I gained a solid understanding of the Arm architecture, and trained and coached developers
+                    on Arm and Qualcomm hardware across GPU, SIMD, CPU and NPU/DSP.</p>
                 </div>
               </li>
 
@@ -430,25 +434,21 @@
                 <div class="entry-year">2018</div>
                 <div class="entry-body">
                   <h4>Led the Teams Desktop Development Team in Prague (15 devs).</h4>
-                  <p>Responsible for native desktop code in Microsoft Teams — Windows, Mac, Linux. This infrastructure
-                    supports over 200 million active users.</p>
-                  <ul>
-                    <li>Collaborated with over 20 separate teams to enable platform-specific features.</li>
-                    <li>Led hardware video rendering integration in an internal fork of Chromium (CPU/GPU, Direct3D,
-                      OpenGL).</li>
-                    <li>Increased desktop reliability from 99.9 to 99.99 by setting up a native crash swat team.</li>
-                    <li>Led development of Teams for Linux — the first Linux application in Microsoft Office.</li>
-                    <li>Led Microsoft's engagement with the Electron open-source community. Regularly attended community
-                      events and became a member of the Electron administration board.</li>
-                  </ul>
+                  <p>Responsible for native desktop code in Microsoft Teams — Windows, Mac, Linux — infrastructure that
+                    supports over 200 million active users. Collaborated with more than 20 separate teams to enable
+                    platform-specific features, and led hardware video rendering integration in an internal fork of
+                    Chromium across CPU/GPU, Direct3D and OpenGL. Increased desktop reliability from 99.9 to 99.99 by
+                    setting up a native crash swat team, and led development of Teams for Linux — the first Linux
+                    application in Microsoft Office. I also led Microsoft's engagement with the Electron open-source
+                    community, regularly attending community events and joining the Electron administration board.</p>
                 </div>
               </li>
 
               <li class="entry">
                 <div class="entry-year">2015</div>
                 <div class="entry-body">
-                  <h4>Led development and optimization of Skype user-data backend services.</h4>
-                  <p>Debian/C++ and Azure/C#. 50k TPS serving hundreds of millions of users.</p>
+                  <h4>Led development and optimisation of Skype user-data backend services.</h4>
+                  <p>Debian/C++ and Azure/C#, running at 50k TPS and serving hundreds of millions of users.</p>
                 </div>
               </li>
 
@@ -478,6 +478,8 @@
             <p>Coached clients to be more productive using agile methods, providing training in TDD, refactoring, CI and
               test automation. Mostly C++ and C# projects. Demonstrated improved cycle times and quality metrics, and
               leveraged a strong technical background to bridge the management and developer worlds.</p>
+            <p>Back in those days, Thoughtworks was a real leader in the industry. I met some amazing people and
+              learnt more than at any other point in my career.</p>
           </article>
 
           <article class="job">
@@ -494,6 +496,10 @@
             <p>Led C++ desktop development of graphical process-modelling software through multiple full lifecycle
               releases. Introduced agile methods to the company, improving quality with 60% fewer QA and user-reported
               bugs. Wrote a 2D rendering framework optimised for available hardware.</p>
+            <p>Casewise was the most fun company I ever worked at, largely because of George Keeling, the founder. He
+              was my boss for most of the time — completely high-energy crazy in a good way. It was a small company,
+              and my colleagues and I did some amazing work; maybe the most enjoyable and productive period of my
+              career.</p>
           </article>
         </section>
         <section class="cv-section" aria-labelledby="education-heading">
@@ -504,7 +510,8 @@
             <header class="job-head">
               <h3 class="job-role">Bachelor of Computer Science</h3>
               <p class="job-meta">
-                <span class="job-org"><a href="https://www.qut.edu.au/" target="_blank" rel="noopener">Queensland University of Technology (QUT)</a></span>
+                <span class="job-org"><a href="https://www.qut.edu.au/" target="_blank" rel="noopener">Queensland
+                    University of Technology (QUT)</a></span>
                 <span class="job-sep">·</span>
                 <span class="job-loc">Brisbane, Australia</span>
                 <span class="job-sep">·</span>
@@ -512,10 +519,10 @@
               </p>
             </header>
             <p>Graduated as part of one of QUT's pioneering cohorts shortly after it gained university status. Built a
-              solid foundation in computer science back when the Intel 486 was the absolute pinnacle of new
-              technology, meaning my ability to adapt and learn new frameworks has literally been tested across three
-              decades of continuous tech evolution.</p>
-            <p>It is an extremely beautiful campus in the center of Brisbane, if you ever get the chance to visit.</p>
+              solid foundation in computer science back when the Intel 486 was the absolute pinnacle of new technology,
+              which means my ability to adapt and learn new frameworks has been tested across three decades of
+              continuous change.</p>
+            <p>It is an extremely beautiful campus in the centre of Brisbane, if you ever get the chance to visit.</p>
             <figure class="job-figure">
               <img src="/static/images/qut.jpg" alt="QUT campus, Brisbane" loading="lazy" />
             </figure>
