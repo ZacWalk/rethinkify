@@ -26,6 +26,10 @@ env/
 htmlcov/
 tests/
 
+# Secrets / local env
+.env
+.env.*
+
 # Development
 *.log
 *.md

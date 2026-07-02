@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zac Walker — rethinkify</title>
+  <title>Zac Walker — Rethinkify</title>
   <meta name="description"
     content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research. Projects, writing, and links." />
   <meta name="author" content="Zac Walker" />
@@ -14,7 +14,7 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Rethinkify" />
-  <meta property="og:title" content="Zac Walker — rethinkify" />
+  <meta property="og:title" content="Zac Walker — Rethinkify" />
   <meta property="og:description"
     content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research." />
   <meta property="og:url" content="{{ canonical_url }}" />
@@ -22,7 +22,7 @@
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Zac Walker — rethinkify" />
+  <meta name="twitter:title" content="Zac Walker — Rethinkify" />
   <meta name="twitter:description"
     content="Personal site of Zac Walker — software engineer building desktop apps, web tools, and financial research." />
 
@@ -62,11 +62,11 @@
         <p class="eyebrow">Learn, unlearn, relearn. <a href="https://en.wikipedia.org/wiki/Alvin_Toffler"
             target="_blank" rel="noopener">AT</a></p>
         <h1>Rethinkify</h1>
-        <p class="about-lede">My name is Zac Walker: Father of 3, software maker and pragmatist.</p>
+        <p class="about-lede">My name is Zac Walker: father of 3, software maker and pragmatist.</p>
         <p class="summary">
-          This site is about my digital side — desktop apps, web tools,
-          and research software, from photo management and emulators to
-          financial research and AI experiments.
+          This site is about my digital side — the desktop apps, web tools,
+          and research software I build. Everything from photo management and
+          emulators to financial research and AI experiments.
         </p>
         <nav class="social" aria-label="Site links">
           <a class="social-link" href="https://github.com/ZacWalk" rel="me noopener" target="_blank">
@@ -95,7 +95,7 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">Diffractor</h3>
-                <p class="site-card-desc">The fastest photo and video organizer on Windows.</p>
+                <p class="site-card-desc">The fastest photo and video organiser on Windows.</p>
                 <span class="site-card-cta">diffractor.com</span>
               </div>
             </a>
@@ -173,14 +173,13 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">nnc</h3>
-                <p class="site-card-desc">For a while I was a compiler engineer — and I always had this idea that
-                  if you could just compile an LLM for CPU, then Jensen Huang would be out of business. NNC is my LLM
-                  compiler and JIT. It can compile and run Gemma 3 at about 200 ms per token on my PC with AVX2. Jensen
-                  Huang is safe for the moment, but I am looking forward to FP8 landing in SIMD on the CPU. Inference
-                  is mostly memory-bandwidth bound at this point, so FP8 would let the model run a lot more
-                  efficiently. Intel has already committed to FP8 vector instructions in AVX10.2, and hopefully AMD
-                  follows with FP8 SIMD in Zen 6 or Zen 7 for Ryzen and EPYC. Once that lands, a CPU-only LLM stack
-                  starts to look a lot more interesting.</p>
+                <p class="site-card-desc">For a while I was a compiler engineer, and I always had this idea: if you
+                  could just compile an LLM to run on the CPU, then Jensen Huang would be out of business. NNC is my
+                  attempt — an LLM compiler and JIT. It runs Gemma 3 at about 200 ms per token on my PC with AVX2.
+                  Jensen is safe for now, but I am excited about FP8 landing in CPU SIMD. Inference is mostly limited by
+                  memory bandwidth, so FP8 would let the model run a lot more efficiently. Intel has already committed to
+                  FP8 vector instructions in AVX10.2, and hopefully AMD follows with FP8 SIMD in Zen 6 or 7. Once that
+                  lands, a CPU-only LLM stack starts to look a lot more interesting.</p>
                 <span class="site-card-cta">github.com/ZacWalk/nnc</span>
               </div>
             </a>
@@ -193,9 +192,9 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">spike-db</h3>
-                <p class="site-card-desc">A time-series database designed for financial market data. This is used in my
-                  trading experiments and Alpha Galactica. The unique feature is very fast in-order iteration of
-                  market data. Useful if you need to do that sort of thing.</p>
+                <p class="site-card-desc">A time-series database built for financial market data. I use it in my
+                  trading experiments and in Alpha Galactica. Its one trick is very fast in-order iteration of market
+                  data — handy if you ever need that sort of thing.</p>
                 <span class="site-card-cta">github.com/ZacWalk/spike-db</span>
               </div>
             </a>
@@ -208,12 +207,12 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">dos4z</h3>
-                <p class="site-card-desc">A while back, with the help of Scott Hanselman, MS-DOS 4.0 was made open
-                  source. I had the idea of adding large hard drive support so that my IBM 5150 could use bigger disks.
-                  Building it is tricky because it relies on some bundled DOS-only compilers and assemblers, so I wrote
-                  my own DOS shim that lets those DOS programs run on a modern Windows machine. You can now build this
-                  version of DOS on a modern machine, and my IBM 5150 will boot from the result. I still have not
-                  figured out how to add the large disk support though.</p>
+                <p class="site-card-desc">A while back, Microsoft open-sourced MS-DOS 4.0 (with a little help from
+                  Scott Hanselman). I wanted to add large hard drive support so my IBM 5150 could use bigger disks. The
+                  tricky part is that building DOS relies on some bundled DOS-only compilers and assemblers — so I wrote
+                  my own DOS shim to run those old programs on a modern Windows machine. You can now build this version
+                  of DOS on a modern PC, and my IBM 5150 boots from the result. I still have not figured out the large
+                  disk support though.</p>
                 <span class="site-card-cta">github.com/ZacWalk/dos4z</span>
               </div>
             </a>
@@ -226,9 +225,9 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">electron-bench</h3>
-                <p class="site-card-desc">Measuring messaging cost across Electron communication paths. I originally
-                  wrote this when I worked on Microsoft Teams to improve performance. Teams does not use Electron
-                  any more, but if you do, this might be helpful.</p>
+                <p class="site-card-desc">Measures the cost of sending messages across Electron's communication paths.
+                  I wrote it to improve performance while I was working on Microsoft Teams. Teams does not use Electron
+                  any more, but if you do, this might help.</p>
                 <span class="site-card-cta">github.com/ZacWalk/electron-bench</span>
               </div>
             </a>
@@ -241,13 +240,12 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">rust-http-sys</h3>
-                <p class="site-card-desc">A few years ago I started working with Rust at Microsoft, with the goal of
-                  improving performance for some important services that make Office work. Those services are used by
-                  hundreds of millions of people, so making them more efficient adds up to a lot of money saved. One of
-                  my initial tasks was to prototype this wrapper for http.sys, the Windows kernel-mode web server. I was
-                  quite proud of it, but one of the Rust experts told me it was written like a C++ developer trying to
-                  write Rust — and he rewrote it all. Not surprising really, because I am a C++ guy trying to write
-                  Rust.</p>
+                <p class="site-card-desc">A few years ago I started using Rust at Microsoft to improve performance for
+                  some of the services that make Office work. They serve hundreds of millions of people, so making them
+                  faster adds up to a lot of money saved. One of my first tasks was to prototype this wrapper for
+                  http.sys, the Windows kernel-mode web server. I was quite proud of it — until one of our Rust experts
+                  told me it looked like a C++ developer trying to write Rust. Fair enough:
+                  I am a C++ guy trying to write Rust :)</p>
                 <span class="site-card-cta">github.com/ZacWalk/rust-http-sys</span>
               </div>
             </a>
@@ -260,13 +258,12 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">stuntcarracer</h3>
-                <p class="site-card-desc">I used to love Stunt Car Racer when I was a kid on my Commodore 64. I noticed
-                  that the code from the Amiga version was floating around, so I got a copy and rewrote it to use
-                  floating-point math instead of fixed-point. The fact that the 3D graphics were fully implemented in
-                  fixed-point math shows how amazing those old-school programmers were. On modern hardware, floating
-                  point has no real performance penalty any more, but unfortunately I introduced a bug where you
-                  occasionally fall through the track. I am stumped by it — even Claude Opus 4.7 could not diagnose the
-                  root cause. Maybe I will change it all back to fixed point if I get the time.</p>
+                <p class="site-card-desc">I loved Stunt Car Racer as a kid on my Commodore 64. The code from the Amiga
+                  version was floating around, so I grabbed a copy and rewrote it to use floating-point math instead of
+                  fixed-point. The fact that the original 3D graphics were done entirely in fixed-point shows how
+                  amazing those old-school programmers were. On modern hardware floating point costs nothing, but I did
+                  introduce a bug where you occasionally fall through the track. It has me stumped — even Claude Opus 
+                  could not find the root cause. Maybe I will switch it all back to fixed point if I get the time.</p>
                 <span class="site-card-cta">github.com/ZacWalk/stuntcarracer</span>
               </div>
             </a>
@@ -279,13 +276,13 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">low-ban</h3>
-                <p class="site-card-desc">Around 2015 I made low-ban as a hackathon project at Microsoft. At the time I
-                  was working on Skype. The basic concept was a video feed that could work on a 2G network, around
-                  10 kbps. At that speed you can only send a blurry mess, so I used facial landmarks to transmit
-                  coordinates representing facial expressions. That way you could at least see whether the person was
-                  smiling. There was some interest, and I even presented it to the head of design for Skype — he wore
-                  black and really looked the part. In the end nothing came of it, and now we all have enough bandwidth
-                  for high-resolution video all the time.</p>
+                <p class="site-card-desc">Around 2015 I built low-ban as a hackathon project at Microsoft, while I was
+                  working on Skype. The idea was a video call that could run on a 2G network, at around 10 kbps. At that
+                  speed all you can send is a blurry mess, so instead I tracked facial landmarks and sent just the
+                  coordinates of someone's expression. That way you could at least see whether they were smiling. There
+                  was some interest — I even demoed it to the head of design for Skype, who wore all black and really
+                  looked the part. In the end nothing came of it, and now we all have plenty of bandwidth for
+                  high-resolution video.</p>
                 <span class="site-card-cta">github.com/ZacWalk/low-ban</span>
               </div>
             </a>
@@ -299,10 +296,10 @@
               <div class="site-card-body">
                 <h3 class="site-card-title">system-stuff</h3>
                 <p class="site-card-desc">Way back around 2000, the company I worked for still supported Windows 95 and
-                  98 for the desktop application we sold. I usually volunteered to test on those platforms, and I had
-                  written my own task-manager-like program. The Windows 95 task manager is very basic, and I thought I
-                  could do better. Every five years or so I get it building again and make a few updates. It was
-                  originally called sys-mate, and is now called more generically system-stuff.</p>
+                  98 for the desktop app we sold. I usually volunteered to test on those old platforms, and I had
+                  written my own task-manager-style program. The Windows 95 task manager was very basic, and I decided I
+                  could do better. Every five years or so I get it building again and make a few tweaks. It started life
+                  as sys-mate and is now called, more generically, system-stuff.</p>
                 <span class="site-card-cta">github.com/ZacWalk/system-stuff</span>
               </div>
             </a>
@@ -315,9 +312,9 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">noterad</h3>
-                <p class="site-card-desc">A simple Windows text editor for programmers and normal people. I don’t know
-                  why I wrote this — some weird rite of passage for every software engineer, to write their own
-                  editor.</p>
+                <p class="site-card-desc">A simple Windows text editor for programmers and normal people. I am not sure
+                  why I wrote it — apparently writing your own editor is some weird rite of passage for every software
+                  engineer.</p>
                 <span class="site-card-cta">github.com/ZacWalk/noterad</span>
               </div>
             </a>
@@ -330,12 +327,12 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">ergo-active</h3>
-                <p class="site-card-desc">Back in the late 90s my neighbour in London, a Swedish furniture designer,
-                  came up with the idea for Ergo Active over beers. The premise was simple: remind you to take a break
-                  when you have been using the computer for too long. We had so much fun making the app, and filled it
-                  with information starting with “experts recommend…” Once it was finished we were not sure what to do
-                  next — there was no app store in those days. Luckily it is preserved here. If you forget to take
-                  breaks, this is the app for you.</p>
+                <p class="site-card-desc">Back in the late 90s my London neighbour, a Swedish furniture designer, came
+                  up with the idea for Ergo Active over beers. The premise was simple: remind you to take a break when
+                  you have been at the computer too long. We had so much fun making it, and filled it with advice that
+                  all started with “experts recommend…” Once it was finished we had no idea what to do with it — there
+                  was no app store back then. Luckily it is preserved here. If you forget to take breaks, this is the
+                  app for you.</p>
                 <span class="site-card-cta">github.com/ZacWalk/ergo-active</span>
               </div>
             </a>
@@ -348,12 +345,11 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">nn</h3>
-                <p class="site-card-desc">Fashion-MNIST is a dataset of pictures of clothes. It is used for a machine
-                  learning challenge to train a model to recognise the different items. As a learning exercise, I wrote
-                  my own multi-layer perceptron to understand how deep learning is implemented. Anyway, my
-                  implementation does as well as any other multi-layer perceptron, and I was able to optimise it for
-                  modern SIMD hardware, so it is fast — for a CPU. If you need to tell the difference between a sock
-                  and a shirt, this is the program!</p>
+                <p class="site-card-desc">Fashion-MNIST is a dataset of pictures of clothes, used as a machine learning
+                  challenge: train a model to tell the items apart. As a learning exercise, I wrote my own multi-layer
+                  perceptron to see how deep learning actually works under the hood. It does about as well as any other
+                  multi-layer perceptron. I tuned it for modern SIMD hardware, so it is fast — for a CPU. If you
+                  ever need to tell a sock from a shirt, this is the program!</p>
                 <span class="site-card-cta">github.com/ZacWalk/nn</span>
               </div>
             </a>
@@ -366,12 +362,11 @@
               </div>
               <div class="site-card-body">
                 <h3 class="site-card-title">potato</h3>
-                <p class="site-card-desc">Back in the 2000s I needed to move from C++ to work on a web project for a
-                  while. I wanted to learn CSS better, so I decided the best thing to do was write my own web browser in
-                  C++. Here is what I came up with — probably the worst web browser in the world. I try to keep it
-                  working well enough to display Wikipedia. It is not working right now because Wikipedia keeps adopting
-                  more modern CSS, but it works fine on Wikipedia from 2015 — so super useful if you ever go back in
-                  time.</p>
+                <p class="site-card-desc">Back in the 2000s I moved off C++ to work on a web project for a while. I
+                  wanted to learn CSS, and decided the best way was to write my own web browser in C++. Here is the
+                  result — probably the worst web browser in the world. I try to keep it working well enough to show
+                  Wikipedia. Right now it is broken because Wikipedia keeps adopting more modern CSS. It still works
+                  on Wikipedia from 2015 — so very handy if you ever travel back in time.</p>
                 <span class="site-card-cta">github.com/ZacWalk/potato</span>
               </div>
             </a>
@@ -397,9 +392,9 @@
             </header>
 
             <p>Microsoft is one of the world's great companies. The challenge is the sheer scale: you work on systems
-              with hundreds of millions of users and need to align with thousands of other employees across all time
-              zones. That is an intense experience, and other companies don't come close to the level of immersion. I
-              really don't know where 10+ years went.</p>
+              with hundreds of millions of users, and you have to stay aligned with thousands of colleagues across every
+              time zone. It is an intense experience, and no other company I know comes close to that level of
+              immersion. I honestly don't know where the last 10+ years went.</p>
 
             <ol class="timeline">
               <li class="entry">
@@ -416,10 +411,10 @@
                 <div class="entry-year">2022</div>
                 <div class="entry-body">
                   <h4>Improved Windows-on-Arm for developers.</h4>
-                  <p>Wrote the Windows-on-Arm64 backend for the GNU toolchain, actively engaging with upstream and
+                  <p>Wrote the Windows-on-Arm64 backend for the GNU toolchain, working closely with the upstream and
                     downstream open-source compiler communities as a member developer on Linaro's compiler team. Along
-                    the way I gained a solid understanding of the Arm architecture, and trained and coached developers
-                    on Arm and Qualcomm hardware across GPU, SIMD, CPU and NPU/DSP.</p>
+                    the way I got a solid grasp of the Arm architecture, and trained and coached developers on Arm and
+                    Qualcomm hardware across GPU, SIMD, CPU and NPU/DSP.</p>
                 </div>
               </li>
 
@@ -433,14 +428,14 @@
               <li class="entry">
                 <div class="entry-year">2018</div>
                 <div class="entry-body">
-                  <h4>Led the Teams Desktop Development Team in Prague (15 devs).</h4>
-                  <p>Responsible for native desktop code in Microsoft Teams — Windows, Mac, Linux — infrastructure that
-                    supports over 200 million active users. Collaborated with more than 20 separate teams to enable
-                    platform-specific features, and led hardware video rendering integration in an internal fork of
-                    Chromium across CPU/GPU, Direct3D and OpenGL. Increased desktop reliability from 99.9 to 99.99 by
-                    setting up a native crash swat team, and led development of Teams for Linux — the first Linux
-                    application in Microsoft Office. I also led Microsoft's engagement with the Electron open-source
-                    community, regularly attending community events and joining the Electron administration board.</p>
+                  <h4>Led the Teams Desktop Development Team in Prague.</h4>
+                  <p>Owned the native desktop code in Microsoft Teams — Windows, Mac and Linux — the infrastructure
+                    behind over 200 million active users. I worked with more than 20 separate teams to enable
+                    platform-specific features, and led hardware video rendering in an internal fork of Chromium across
+                    CPU/GPU, Direct3D and OpenGL. I took desktop reliability from 99.9 to 99.99 by setting up a native
+                    crash SWAT team, and led Teams for Linux — the first Linux application in Microsoft Office. I also
+                    led Microsoft's engagement with the Electron open-source community, regularly attending events and
+                    joining the Electron administration board.</p>
                 </div>
               </li>
 

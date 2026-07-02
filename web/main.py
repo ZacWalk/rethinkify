@@ -8,6 +8,25 @@ from flask import Flask, Response, render_template
 
 app = Flask(__name__)
 
+_IS_PROD = os.getenv("GAE_ENV", "").startswith("standard")
+
+
+@app.after_request
+def _security_headers(response: Response) -> Response:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=(), payment=()",
+    )
+    if _IS_PROD:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 # Canonical site origin used in absolute URLs (sitemap, canonical tags, OG, JSON-LD).
 SITE_ORIGIN = "https://rethinkify.com"
 
@@ -47,7 +66,5 @@ def sitemap_xml() -> Response:
 
 
 if __name__ == "__main__":
-    if os.getenv("GAE_ENV", "").startswith("standard"):
-        app.run()  # production
-    else:
-        app.run(port=8081, host="localhost", debug=True)  # localhost
+    # Local dev only; production uses gunicorn via app.yaml entrypoint.
+    app.run(port=8081, host="localhost", debug=True)
