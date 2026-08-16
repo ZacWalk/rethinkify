@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Rethinkify">
+  <rect width="64" height="64" rx="14" fill="#1b1d18" />
+  <path d="M20 48V16h13.5c6.4 0 10.4 3.4 10.4 9 0 4.3-2.4 7.3-6.5 8.5L46 48h-7.3l-7.4-13.3h-4.6V48H20zm6.7-18.6h5.9c3.2 0 5-1.6 5-4.3s-1.8-4.3-5-4.3h-5.9v8.6z"
+    fill="#e6e8ec" />
+</svg>
